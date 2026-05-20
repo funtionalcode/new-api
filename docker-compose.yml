@@ -1,18 +1,12 @@
-# New-API Docker Compose Configuration (连接本地 PG 和 Redis)
+# New-API Docker Compose Configuration
 #
-# 前置条件：
-#   1. 本地 PostgreSQL 已启动 (192.168.251.2:5432)
-#   2. 本地 Redis 已启动 (localhost:6379)
-#   3. 已创建数据库和用户（见下方说明）
-#
-# PostgreSQL 初始化：
-#   CREATE USER newapi WITH PASSWORD 'your_password';
-#   CREATE DATABASE new-api OWNER newapi;
-#   GRANT ALL PRIVILEGES ON DATABASE new-api TO newapi;
+# 包含 PostgreSQL 和 Redis，无需单独安装。
 #
 # 启动方式：
 #   docker-compose up -d
 #   访问 http://localhost:3000
+#
+# ⚠️ 生产环境请修改所有默认密码！
 
 services:
   new-api:
@@ -26,35 +20,17 @@ services:
       - ./data:/data
       - ./logs:/app/logs
     environment:
-      # PostgreSQL 连接配置
-      # 格式: postgresql://用户名:密码@主机:端口/数据库名
-      - SQL_DSN=postgresql://newapi:57bee75807044164@192.168.251.2:5432/newapi
-
-      # Redis 连接配置
-      # 使用 host.docker.internal 访问宿主机上的 Redis
-      - REDIS_CONN_STRING=redis://:006e0b2853794870ad83551f6df8ce92@host.docker.internal:6379/0
-
-      # 时区设置
+      - SQL_DSN=postgresql://newapi:57bee75807044164@postgres:5432/newapi
+      - REDIS_CONN_STRING=redis://:006e0b2853794870ad83551f6df8ce92@redis:6379/0
       - TZ=Asia/Shanghai
-
-      # 日志配置
       - ERROR_LOG_ENABLED=true
       - BATCH_UPDATE_ENABLED=true
       - NODE_NAME=new-api-node-1
-
-      # 可选配置（取消注释以启用）
-      # - STREAMING_TIMEOUT=300
-      # - SESSION_SECRET=random_string
-      # - SYNC_FREQUENCY=60
-
-    # 添加 host 映射，确保能访问宿主机服务
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-
-    # 依赖服务（如果需要启动本地服务，可以在这里定义）
-    # depends_on:
-    #   - redis
-
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/api/status | grep -o '\"success\":\\s*true' || exit 1"]
       interval: 30s
@@ -63,16 +39,42 @@ services:
     networks:
       - new-api-network
 
-# 如需在 Docker 中运行 Redis，取消以下注释
-# redis:
-#   image: redis:latest
-#   container_name: redis
-#   restart: always
-#   command: ["redis-server", "--requirepass", "006e0b2853794870ad83551f6df8ce92"]
-#   ports:
-#     - "6379:6379"
-#   networks:
-#     - new-api-network
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: newapi
+      POSTGRES_PASSWORD: 57bee75807044164
+      POSTGRES_DB: newapi
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U newapi -d newapi"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - new-api-network
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    restart: always
+    command: ["redis-server", "--requirepass", "006e0b2853794870ad83551f6df8ce92"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a 006e0b2853794870ad83551f6df8ce92 ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - new-api-network
+
+volumes:
+  pg_data:
+  redis_data:
 
 networks:
   new-api-network:
