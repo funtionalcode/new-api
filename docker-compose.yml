@@ -10,7 +10,13 @@
 
 services:
   new-api:
-    build: .
+    build:
+      context: .
+      network: host
+      args:
+        http_proxy: ${http_proxy:-}
+        https_proxy: ${https_proxy:-}
+        no_proxy: ${no_proxy:-}
     image: new-api:local
     container_name: new-api
     restart: always
