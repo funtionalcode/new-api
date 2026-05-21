@@ -71,6 +71,8 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	return nil, errors.New("codexchat channel: /v1/responses endpoint not supported")
 }
 
+const codexChatUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.7103.113 Safari/537.36"
+
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
 	key := strings.TrimSpace(info.ApiKey)
 
@@ -80,26 +82,19 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 		return nil, fmt.Errorf("read request body failed: %w", err)
 	}
 
-	proxy := info.ChannelSetting.Proxy
-	cookie := ensureCfClearance(c, info.ChannelId, info.ChannelBaseUrl, key, proxy)
-
 	// 首次请求
-	resp, cfErr := a.doCodexChatRequest(c, info, bodyBytes, key, cookie)
-	if cfErr != nil {
-		return nil, cfErr
+	resp, err := a.doCodexChatRequest(c, info, bodyBytes, key)
+	if err != nil {
+		return nil, err
 	}
 
-	// 检测 Cloudflare 挑战
+	// 检测 Cloudflare 挑战（安全网，正常情况下不应触发）
 	if isCloudflareChallenge(resp) {
-		logger.LogWarn(c, fmt.Sprintf("codexchat: Cloudflare challenge detected for channel %d, retrying with fresh cookie", info.ChannelId))
-		invalidateCfClearance(info.ChannelId)
+		logger.LogWarn(c, fmt.Sprintf("codexchat: Cloudflare challenge detected for channel %d, retrying", info.ChannelId))
 		resp.Body.Close()
-
-		// 重新获取 cookie 并重试
-		cookie = ensureCfClearance(c, info.ChannelId, info.ChannelBaseUrl, key, proxy)
-		resp, cfErr = a.doCodexChatRequest(c, info, bodyBytes, key, cookie)
-		if cfErr != nil {
-			return nil, cfErr
+		resp, err = a.doCodexChatRequest(c, info, bodyBytes, key)
+		if err != nil {
+			return nil, err
 		}
 		if isCloudflareChallenge(resp) {
 			resp.Body.Close()
@@ -114,7 +109,7 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 }
 
 // doCodexChatRequest 构建并发送请求到 chatgpt.com/backend-api/conversation
-func (a *Adaptor) doCodexChatRequest(c *gin.Context, info *relaycommon.RelayInfo, bodyBytes []byte, apiKey string, cookie string) (*http.Response, error) {
+func (a *Adaptor) doCodexChatRequest(c *gin.Context, info *relaycommon.RelayInfo, bodyBytes []byte, apiKey string) (*http.Response, error) {
 	fullRequestURL, err := a.GetRequestURL(info)
 	if err != nil {
 		return nil, fmt.Errorf("get request url failed: %w", err)
@@ -130,6 +125,7 @@ func (a *Adaptor) doCodexChatRequest(c *gin.Context, info *relaycommon.RelayInfo
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("User-Agent", codexChatUserAgent)
 	req.Header.Set("Origin", info.ChannelBaseUrl)
 	req.Header.Set("Referer", info.ChannelBaseUrl+"/")
 	req.Header.Set("originator", "codex_cli_rs")
@@ -145,9 +141,6 @@ func (a *Adaptor) doCodexChatRequest(c *gin.Context, info *relaycommon.RelayInfo
 			req.Host = value
 		}
 	}
-
-	// 注入 Cloudflare cookie
-	injectCfClearance(req, cookie)
 
 	// 发送请求
 	resp, err := channel.DoRequest(c, req, info)
