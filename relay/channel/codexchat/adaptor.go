@@ -6,13 +6,12 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/relay/channel/openai"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -41,22 +40,8 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) (any, error) {
-	chatGPTReq := convertToChatGPTConversation(request)
-
-	// 注入系统提示
-	if info.ChannelSetting.SystemPrompt != "" {
-		systemMsg := chatGPTMessage{
-			ID:      "system-" + fmt.Sprintf("%d", time.Now().UnixNano()),
-			Author:  messageAuthor{Role: "system"},
-			Content: messageContent{ContentType: "text", Parts: []string{info.ChannelSetting.SystemPrompt}},
-			Metadata: map[string]any{
-				"is_visually_hidden_from_conversation": true,
-			},
-		}
-		chatGPTReq.Messages = append([]chatGPTMessage{systemMsg}, chatGPTReq.Messages...)
-	}
-
-	return chatGPTReq, nil
+	// 直接透传，不转换格式
+	return request, nil
 }
 
 func (a *Adaptor) ConvertRerankRequest(c *gin.Context, relayMode int, request dto.RerankRequest) (any, error) {
@@ -108,7 +93,7 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 	return resp, nil
 }
 
-// doCodexChatRequest 构建并发送请求到 chatgpt.com/backend-api/conversation
+// doCodexChatRequest 构建并发送请求
 func (a *Adaptor) doCodexChatRequest(c *gin.Context, info *relaycommon.RelayInfo, bodyBytes []byte, apiKey string) (*http.Response, error) {
 	fullRequestURL, err := a.GetRequestURL(info)
 	if err != nil {
@@ -126,9 +111,6 @@ func (a *Adaptor) doCodexChatRequest(c *gin.Context, info *relaycommon.RelayInfo
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("User-Agent", codexChatUserAgent)
-	req.Header.Set("Origin", info.ChannelBaseUrl)
-	req.Header.Set("Referer", info.ChannelBaseUrl+"/")
-	req.Header.Set("originator", "codex_cli_rs")
 
 	// 应用 header override
 	headerOverride, err := channel.ResolveHeaderOverride(info, c)
@@ -151,104 +133,13 @@ func (a *Adaptor) doCodexChatRequest(c *gin.Context, info *relaycommon.RelayInfo
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
+	// 使用标准 OpenAI 响应处理
 	if info.IsStream {
-		return a.handleStreamResponse(c, resp, info)
+		usage, err = openai.OaiStreamHandler(c, info, resp)
+	} else {
+		usage, err = openai.OpenaiHandler(c, info, resp)
 	}
-	return a.handleNonStreamResponse(c, resp, info)
-}
-
-// handleStreamResponse 处理流式响应
-func (a *Adaptor) handleStreamResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (any, *types.NewAPIError) {
-	helper.SetEventStreamHeaders(c)
-
-	respID := fmt.Sprintf("resp_%d", time.Now().UnixNano())
-	model := info.UpstreamModelName
-
-	events := parseChatGPTSSEStream(resp.Body)
-	defer resp.Body.Close()
-
-	responseText := ""
-	for event := range events {
-		if event.Type == "message_stream_complete" {
-			break
-		}
-
-		chunk := convertToOpenAIStreamChunk(event, model, respID)
-		if chunk == nil {
-			continue
-		}
-
-		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != nil {
-			responseText += *chunk.Choices[0].Delta.Content
-		}
-
-		if err := helper.ObjectData(c, chunk); err != nil {
-			logger.LogError(c, "codexchat: write SSE chunk failed: "+err.Error())
-			break
-		}
-	}
-
-	_ = helper.ObjectData(c, buildStopChunk(model, respID))
-	helper.Done(c)
-
-	// 构建 usage
-	promptTokens := info.GetEstimatePromptTokens()
-	usage := &dto.Usage{
-		PromptTokens:     promptTokens,
-		CompletionTokens: countTokens(responseText),
-		TotalTokens:      promptTokens + countTokens(responseText),
-	}
-	return usage, nil
-}
-
-// handleNonStreamResponse 处理非流式响应
-func (a *Adaptor) handleNonStreamResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (any, *types.NewAPIError) {
-	defer resp.Body.Close()
-
-	events := parseChatGPTSSEStream(resp.Body)
-
-	responseText := ""
-	for event := range events {
-		if event.Type == "message_stream_complete" {
-			break
-		}
-		if event.Message == nil {
-			continue
-		}
-		if event.Message.Content.ContentType == "text" && len(event.Message.Content.Parts) > 0 {
-			responseText += strings.Join(event.Message.Content.Parts, "")
-		}
-	}
-
-	promptTokens := info.GetEstimatePromptTokens()
-	completionTokens := countTokens(responseText)
-	usage := &dto.Usage{
-		PromptTokens:     promptTokens,
-		CompletionTokens: completionTokens,
-		TotalTokens:      promptTokens + completionTokens,
-	}
-
-	// 返回 OpenAI 格式的响应
-	response := dto.OpenAITextResponse{
-		Id:      fmt.Sprintf("resp_%d", time.Now().UnixNano()),
-		Object:  "chat.completion",
-		Created: time.Now().Unix(),
-		Model:   info.UpstreamModelName,
-		Choices: []dto.OpenAITextResponseChoice{
-			{
-				Index: 0,
-				Message: dto.Message{
-					Role:    "assistant",
-					Content: responseText,
-				},
-				FinishReason: "stop",
-			},
-		},
-		Usage: *usage,
-	}
-
-	c.JSON(http.StatusOK, response)
-	return usage, nil
+	return
 }
 
 func (a *Adaptor) GetModelList() []string {
@@ -260,7 +151,7 @@ func (a *Adaptor) GetChannelName() string {
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
-	return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, "/backend-api/conversation", info.ChannelType), nil
+	return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, "/v1/chat/completions", info.ChannelType), nil
 }
 
 func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *relaycommon.RelayInfo) error {
@@ -278,18 +169,4 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *rel
 	}
 
 	return nil
-}
-
-// countTokens 简单估算 token 数（约 4 字符 = 1 token）
-func countTokens(text string) int {
-	if text == "" {
-		return 0
-	}
-	// 简单估算：中文约 1.5 字符/token，英文约 4 字符/token
-	runes := []rune(text)
-	estimated := len(runes) / 3
-	if estimated < 1 {
-		estimated = 1
-	}
-	return estimated
 }
