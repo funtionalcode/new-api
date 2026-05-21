@@ -337,7 +337,7 @@ function BalanceCell({ channel }: { channel: Channel }) {
     if (isUpdating) return
 
     setIsUpdating(true)
-    if (channel.type === 57) {
+    if (channel.type === 57 || channel.type === 58) {
       try {
         const res = await getCodexUsage(channel.id)
         if (!res.success) {
@@ -388,7 +388,7 @@ function BalanceCell({ channel }: { channel: Channel }) {
               <span
                 className={cn(
                   'cursor-pointer transition-opacity hover:opacity-70',
-                  channel.type === 57
+                  channel.type === 57 || channel.type === 58
                     ? 'text-primary'
                     : textColorMap[isUpdating ? 'neutral' : variant]
                 )}
@@ -398,17 +398,17 @@ function BalanceCell({ channel }: { channel: Channel }) {
           >
             {isUpdating
               ? 'Updating...'
-              : channel.type === 57
+              : channel.type === 57 || channel.type === 58
                 ? t('Account Info')
                 : remainingDisplay}
           </TooltipTrigger>
           <TooltipContent>
             <p>
-              {channel.type === 57
+              {channel.type === 57 || channel.type === 58
                 ? t('Click to view Codex usage')
                 : `${t('Remaining:')} ${remainingDisplay}`}
             </p>
-            {channel.type !== 57 && <p>{t('Click to update balance')}</p>}
+            {channel.type !== 57 && channel.type !== 58 && <p>{t('Click to update balance')}</p>}
           </TooltipContent>
         </Tooltip>
       </div>

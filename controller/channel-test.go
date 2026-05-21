@@ -54,6 +54,9 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 	if channel != nil && channel.Type == constant.ChannelTypeCodex {
 		return string(constant.EndpointTypeOpenAIResponse)
 	}
+	if channel != nil && channel.Type == constant.ChannelTypeCodexChat {
+		return string(constant.EndpointTypeOpenAI)
+	}
 	return normalized
 }
 
@@ -122,8 +125,8 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			requestPath = "/v1/images/generations"
 		}
 
-		// responses-only models
-		if strings.Contains(strings.ToLower(testModel), "codex") {
+		// responses-only models (Codex channel uses /v1/responses, CodexChat uses /v1/chat/completions)
+		if channel.Type == constant.ChannelTypeCodex && strings.Contains(strings.ToLower(testModel), "codex") {
 			requestPath = "/v1/responses"
 		}
 
@@ -647,7 +650,7 @@ func validateTestResponseBody(respBody []byte, isStream bool) error {
 }
 
 func shouldUseStreamForAutomaticChannelTest(channel *model.Channel) bool {
-	return channel != nil && channel.Type == constant.ChannelTypeCodex
+	return channel != nil && (channel.Type == constant.ChannelTypeCodex || channel.Type == constant.ChannelTypeCodexChat)
 }
 
 func detectErrorMessageFromJSONBytes(jsonBytes []byte) string {

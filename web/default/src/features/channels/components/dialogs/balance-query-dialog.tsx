@@ -60,7 +60,7 @@ export function BalanceQueryDialog({
   const [codexUsageResponse, setCodexUsageResponse] =
     useState<CodexUsageDialogData | null>(null)
 
-  const isCodex = currentRow?.type === 57
+  const isCodex = currentRow?.type === 57 || currentRow?.type === 58
 
   const handleQueryCodexUsage = async () => {
     const row = currentRow
