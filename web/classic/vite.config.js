@@ -66,6 +66,15 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
+      onwarn(warning, defaultHandler) {
+        if (
+          warning.code === 'EVAL' &&
+          warning.id?.includes('node_modules/lottie-web/build/player/lottie.js')
+        ) {
+          return;
+        }
+        defaultHandler(warning);
+      },
       output: {
         manualChunks: {
           'react-core': ['react', 'react-dom', 'react-router-dom'],

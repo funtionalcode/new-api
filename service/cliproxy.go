@@ -33,7 +33,25 @@ type CliproxyAuthFile struct {
 }
 
 type cliproxyAuthFilesResponse struct {
-	Data []CliproxyAuthFile `json:"data"`
+	Data  []cliproxyAuthFileResponse `json:"data"`
+	Files []cliproxyAuthFileResponse `json:"files"`
+}
+
+type cliproxyAuthFileResponse struct {
+	AuthIndex      string                `json:"auth_index"`
+	CamelAuthIndex string                `json:"authIndex"`
+	Name           string                `json:"name"`
+	ID             string                `json:"id"`
+	AuthFile       string                `json:"authFile"`
+	AccountID      string                `json:"account_id"`
+	CamelAccountID string                `json:"accountId"`
+	IDToken        cliproxyAuthFileToken `json:"id_token"`
+	Disabled       bool                  `json:"disabled"`
+	Enabled        *bool                 `json:"enabled"`
+}
+
+type cliproxyAuthFileToken struct {
+	ChatGPTAccountID string `json:"chatgpt_account_id"`
 }
 
 type CliproxyAPICallRequest struct {
@@ -88,7 +106,34 @@ func (client *CliproxyAPIClient) ListAuthFiles(ctx context.Context) ([]CliproxyA
 	if err := common.DecodeJson(resp.Body, &result); err != nil {
 		return nil, fmt.Errorf("解析认证文件列表失败: %w", err)
 	}
-	return result.Data, nil
+	return normalizeCliproxyAuthFiles(result), nil
+}
+
+func normalizeCliproxyAuthFiles(result cliproxyAuthFilesResponse) []CliproxyAuthFile {
+	items := result.Data
+	if len(items) == 0 {
+		items = result.Files
+	}
+	files := make([]CliproxyAuthFile, 0, len(items))
+	for _, item := range items {
+		files = append(files, CliproxyAuthFile{
+			AuthIndex: firstNonEmpty(item.AuthIndex, item.CamelAuthIndex),
+			Name:      item.Name,
+			AuthFile:  firstNonEmpty(item.ID, item.AuthFile),
+			AccountID: firstNonEmpty(item.AccountID, item.CamelAccountID, item.IDToken.ChatGPTAccountID),
+			Enabled:   item.Enabled == nil && !item.Disabled || item.Enabled != nil && *item.Enabled,
+		})
+	}
+	return files
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (client *CliproxyAPIClient) CallAPI(ctx context.Context, payload CliproxyAPICallRequest) (*CliproxyAPICallResponse, error) {

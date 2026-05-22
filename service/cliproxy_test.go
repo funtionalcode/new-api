@@ -15,6 +15,26 @@ func TestCliproxyAPIClientListAuthFiles(t *testing.T) {
 		require.Equal(t, "/v0/management/auth-files", r.URL.Path)
 		require.Equal(t, "Bearer cliproxyapi", r.Header.Get("Authorization"))
 		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"files":[{"auth_index":"f2ca5514ba44085e","name":"codex-duboislee1988@gmail.com-prolite.json","id":"codex-duboislee1988@gmail.com-prolite.json","disabled":false,"id_token":{"chatgpt_account_id":"20ef4492-656e-40a0-8412-af905e51c9f9"}}]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewCliproxyAPIClient(server.URL, "cliproxyapi")
+	require.NoError(t, err)
+
+	files, err := client.ListAuthFiles(context.Background())
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Equal(t, "f2ca5514ba44085e", files[0].AuthIndex)
+	require.Equal(t, "codex-duboislee1988@gmail.com-prolite.json", files[0].Name)
+	require.Equal(t, "codex-duboislee1988@gmail.com-prolite.json", files[0].AuthFile)
+	require.Equal(t, "20ef4492-656e-40a0-8412-af905e51c9f9", files[0].AccountID)
+	require.True(t, files[0].Enabled)
+}
+
+func TestCliproxyAPIClientListAuthFilesSupportsDataField(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":[{"authIndex":"f2ca5514ba44085e","name":"主账号","accountId":"20ef4492-656e-40a0-8412-af905e51c9f9","enabled":true}]}`))
 	}))
 	defer server.Close()
