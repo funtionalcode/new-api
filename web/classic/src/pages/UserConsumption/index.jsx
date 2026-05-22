@@ -19,8 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Card, Checkbox, Input, Table, Typography } from '@douyinfe/semi-ui';
-import { API, isAdmin, renderQuota, showError } from '../../helpers';
+import { Button, Card, Input, Table, Tag, Typography } from '@douyinfe/semi-ui';
+import { API, isAdmin, showError } from '../../helpers';
 
 const { Text } = Typography;
 
@@ -47,11 +47,6 @@ const formatTime = (timestamp) => {
   return new Date(timestamp * 1000).toLocaleString();
 };
 
-const formatDate = (timestamp) => {
-  if (!timestamp) return '-';
-  return new Date(timestamp * 1000).toLocaleDateString();
-};
-
 const formatTokens = (value) => Number(value || 0).toLocaleString();
 
 export default function UserConsumption() {
@@ -64,7 +59,6 @@ export default function UserConsumption() {
   );
   const [username, setUsername] = useState('');
   const [tokenName, setTokenName] = useState('');
-  const [groupByDay, setGroupByDay] = useState(false);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const isAdminUser = isAdmin();
@@ -80,7 +74,6 @@ export default function UserConsumption() {
           end_timestamp: parseTimestampFromInput(endInput),
           username: isAdminUser ? username.trim() || undefined : undefined,
           token_name: tokenName.trim() || undefined,
-          group_by: groupByDay ? 'day' : undefined,
         },
       });
       if (res.data.success) {
@@ -103,33 +96,21 @@ export default function UserConsumption() {
     () =>
       rows.reduce(
         (acc, row) => ({
-          requestCount: acc.requestCount + Number(row.request_count || 0),
           promptTokens: acc.promptTokens + Number(row.prompt_tokens || 0),
           completionTokens:
             acc.completionTokens + Number(row.completion_tokens || 0),
           totalTokens: acc.totalTokens + Number(row.total_tokens || 0),
-          quota: acc.quota + Number(row.quota || 0),
         }),
         {
-          requestCount: 0,
           promptTokens: 0,
           completionTokens: 0,
           totalTokens: 0,
-          quota: 0,
         },
       ),
     [rows],
   );
 
   const columns = [
-    ...(groupByDay
-      ? [
-          {
-            title: t('Date'),
-            render: (_, record) => formatDate(record.day),
-          },
-        ]
-      : []),
     {
       title: t('用户'),
       render: (_, record) => (
@@ -148,7 +129,6 @@ export default function UserConsumption() {
         </div>
       ),
     },
-    { title: t('请求数'), dataIndex: 'request_count' },
     {
       title: t('提示 Tokens'),
       render: (_, record) => formatTokens(record.prompt_tokens),
@@ -160,10 +140,6 @@ export default function UserConsumption() {
     {
       title: t('总 Tokens'),
       render: (_, record) => formatTokens(record.total_tokens),
-    },
-    {
-      title: t('额度'),
-      render: (_, record) => renderQuota(record.quota || 0),
     },
     {
       title: t('最近调用'),
@@ -194,28 +170,18 @@ export default function UserConsumption() {
               placeholder={t('Filter by token name')}
               onChange={setTokenName}
             />
-            <div className='flex items-center'>
-              <Checkbox
-                checked={groupByDay}
-                onChange={(event) => setGroupByDay(event.target.checked)}
-              >
-                {t('Group by day')}
-              </Checkbox>
-            </div>
             <Button type='primary' loading={loading} onClick={loadConsumption}>
               {t('查询')}
             </Button>
           </div>
         </Card>
 
-        <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-5'>
-          <Card title={t('请求数')}>{formatTokens(totals.requestCount)}</Card>
+        <div className='grid gap-4 md:grid-cols-3'>
           <Card title={t('提示 Tokens')}>{formatTokens(totals.promptTokens)}</Card>
           <Card title={t('补全 Tokens')}>
             {formatTokens(totals.completionTokens)}
           </Card>
           <Card title={t('总 Tokens')}>{formatTokens(totals.totalTokens)}</Card>
-          <Card title={t('额度')}>{renderQuota(totals.quota)}</Card>
         </div>
 
         <Card title={t('User Consumption Details')}>
@@ -224,11 +190,7 @@ export default function UserConsumption() {
             dataSource={rows}
             loading={loading}
             pagination={false}
-            rowKey={(record) =>
-              groupByDay
-                ? `${record.day}-${record.user_id}-${record.token_id}`
-                : `${record.user_id}-${record.token_id}`
-            }
+            rowKey={(record) => `${record.user_id}-${record.token_id}`}
           />
         </Card>
       </div>

@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Card, Form, Modal, Table, Tag, Typography } from '@douyinfe/semi-ui';
+import { Button, Card, Form, Modal, Progress, Table, Tag, Typography } from '@douyinfe/semi-ui';
 import { API, isRoot, showError, showSuccess } from '../../helpers';
 
 const { Text } = Typography;
@@ -29,18 +29,33 @@ const getAuthName = (authFile) => authFile?.name || authFile?.authName || authFi
 const getAuthFileContent = (authFile) => authFile?.authFile || authFile?.auth_file || '';
 const getAccountId = (authFile) => authFile?.accountId || authFile?.account_id || '';
 
-const formatUsagePercent = (value) => {
+const normalizeUsagePercent = (value) => {
   const percent = Number(value || 0);
-  if (!Number.isFinite(percent) || percent <= 0) return '-';
-  return `${Math.round(percent)}%`;
+  if (!Number.isFinite(percent)) return 0;
+  return Math.min(100, Math.max(0, Math.round(percent)));
 };
 
-const renderUsageLimit = (percent, resetAt) => (
-  <div>
-    <div>{formatUsagePercent(percent)}</div>
-    <Text type='tertiary'>{formatTime(resetAt)}</Text>
-  </div>
-);
+const getUsageColor = (percent) => {
+  if (percent >= 90) return 'var(--semi-color-danger)';
+  if (percent >= 70) return 'var(--semi-color-warning)';
+  return 'var(--semi-color-success)';
+};
+
+const renderUsageLimit = (percent, resetAt) => {
+  const normalizedPercent = normalizeUsagePercent(percent);
+
+  return (
+    <div style={{ minWidth: 120 }}>
+      <Progress
+        percent={normalizedPercent}
+        stroke={getUsageColor(normalizedPercent)}
+        format={() => `${normalizedPercent}%`}
+        style={{ marginBottom: 2 }}
+      />
+      <Text type='tertiary'>{formatTime(resetAt)}</Text>
+    </div>
+  );
+};
 
 
 const emptyBindingForm = {
