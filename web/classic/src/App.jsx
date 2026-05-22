@@ -45,6 +45,8 @@ import ModelPage from './pages/Model';
 import ModelDeploymentPage from './pages/ModelDeployment';
 import Playground from './pages/Playground';
 import Subscription from './pages/Subscription';
+import CliproxyAuthFiles from './pages/CliproxyAuthFiles';
+import UserConsumption from './pages/UserConsumption';
 import OAuth2Callback from './components/auth/OAuth2Callback';
 import PersonalSetting from './components/settings/PersonalSetting';
 import Setup from './pages/Setup';
@@ -136,6 +138,22 @@ function App() {
           element={
             <AdminRoute>
               <Channel />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/cliproxy-auth-files'
+          element={
+            <AdminRoute>
+              <CliproxyAuthFiles />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/user-consumption'
+          element={
+            <AdminRoute>
+              <UserConsumption />
             </AdminRoute>
           }
         />

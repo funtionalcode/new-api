@@ -80,6 +80,8 @@ import {
   Package,
   Server,
   CalendarClock,
+  Files,
+  ChartNoAxesColumn,
 } from 'lucide-react';
 import {
   SiAtlassian,
@@ -139,6 +141,10 @@ export function getLucideIcon(key, selected = false) {
       return <CreditCard {...commonProps} color={iconColor} />;
     case 'channel':
       return <Layers {...commonProps} color={iconColor} />;
+    case 'authFiles':
+      return <Files {...commonProps} color={iconColor} />;
+    case 'userConsumption':
+      return <ChartNoAxesColumn {...commonProps} color={iconColor} />;
     case 'redemption':
       return <Gift {...commonProps} color={iconColor} />;
     case 'user':

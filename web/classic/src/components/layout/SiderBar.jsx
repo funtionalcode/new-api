@@ -33,6 +33,8 @@ import { Nav, Divider, Button } from '@douyinfe/semi-ui';
 const routerMap = {
   home: '/',
   channel: '/console/channel',
+  authFiles: '/console/cliproxy-auth-files',
+  userConsumption: '/console/user-consumption',
   token: '/console/token',
   redemption: '/console/redemption',
   topup: '/console/topup',
@@ -151,6 +153,18 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('渠道管理'),
         itemKey: 'channel',
         to: '/channel',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('认证文件'),
+        itemKey: 'authFiles',
+        to: '/cliproxy-auth-files',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('用户消耗'),
+        itemKey: 'userConsumption',
+        to: '/user-consumption',
         className: isAdmin() ? '' : 'tableHiddle',
       },
       {

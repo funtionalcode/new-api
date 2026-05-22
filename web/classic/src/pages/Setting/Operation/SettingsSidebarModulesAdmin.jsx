@@ -122,6 +122,8 @@ export default function SettingsSidebarModulesAdmin(props) {
       admin: {
         enabled: true,
         channel: true,
+        authFiles: true,
+        userConsumption: true,
         models: true,
         deployment: true,
         redemption: true,
@@ -254,6 +256,16 @@ export default function SettingsSidebarModulesAdmin(props) {
       description: t('系统管理功能'),
       modules: [
         { key: 'channel', title: t('渠道管理'), description: t('API渠道配置') },
+        {
+          key: 'authFiles',
+          title: t('认证文件'),
+          description: t('管理 Cliproxy 认证文件和用户绑定'),
+        },
+        {
+          key: 'userConsumption',
+          title: t('用户消耗'),
+          description: t('按用户和令牌统计消耗'),
+        },
         { key: 'models', title: t('模型管理'), description: t('AI模型配置') },
         {
           key: 'deployment',

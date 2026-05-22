@@ -1,0 +1,541 @@
+/*
+Copyright (C) 2025 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
+import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import {
+  Button,
+  Card,
+  Form,
+  Input,
+  Modal,
+  Select,
+  Switch,
+  Table,
+  Tag,
+  Typography,
+} from '@douyinfe/semi-ui';
+import { API, renderQuota, showError, showSuccess } from '../../helpers';
+
+const { Text } = Typography;
+
+const emptyBindingForm = {
+  id: undefined,
+  user_id: undefined,
+  username: '',
+  auth_index: '',
+  auth_name: '',
+  auth_file: '',
+  description: '',
+  account_id: '',
+  enabled: true,
+};
+
+const buildBindingForm = (binding = emptyBindingForm) => ({
+  id: binding.id,
+  user_id: binding.user_id,
+  username: binding.username || '',
+  auth_index: binding.auth_index || '',
+  auth_name: binding.auth_name || '',
+  auth_file: binding.auth_file || '',
+  description: binding.description || '',
+  account_id: binding.account_id || '',
+  enabled: binding.enabled !== false,
+});
+
+const formatTime = (timestamp) => {
+  if (!timestamp) return '-';
+  return new Date(timestamp * 1000).toLocaleString();
+};
+
+const normalizeRemoteAuthFiles = (response) => {
+  const data = response?.data;
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.items)) return data.items;
+  if (Array.isArray(data?.authFiles)) return data.authFiles;
+  if (Array.isArray(data?.auth_files)) return data.auth_files;
+  return [];
+};
+
+export default function CliproxyAuthFiles() {
+  const { t } = useTranslation();
+  const [options, setOptions] = useState({
+    CliproxyAPIBaseURL: '',
+    CliproxyAPIPassword: '',
+  });
+  const [remoteFiles, setRemoteFiles] = useState([]);
+  const [bindings, setBindings] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [remoteLoading, setRemoteLoading] = useState(false);
+  const [bindingLoading, setBindingLoading] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [bindingForm, setBindingForm] = useState(emptyBindingForm);
+
+  const userOptions = useMemo(
+    () =>
+      users.map((user) => ({
+        label: `${user.username || '-'} (ID: ${user.id})`,
+        value: user.id,
+        username: user.username || '',
+      })),
+    [users],
+  );
+
+  const loadOptions = async () => {
+    try {
+      const res = await API.get('/api/option/');
+      if (res.data.success) {
+        setOptions({
+          CliproxyAPIBaseURL: res.data.data?.CliproxyAPIBaseURL || '',
+          CliproxyAPIPassword: '',
+        });
+      } else {
+        showError(res.data.message || t('加载配置失败'));
+      }
+    } catch (error) {
+      showError(error);
+    }
+  };
+
+  const loadRemoteFiles = async () => {
+    setRemoteLoading(true);
+    try {
+      const res = await API.get('/api/cliproxy/auth-files/remote');
+      if (res.data.success) {
+        setRemoteFiles(normalizeRemoteAuthFiles(res.data));
+      } else {
+        showError(res.data.message || t('拉取远端认证文件失败'));
+      }
+    } catch (error) {
+      showError(error);
+    } finally {
+      setRemoteLoading(false);
+    }
+  };
+
+  const loadBindings = async () => {
+    setBindingLoading(true);
+    try {
+      const res = await API.get('/api/cliproxy/auth-files/bindings', {
+        params: { p: 1, page_size: 100 },
+      });
+      if (res.data.success) {
+        setBindings(res.data.data?.items || []);
+      } else {
+        showError(res.data.message || t('加载绑定失败'));
+      }
+    } catch (error) {
+      showError(error);
+    } finally {
+      setBindingLoading(false);
+    }
+  };
+
+  const searchUsers = async (keyword) => {
+    if (!keyword) return;
+    try {
+      const res = await API.get('/api/user/search', {
+        params: { keyword, group: '', p: 1, page_size: 20 },
+      });
+      if (res.data.success) {
+        setUsers(res.data.data?.items || []);
+      } else {
+        showError(res.data.message || t('搜索用户失败'));
+      }
+    } catch (error) {
+      showError(error);
+    }
+  };
+
+  const saveConfig = async () => {
+    setSavingConfig(true);
+    try {
+      const updateRequests = [
+        API.put('/api/option/', {
+          key: 'CliproxyAPIBaseURL',
+          value: options.CliproxyAPIBaseURL || '',
+        }),
+      ];
+      if (options.CliproxyAPIPassword.trim()) {
+        updateRequests.push(
+          API.put('/api/option/', {
+            key: 'CliproxyAPIPassword',
+            value: options.CliproxyAPIPassword,
+          }),
+        );
+      }
+      const responses = await Promise.all(updateRequests);
+      const failed = responses.find((res) => !res.data.success);
+      if (failed) {
+        showError(failed.data.message || t('保存失败，请重试'));
+        return;
+      }
+      showSuccess(t('保存成功'));
+      setOptions((current) => ({ ...current, CliproxyAPIPassword: '' }));
+    } catch (error) {
+      showError(error);
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
+  const openCreateModal = (remoteFile) => {
+    setBindingForm(
+      buildBindingForm({
+        auth_index: remoteFile?.authIndex || remoteFile?.auth_index || '',
+        auth_name: remoteFile?.name || remoteFile?.authName || '',
+        auth_file: remoteFile?.authFile || remoteFile?.auth_file || '',
+        account_id: remoteFile?.accountId || remoteFile?.account_id || '',
+        enabled: remoteFile?.enabled !== false,
+      }),
+    );
+    setModalVisible(true);
+  };
+
+  const openEditModal = (binding) => {
+    setBindingForm(buildBindingForm(binding));
+    setUsers(
+      binding.user_id
+        ? [{ id: binding.user_id, username: binding.username || '' }]
+        : [],
+    );
+    setModalVisible(true);
+  };
+
+  const saveBinding = async () => {
+    if (!bindingForm.user_id) {
+      showError(t('请选择用户'));
+      return;
+    }
+    if (!bindingForm.auth_index.trim()) {
+      showError(t('认证文件索引不能为空'));
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const payload = {
+        user_id: bindingForm.user_id,
+        auth_index: bindingForm.auth_index.trim(),
+        auth_name: bindingForm.auth_name.trim(),
+        auth_file: bindingForm.auth_file.trim(),
+        description: bindingForm.description.trim(),
+        account_id: bindingForm.account_id.trim(),
+        enabled: bindingForm.enabled,
+      };
+      const res = bindingForm.id
+        ? await API.put(
+            `/api/cliproxy/auth-files/bindings/${bindingForm.id}`,
+            payload,
+          )
+        : await API.post('/api/cliproxy/auth-files/bindings', payload);
+      if (res.data.success) {
+        showSuccess(t('保存成功'));
+        setModalVisible(false);
+        setBindingForm(emptyBindingForm);
+        await loadBindings();
+      } else {
+        showError(res.data.message || t('保存失败，请重试'));
+      }
+    } catch (error) {
+      showError(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteBinding = (binding) => {
+    Modal.confirm({
+      title: t('确认删除绑定？'),
+      content: `${binding.username || '-'} / ${binding.auth_index}`,
+      onOk: async () => {
+        try {
+          const res = await API.delete(
+            `/api/cliproxy/auth-files/bindings/${binding.id}`,
+          );
+          if (res.data.success) {
+            showSuccess(t('删除成功'));
+            await loadBindings();
+          } else {
+            showError(res.data.message || t('删除失败'));
+          }
+        } catch (error) {
+          showError(error);
+        }
+      },
+    });
+  };
+
+  const refreshUsage = async (binding) => {
+    setLoading(true);
+    try {
+      const res = await API.post(
+        `/api/cliproxy/auth-files/bindings/${binding.id}/refresh-usage`,
+      );
+      if (res.data.success) {
+        showSuccess(t('刷新成功'));
+        await loadBindings();
+      } else {
+        showError(res.data.message || t('刷新失败'));
+      }
+    } catch (error) {
+      showError(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadOptions();
+    loadBindings();
+  }, []);
+
+  const remoteColumns = [
+    { title: t('认证文件'), dataIndex: 'name' },
+    {
+      title: t('索引'),
+      render: (_, record) => record.authIndex || record.auth_index || '-',
+    },
+    {
+      title: t('账号'),
+      render: (_, record) => record.accountId || record.account_id || '-',
+    },
+    {
+      title: t('状态'),
+      render: (_, record) => (
+        <Tag color={record.enabled === false ? 'red' : 'green'}>
+          {record.enabled === false ? t('禁用') : t('启用')}
+        </Tag>
+      ),
+    },
+    {
+      title: t('操作'),
+      render: (_, record) => (
+        <Button size='small' onClick={() => openCreateModal(record)}>
+          {t('绑定用户')}
+        </Button>
+      ),
+    },
+  ];
+
+  const bindingColumns = [
+    {
+      title: t('用户'),
+      render: (_, record) => (
+        <div>
+          <div>{record.username || '-'}</div>
+          <Text type='tertiary'>ID: {record.user_id}</Text>
+        </div>
+      ),
+    },
+    { title: t('认证文件'), dataIndex: 'auth_name' },
+    { title: t('索引'), dataIndex: 'auth_index' },
+    { title: t('账号'), dataIndex: 'account_id' },
+    {
+      title: t('用量'),
+      render: (_, record) => (
+        <div>
+          <div>{Number(record.last_usage_tokens || 0).toLocaleString()} Tokens</div>
+          <Text type='tertiary'>{renderQuota(record.last_usage_quota || 0)}</Text>
+        </div>
+      ),
+    },
+    {
+      title: t('最近刷新'),
+      render: (_, record) => formatTime(record.last_refreshed_at),
+    },
+    {
+      title: t('状态'),
+      render: (_, record) => (
+        <Tag color={record.enabled ? 'green' : 'red'}>
+          {record.enabled ? t('启用') : t('禁用')}
+        </Tag>
+      ),
+    },
+    {
+      title: t('操作'),
+      render: (_, record) => (
+        <div className='flex gap-2'>
+          <Button size='small' onClick={() => refreshUsage(record)}>
+            {t('刷新额度')}
+          </Button>
+          <Button size='small' onClick={() => openEditModal(record)}>
+            {t('编辑')}
+          </Button>
+          <Button size='small' type='danger' onClick={() => deleteBinding(record)}>
+            {t('删除')}
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <div className='mt-[60px] px-2'>
+      <div className='space-y-4'>
+        <Card title={t('Cliproxy API 配置')}>
+          <Form layout='horizontal'>
+            <Form.Input
+              field='baseURL'
+              label={t('Cliproxy API 地址')}
+              value={options.CliproxyAPIBaseURL}
+              onChange={(value) =>
+                setOptions((current) => ({
+                  ...current,
+                  CliproxyAPIBaseURL: value,
+                }))
+              }
+              placeholder='http://127.0.0.1:8317'
+            />
+            <Form.Input
+              field='password'
+              mode='password'
+              label={t('Cliproxy API 登录密码')}
+              value={options.CliproxyAPIPassword}
+              onChange={(value) =>
+                setOptions((current) => ({
+                  ...current,
+                  CliproxyAPIPassword: value,
+                }))
+              }
+              placeholder={t('留空则不修改')}
+            />
+            <Button type='primary' loading={savingConfig} onClick={saveConfig}>
+              {t('保存配置')}
+            </Button>
+          </Form>
+        </Card>
+
+        <Card
+          title={t('远端认证文件')}
+          headerExtraContent={
+            <Button loading={remoteLoading} onClick={loadRemoteFiles}>
+              {t('拉取远端列表')}
+            </Button>
+          }
+        >
+          <Table
+            columns={remoteColumns}
+            dataSource={remoteFiles}
+            loading={remoteLoading}
+            pagination={false}
+            rowKey={(record) => record.authIndex || record.auth_index}
+          />
+        </Card>
+
+        <Card
+          title={t('认证文件绑定')}
+          headerExtraContent={
+            <Button type='primary' onClick={() => openCreateModal()}>
+              {t('新增绑定')}
+            </Button>
+          }
+        >
+          <Table
+            columns={bindingColumns}
+            dataSource={bindings}
+            loading={bindingLoading}
+            pagination={false}
+            rowKey='id'
+          />
+        </Card>
+      </div>
+
+      <Modal
+        title={bindingForm.id ? t('编辑绑定') : t('新增绑定')}
+        visible={modalVisible}
+        onCancel={() => setModalVisible(false)}
+        onOk={saveBinding}
+        confirmLoading={loading}
+      >
+        <Form layout='vertical'>
+          <Form.Select
+            field='user_id'
+            label={t('用户')}
+            filter
+            remote
+            value={bindingForm.user_id}
+            optionList={userOptions}
+            onSearch={searchUsers}
+            onChange={(value) => {
+              const user = userOptions.find((option) => option.value === value);
+              setBindingForm((current) => ({
+                ...current,
+                user_id: value,
+                username: user?.username || current.username,
+              }));
+            }}
+            placeholder={t('搜索并选择用户')}
+          />
+          <Form.Input
+            field='auth_index'
+            label={t('认证文件索引')}
+            value={bindingForm.auth_index}
+            onChange={(value) =>
+              setBindingForm((current) => ({ ...current, auth_index: value }))
+            }
+          />
+          <Form.Input
+            field='auth_name'
+            label={t('认证文件名称')}
+            value={bindingForm.auth_name}
+            onChange={(value) =>
+              setBindingForm((current) => ({ ...current, auth_name: value }))
+            }
+          />
+          <Form.Input
+            field='account_id'
+            label={t('账号 ID')}
+            value={bindingForm.account_id}
+            onChange={(value) =>
+              setBindingForm((current) => ({ ...current, account_id: value }))
+            }
+          />
+          <Form.TextArea
+            field='auth_file'
+            label={t('认证文件内容')}
+            value={bindingForm.auth_file}
+            onChange={(value) =>
+              setBindingForm((current) => ({ ...current, auth_file: value }))
+            }
+          />
+          <Form.TextArea
+            field='description'
+            label={t('备注')}
+            value={bindingForm.description}
+            onChange={(value) =>
+              setBindingForm((current) => ({ ...current, description: value }))
+            }
+          />
+          <div className='flex items-center gap-3'>
+            <Text>{t('启用')}</Text>
+            <Switch
+              checked={bindingForm.enabled}
+              onChange={(checked) =>
+                setBindingForm((current) => ({ ...current, enabled: checked }))
+              }
+            />
+          </div>
+        </Form>
+      </Modal>
+    </div>
+  );
+}
