@@ -315,6 +315,18 @@ export function Dashboard() {
                   />
                 </Suspense>
               </FadeIn>
+              <FadeIn delay={0.2}>
+                <Suspense fallback={<ModelChartsFallback />}>
+                  <LazyTokenCharts
+                    data={modelData}
+                    loading={dataLoading}
+                    defaultChartTab={chartPreferences.tokenAnalyticsChart}
+                    timeGranularity={
+                      modelFilters.time_granularity || DEFAULT_TIME_GRANULARITY
+                    }
+                  />
+                </Suspense>
+              </FadeIn>
             </>
           )}
           {activeSection === 'users' && (
