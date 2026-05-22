@@ -1,0 +1,714 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import { useEffect, useMemo, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Check, Edit, Loader2, Plus, RefreshCw, Search, Trash2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
+import { SectionPageLayout } from '@/components/layout'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Textarea } from '@/components/ui/textarea'
+import { formatTimestampToDate, formatTokens } from '@/lib/format'
+import { searchUsers } from '@/features/users/api'
+import type { User } from '@/features/users/types'
+import { useSystemOptions } from '@/features/system-settings/hooks/use-system-options'
+import { useUpdateOption } from '@/features/system-settings/hooks/use-update-option'
+import {
+  createCliproxyAuthFileBinding,
+  deleteCliproxyAuthFileBinding,
+  getCliproxyAuthFileBindings,
+  getCliproxyRemoteAuthFiles,
+  refreshCliproxyAuthFileBindingUsage,
+  toBindingFormData,
+  updateCliproxyAuthFileBinding,
+} from './api'
+import type {
+  CliproxyAuthFile,
+  CliproxyAuthFileBinding,
+  CliproxyAuthFileBindingFormData,
+} from './types'
+
+type BindingDialogState =
+  | { open: false; mode: 'create'; authFile?: undefined; binding?: undefined }
+  | { open: true; mode: 'create'; authFile: CliproxyAuthFile; binding?: undefined }
+  | { open: true; mode: 'edit'; authFile?: undefined; binding: CliproxyAuthFileBinding }
+
+type BindingFormState = CliproxyAuthFileBindingFormData & {
+  username: string
+}
+
+const emptyBindingForm: BindingFormState = {
+  user_id: 0,
+  username: '',
+  auth_index: '',
+  auth_name: '',
+  auth_file: '',
+  description: '',
+  account_id: '',
+  enabled: true,
+}
+
+const cliproxyOptionDefaults = {
+  CliproxyAPIBaseURL: '',
+  CliproxyAPIPassword: '',
+}
+
+function buildFormFromDialog(state: BindingDialogState): BindingFormState {
+  if (!state.open) return emptyBindingForm
+  if (state.mode === 'edit') {
+    const { binding } = state
+    return {
+      user_id: binding.user_id,
+      username: binding.username,
+      auth_index: binding.auth_index,
+      auth_name: binding.auth_name,
+      auth_file: binding.auth_file,
+      description: binding.description,
+      account_id: binding.account_id,
+      enabled: binding.enabled,
+    }
+  }
+
+  return {
+    ...toBindingFormData(state.authFile, 0),
+    username: '',
+  }
+}
+
+function getApiErrorMessage(data: { success: boolean; message?: string }, fallback: string) {
+  return data.success ? '' : data.message || fallback
+}
+
+function ConfigCard() {
+  const { t } = useTranslation()
+  const optionsQuery = useSystemOptions()
+  const updateOption = useUpdateOption()
+
+  const options = useMemo(() => {
+    const result = { ...cliproxyOptionDefaults }
+    optionsQuery.data?.data?.forEach((option) => {
+      if (option.key in result) {
+        result[option.key as keyof typeof result] = option.value
+      }
+    })
+    return result
+  }, [optionsQuery.data?.data])
+
+  const [baseURL, setBaseURL] = useState(options.CliproxyAPIBaseURL)
+  const [password, setPassword] = useState('')
+
+  useEffect(() => {
+    setBaseURL(options.CliproxyAPIBaseURL)
+  }, [options.CliproxyAPIBaseURL])
+
+  const saveConfig = async () => {
+    const trimmedBaseURL = baseURL.trim()
+    if (!trimmedBaseURL) {
+      toast.error(t('Cliproxy API base URL is required'))
+      return
+    }
+
+    await updateOption.mutateAsync({
+      key: 'CliproxyAPIBaseURL',
+      value: trimmedBaseURL,
+    })
+
+    if (password.trim()) {
+      await updateOption.mutateAsync({
+        key: 'CliproxyAPIPassword',
+        value: password.trim(),
+      })
+      setPassword('')
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('Cliproxy API Configuration')}</CardTitle>
+        <CardDescription>
+          {t('Configure the Cliproxy API address and login password for management requests.')}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className='grid gap-4 lg:grid-cols-[1fr_1fr_auto] lg:items-end'>
+          <div className='space-y-2'>
+            <Label htmlFor='cliproxy-api-base-url'>{t('Cliproxy API Base URL')}</Label>
+            <Input
+              id='cliproxy-api-base-url'
+              value={baseURL}
+              placeholder='http://127.0.0.1:8317'
+              onChange={(event) => setBaseURL(event.target.value)}
+            />
+          </div>
+          <div className='space-y-2'>
+            <Label htmlFor='cliproxy-api-password'>{t('Cliproxy API Login Password')}</Label>
+            <Input
+              id='cliproxy-api-password'
+              type='password'
+              value={password}
+              placeholder={t('Leave blank to keep unchanged')}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </div>
+          <Button
+            type='button'
+            onClick={saveConfig}
+            disabled={updateOption.isPending || optionsQuery.isLoading}
+          >
+            {updateOption.isPending ? <Loader2 className='animate-spin' /> : null}
+            {t('Save')}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function BindingDialog({
+  state,
+  onOpenChange,
+}: {
+  state: BindingDialogState
+  onOpenChange: (open: boolean) => void
+}) {
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const [form, setForm] = useState(() => buildFormFromDialog(state))
+  const [userKeyword, setUserKeyword] = useState('')
+
+  useEffect(() => {
+    setForm(buildFormFromDialog(state))
+    setUserKeyword('')
+  }, [state])
+
+  const usersQuery = useQuery({
+    queryKey: ['cliproxy-auth-files', 'users', userKeyword],
+    queryFn: () => searchUsers({ keyword: userKeyword, page_size: 8 }),
+    enabled: state.open,
+  })
+
+  const saveMutation = useMutation({
+    mutationFn: async (data: CliproxyAuthFileBindingFormData) => {
+      if (state.open && state.mode === 'edit') {
+        return updateCliproxyAuthFileBinding(state.binding.id, data)
+      }
+      return createCliproxyAuthFileBinding(data)
+    },
+    onSuccess: (data) => {
+      const errorMessage = getApiErrorMessage(data, t('Failed to save binding'))
+      if (errorMessage) {
+        toast.error(errorMessage)
+        return
+      }
+      toast.success(t('Binding saved successfully'))
+      queryClient.invalidateQueries({ queryKey: ['cliproxy-auth-file-bindings'] })
+      onOpenChange(false)
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || t('Failed to save binding'))
+    },
+  })
+
+  const users = usersQuery.data?.data?.items ?? []
+
+  const updateForm = (patch: Partial<BindingFormState>) => {
+    setForm((current) => ({ ...current, ...patch }))
+  }
+
+  const selectUser = (user: User) => {
+    updateForm({ user_id: user.id, username: user.username })
+  }
+
+  const submit = () => {
+    if (!form.user_id) {
+      toast.error(t('Please select a user'))
+      return
+    }
+    if (!form.auth_index.trim()) {
+      toast.error(t('Auth index is required'))
+      return
+    }
+
+    saveMutation.mutate({
+      user_id: form.user_id,
+      auth_index: form.auth_index.trim(),
+      auth_name: form.auth_name.trim(),
+      auth_file: form.auth_file,
+      description: form.description,
+      account_id: form.account_id.trim(),
+      enabled: form.enabled,
+    })
+  }
+
+  return (
+    <Dialog open={state.open} onOpenChange={onOpenChange}>
+      <DialogContent className='sm:max-w-2xl'>
+        <DialogHeader>
+          <DialogTitle>
+            {state.open && state.mode === 'edit' ? t('Edit Binding') : t('Create Binding')}
+          </DialogTitle>
+          <DialogDescription>
+            {t('Bind a Cliproxy auth file to a new-api user.')}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className='grid max-h-[70vh] gap-4 overflow-y-auto pr-1'>
+          <div className='grid gap-4 sm:grid-cols-2'>
+            <div className='space-y-2'>
+              <Label>{t('Auth Index')}</Label>
+              <Input
+                value={form.auth_index}
+                onChange={(event) => updateForm({ auth_index: event.target.value })}
+              />
+            </div>
+            <div className='space-y-2'>
+              <Label>{t('Auth Name')}</Label>
+              <Input
+                value={form.auth_name}
+                onChange={(event) => updateForm({ auth_name: event.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className='grid gap-4 sm:grid-cols-2'>
+            <div className='space-y-2'>
+              <Label>{t('Account ID')}</Label>
+              <Input
+                value={form.account_id}
+                onChange={(event) => updateForm({ account_id: event.target.value })}
+              />
+            </div>
+            <div className='space-y-2'>
+              <Label>{t('Selected User')}</Label>
+              <Input value={form.username || '-'} readOnly />
+            </div>
+          </div>
+
+          <div className='space-y-2'>
+            <Label>{t('Search User')}</Label>
+            <div className='relative'>
+              <Search className='text-muted-foreground absolute top-2 left-2 size-4' />
+              <Input
+                value={userKeyword}
+                className='pl-8'
+                placeholder={t('Search by username')}
+                onChange={(event) => setUserKeyword(event.target.value)}
+              />
+            </div>
+            <div className='border-border max-h-40 overflow-y-auto rounded-lg border'>
+              {users.length > 0 ? (
+                users.map((user) => (
+                  <button
+                    key={user.id}
+                    type='button'
+                    className='hover:bg-muted flex w-full items-center justify-between px-3 py-2 text-left text-sm'
+                    onClick={() => selectUser(user)}
+                  >
+                    <span>{user.username}</span>
+                    {form.user_id === user.id ? <Check className='size-4' /> : null}
+                  </button>
+                ))
+              ) : (
+                <div className='text-muted-foreground px-3 py-4 text-center text-sm'>
+                  {usersQuery.isLoading ? t('Loading...') : t('No users found')}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className='space-y-2'>
+            <Label>{t('Description')}</Label>
+            <Textarea
+              value={form.description}
+              onChange={(event) => updateForm({ description: event.target.value })}
+            />
+          </div>
+
+          <div className='flex items-center gap-3'>
+            <Switch
+              checked={form.enabled}
+              onCheckedChange={(enabled) => updateForm({ enabled })}
+            />
+            <Label>{t('Enabled')}</Label>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant='outline' type='button' onClick={() => onOpenChange(false)}>
+            {t('Cancel')}
+          </Button>
+          <Button type='button' onClick={submit} disabled={saveMutation.isPending}>
+            {saveMutation.isPending ? <Loader2 className='animate-spin' /> : null}
+            {t('Save')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function RemoteAuthFilesTable({
+  onCreate,
+}: {
+  onCreate: (authFile: CliproxyAuthFile) => void
+}) {
+  const { t } = useTranslation()
+  const query = useQuery({
+    queryKey: ['cliproxy-remote-auth-files'],
+    queryFn: getCliproxyRemoteAuthFiles,
+  })
+
+  const authFiles = query.data?.data ?? []
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('Remote Auth Files')}</CardTitle>
+        <CardDescription>
+          {t('Auth files fetched from the configured Cliproxy API service.')}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {query.data && !query.data.success ? (
+          <Alert variant='destructive' className='mb-4'>
+            <AlertDescription>{query.data.message || t('Failed to fetch remote auth files')}</AlertDescription>
+          </Alert>
+        ) : null}
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t('Auth Index')}</TableHead>
+              <TableHead>{t('Auth Name')}</TableHead>
+              <TableHead>{t('Account ID')}</TableHead>
+              <TableHead>{t('Status')}</TableHead>
+              <TableHead className='text-right'>{t('Actions')}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {authFiles.length > 0 ? (
+              authFiles.map((authFile) => (
+                <TableRow key={authFile.authIndex}>
+                  <TableCell className='font-mono text-xs'>{authFile.authIndex}</TableCell>
+                  <TableCell>{authFile.name || '-'}</TableCell>
+                  <TableCell className='font-mono text-xs'>{authFile.accountId || '-'}</TableCell>
+                  <TableCell>
+                    <Badge variant={authFile.enabled ? 'default' : 'secondary'}>
+                      {authFile.enabled ? t('Enabled') : t('Disabled')}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className='text-right'>
+                    <Button size='sm' variant='outline' onClick={() => onCreate(authFile)}>
+                      <Plus />
+                      {t('Bind User')}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={5} className='text-muted-foreground py-8 text-center'>
+                  {query.isLoading ? t('Loading...') : t('No auth files found')}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  )
+}
+
+function BindingTable({
+  onEdit,
+}: {
+  onEdit: (binding: CliproxyAuthFileBinding) => void
+}) {
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const [username, setUsername] = useState('')
+  const [authIndex, setAuthIndex] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<CliproxyAuthFileBinding | null>(null)
+
+  const query = useQuery({
+    queryKey: ['cliproxy-auth-file-bindings', username, authIndex],
+    queryFn: () =>
+      getCliproxyAuthFileBindings({
+        p: 1,
+        page_size: 50,
+        username: username.trim() || undefined,
+        auth_index: authIndex.trim() || undefined,
+      }),
+  })
+
+  const refreshMutation = useMutation({
+    mutationFn: refreshCliproxyAuthFileBindingUsage,
+    onSuccess: (data) => {
+      const errorMessage = getApiErrorMessage(data, t('Failed to refresh usage'))
+      if (errorMessage) {
+        toast.error(errorMessage)
+        return
+      }
+      if (data.data?.last_error) {
+        toast.error(data.data.last_error)
+      } else {
+        toast.success(t('Usage refreshed successfully'))
+      }
+      queryClient.invalidateQueries({ queryKey: ['cliproxy-auth-file-bindings'] })
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || t('Failed to refresh usage'))
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteCliproxyAuthFileBinding,
+    onSuccess: (data) => {
+      const errorMessage = getApiErrorMessage(data, t('Failed to delete binding'))
+      if (errorMessage) {
+        toast.error(errorMessage)
+        return
+      }
+      toast.success(t('Binding deleted successfully'))
+      queryClient.invalidateQueries({ queryKey: ['cliproxy-auth-file-bindings'] })
+      setDeleteTarget(null)
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || t('Failed to delete binding'))
+    },
+  })
+
+  const bindings = query.data?.data?.items ?? []
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('Auth File Bindings')}</CardTitle>
+        <CardDescription>
+          {t('Manage the relationship between Cliproxy auth files and new-api users.')}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className='space-y-4'>
+        <div className='grid gap-3 md:grid-cols-[1fr_1fr_auto]'>
+          <Input
+            value={username}
+            placeholder={t('Filter by username')}
+            onChange={(event) => setUsername(event.target.value)}
+          />
+          <Input
+            value={authIndex}
+            placeholder={t('Filter by auth index')}
+            onChange={(event) => setAuthIndex(event.target.value)}
+          />
+          <Button variant='outline' onClick={() => query.refetch()}>
+            <RefreshCw className={query.isFetching ? 'animate-spin' : undefined} />
+            {t('Refresh')}
+          </Button>
+        </div>
+
+        {query.data && !query.data.success ? (
+          <Alert variant='destructive'>
+            <AlertDescription>{query.data.message || t('Failed to fetch bindings')}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t('User')}</TableHead>
+              <TableHead>{t('Auth File')}</TableHead>
+              <TableHead>{t('Usage')}</TableHead>
+              <TableHead>{t('Last Refreshed')}</TableHead>
+              <TableHead>{t('Status')}</TableHead>
+              <TableHead className='text-right'>{t('Actions')}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {bindings.length > 0 ? (
+              bindings.map((binding) => (
+                <TableRow key={binding.id}>
+                  <TableCell>
+                    <div className='font-medium'>{binding.username || '-'}</div>
+                    <div className='text-muted-foreground text-xs'>ID: {binding.user_id}</div>
+                  </TableCell>
+                  <TableCell>
+                    <div>{binding.auth_name || '-'}</div>
+                    <div className='text-muted-foreground font-mono text-xs'>{binding.auth_index}</div>
+                  </TableCell>
+                  <TableCell>
+                    <div>{formatTokens(binding.last_usage_tokens)}</div>
+                    <div className='text-muted-foreground text-xs'>Quota: {binding.last_usage_quota || '-'}</div>
+                    {binding.last_error ? (
+                      <div className='text-destructive max-w-56 truncate text-xs'>{binding.last_error}</div>
+                    ) : null}
+                  </TableCell>
+                  <TableCell>{formatTimestampToDate(binding.last_refreshed_at)}</TableCell>
+                  <TableCell>
+                    <Badge variant={binding.enabled ? 'default' : 'secondary'}>
+                      {binding.enabled ? t('Enabled') : t('Disabled')}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className='text-right'>
+                    <div className='flex justify-end gap-2'>
+                      <Button
+                        size='icon-sm'
+                        variant='outline'
+                        onClick={() => refreshMutation.mutate(binding.id)}
+                        disabled={refreshMutation.isPending}
+                      >
+                        <RefreshCw className={refreshMutation.isPending ? 'animate-spin' : undefined} />
+                      </Button>
+                      <Button size='icon-sm' variant='outline' onClick={() => onEdit(binding)}>
+                        <Edit />
+                      </Button>
+                      <Button
+                        size='icon-sm'
+                        variant='destructive'
+                        onClick={() => setDeleteTarget(binding)}
+                      >
+                        <Trash2 />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={6} className='text-muted-foreground py-8 text-center'>
+                  {query.isLoading ? t('Loading...') : t('No bindings found')}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </CardContent>
+
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('Delete Binding')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('Are you sure you want to delete this auth file binding? This action cannot be undone.')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              variant='destructive'
+              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+              disabled={deleteMutation.isPending}
+            >
+              {t('Delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Card>
+  )
+}
+
+export function CliproxyAuthFiles() {
+  const { t } = useTranslation()
+  const [dialogState, setDialogState] = useState<BindingDialogState>({
+    open: false,
+    mode: 'create',
+  })
+
+  return (
+    <SectionPageLayout>
+      <SectionPageLayout.Title>{t('Auth Files')}</SectionPageLayout.Title>
+      <SectionPageLayout.Actions>
+        <Button
+          variant='outline'
+          onClick={() =>
+            setDialogState({
+              open: true,
+              mode: 'create',
+              authFile: { authIndex: '', name: '', enabled: true },
+            })
+          }
+        >
+          <Plus />
+          {t('Create Binding')}
+        </Button>
+      </SectionPageLayout.Actions>
+      <SectionPageLayout.Content>
+        <div className='space-y-4'>
+          <ConfigCard />
+          <RemoteAuthFilesTable
+            onCreate={(authFile) =>
+              setDialogState({ open: true, mode: 'create', authFile })
+            }
+          />
+          <BindingTable
+            onEdit={(binding) =>
+              setDialogState({ open: true, mode: 'edit', binding })
+            }
+          />
+        </div>
+        <BindingDialog
+          state={dialogState}
+          onOpenChange={(open) => {
+            if (!open) {
+              setDialogState({ open: false, mode: 'create' })
+            }
+          }}
+        />
+      </SectionPageLayout.Content>
+    </SectionPageLayout>
+  )
+}

@@ -33,6 +33,8 @@ import {
   CreditCard,
   ListTodo,
   Settings,
+  Files,
+  ChartNoAxesColumn,
   BarChart3,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -140,6 +142,16 @@ export function useSidebarData(): SidebarData {
             title: t('Users'),
             url: '/users',
             icon: Users,
+          },
+          {
+            title: t('Auth Files'),
+            url: '/cliproxy-auth-files',
+            icon: Files,
+          },
+          {
+            title: t('User Consumption'),
+            url: '/user-consumption',
+            icon: ChartNoAxesColumn,
           },
           {
             title: t('Redemption Codes'),

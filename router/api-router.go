@@ -308,6 +308,18 @@ func SetApiRouter(router *gin.Engine) {
 		dataRoute.GET("/users", middleware.AdminAuth(), controller.GetQuotaDatesByUser)
 		dataRoute.GET("/self", middleware.UserAuth(), controller.GetUserQuotaDates)
 
+		cliproxyRoute := apiRouter.Group("/cliproxy")
+		cliproxyRoute.Use(middleware.AdminAuth())
+		{
+			cliproxyRoute.GET("/auth-files/remote", controller.GetCliproxyRemoteAuthFiles)
+			cliproxyRoute.GET("/auth-files/bindings", controller.GetCliproxyAuthFileBindings)
+			cliproxyRoute.POST("/auth-files/bindings", controller.CreateCliproxyAuthFileBinding)
+			cliproxyRoute.PUT("/auth-files/bindings/:id", controller.UpdateCliproxyAuthFileBinding)
+			cliproxyRoute.DELETE("/auth-files/bindings/:id", controller.DeleteCliproxyAuthFileBinding)
+			cliproxyRoute.POST("/auth-files/bindings/:id/refresh-usage", controller.RefreshCliproxyAuthFileBindingUsage)
+			cliproxyRoute.GET("/user-consumption", controller.GetCliproxyUserConsumption)
+		}
+
 		logRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())
 		{
 			logRoute.GET("/token", middleware.TokenAuthReadOnly(), controller.GetLogByKey)
