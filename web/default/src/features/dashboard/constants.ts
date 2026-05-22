@@ -60,6 +60,7 @@ export const MODEL_ANALYTICS_CHART_OPTIONS = [
   { value: 'trend', labelKey: 'Call Trend' },
   { value: 'proportion', labelKey: 'Call Count Distribution' },
   { value: 'top', labelKey: 'Call Count Ranking' },
+  { value: 'token', labelKey: 'Token Consumption' },
 ] as const
 
 export const TOKEN_ANALYTICS_CHART_OPTIONS = [

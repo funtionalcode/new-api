@@ -39,12 +39,19 @@ let themeManagerPromise: Promise<
   (typeof import('@visactor/vchart'))['ThemeManager']
 > | null = null
 
-type ChartSpecKey = 'spec_model_line' | 'spec_pie' | 'spec_rank_bar'
+type ChartSpecKey =
+  | 'spec_model_line'
+  | 'spec_pie'
+  | 'spec_rank_bar'
+  | 'spec_token_line'
+  | 'spec_token_pie'
+  | 'spec_token_rank_bar'
 
 const CHART_SPEC_KEYS: Record<ModelAnalyticsChartTab, ChartSpecKey> = {
   trend: 'spec_model_line',
   proportion: 'spec_pie',
   top: 'spec_rank_bar',
+  token: 'spec_token_line',
 }
 
 interface ModelChartsProps {
@@ -133,7 +140,10 @@ export function ModelCharts(props: ModelChartsProps) {
             {t('Model Call Analytics')}
           </div>
           <span className='text-muted-foreground text-xs'>
-            {t('Total:')} {chartData.totalCountDisplay}
+            {t('Total:')}{' '}
+            {activeTab === 'token'
+              ? chartData.totalTokenDisplay
+              : chartData.totalCountDisplay}
           </span>
         </div>
 
