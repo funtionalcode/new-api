@@ -107,6 +107,17 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         className:
           localStorage.getItem('enable_task') === 'true' ? '' : 'tableHiddle',
       },
+      {
+        text: t('认证文件'),
+        itemKey: 'authFiles',
+        to: '/cliproxy-auth-files',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('用户消耗'),
+        itemKey: 'userConsumption',
+        to: '/user-consumption',
+      },
     ];
 
     // 根据配置过滤项目
@@ -153,18 +164,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('渠道管理'),
         itemKey: 'channel',
         to: '/channel',
-        className: isAdmin() ? '' : 'tableHiddle',
-      },
-      {
-        text: t('认证文件'),
-        itemKey: 'authFiles',
-        to: '/cliproxy-auth-files',
-        className: isAdmin() ? '' : 'tableHiddle',
-      },
-      {
-        text: t('用户消耗'),
-        itemKey: 'userConsumption',
-        to: '/user-consumption',
         className: isAdmin() ? '' : 'tableHiddle',
       },
       {

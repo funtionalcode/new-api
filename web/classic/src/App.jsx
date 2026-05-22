@@ -152,9 +152,9 @@ function App() {
         <Route
           path='/console/user-consumption'
           element={
-            <AdminRoute>
+            <PrivateRoute>
               <UserConsumption />
-            </AdminRoute>
+            </PrivateRoute>
           }
         />
         <Route

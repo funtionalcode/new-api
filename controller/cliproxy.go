@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -26,8 +27,17 @@ type cliproxyAuthFileBindingRequest struct {
 }
 
 type cliproxyUsageRefreshBody struct {
-	UsedTokens int `json:"used_tokens"`
-	Quota      int `json:"quota"`
+	UsedTokens           int
+	Quota                int
+	PlanType             string
+	FiveHourPercent      int
+	FiveHourResetAt      int64
+	WeeklyPercent        int
+	WeeklyResetAt        int64
+	CodexFiveHourPercent int
+	CodexFiveHourResetAt int64
+	CodexWeeklyPercent   int
+	CodexWeeklyResetAt   int64
 }
 
 func GetCliproxyRemoteAuthFiles(c *gin.Context) {
@@ -144,9 +154,18 @@ func RefreshCliproxyAuthFileBindingUsage(c *gin.Context) {
 	}
 	usage := extractCliproxyUsage(result)
 	updatedBinding, err := model.UpdateCliproxyAuthFileBindingUsage(id, model.CliproxyUsageRefreshUpdate{
-		LastUsageTokens: usage.UsedTokens,
-		LastUsageQuota:  usage.Quota,
-		LastError:       "",
+		LastUsageTokens:          usage.UsedTokens,
+		LastUsageQuota:           usage.Quota,
+		LastPlanType:             usage.PlanType,
+		LastFiveHourPercent:      usage.FiveHourPercent,
+		LastFiveHourResetAt:      usage.FiveHourResetAt,
+		LastWeeklyPercent:        usage.WeeklyPercent,
+		LastWeeklyResetAt:        usage.WeeklyResetAt,
+		LastCodexFiveHourPercent: usage.CodexFiveHourPercent,
+		LastCodexFiveHourResetAt: usage.CodexFiveHourResetAt,
+		LastCodexWeeklyPercent:   usage.CodexWeeklyPercent,
+		LastCodexWeeklyResetAt:   usage.CodexWeeklyResetAt,
+		LastError:                "",
 	})
 	if err != nil {
 		common.ApiError(c, err)
@@ -167,6 +186,21 @@ func GetCliproxyUserConsumption(c *gin.Context) {
 		AuthIndex:      c.Query("auth_index"),
 		SortBy:         c.Query("sort_by"),
 		SortOrder:      c.Query("sort_order"),
+	}
+	if c.GetInt("role") < common.RoleAdminUser {
+		query.UserId = c.GetInt("id")
+		query.Username = ""
+	}
+	if c.Query("group_by") == "day" {
+		summaries, total, err := model.GetUserTokenUsageByDay(query, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		pageInfo.SetTotal(int(total))
+		pageInfo.SetItems(summaries)
+		common.ApiSuccess(c, pageInfo)
+		return
 	}
 	summaries, total, err := model.GetUserTokenUsageSummary(query, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
@@ -233,30 +267,126 @@ func extractCliproxyUsage(result *service.CliproxyAPICallResponse) cliproxyUsage
 	if len(body) == 0 {
 		body = result.Data
 	}
+	fiveHourWindow, weeklyWindow := resolveCliproxyUsageWindows(body)
+	codexFiveHourWindow, codexWeeklyWindow := resolveCliproxyCodexUsageWindows(body)
 	return cliproxyUsageRefreshBody{
-		UsedTokens: intFromMap(body, "used_tokens"),
-		Quota:      intFromMap(body, "quota"),
+		UsedTokens:           intFromMap(body, "used_tokens"),
+		Quota:                intFromMap(body, "quota"),
+		PlanType:             stringFromMap(body, "plan_type"),
+		FiveHourPercent:      percentFromWindow(fiveHourWindow),
+		FiveHourResetAt:      int64FromMap(fiveHourWindow, "reset_at"),
+		WeeklyPercent:        percentFromWindow(weeklyWindow),
+		WeeklyResetAt:        int64FromMap(weeklyWindow, "reset_at"),
+		CodexFiveHourPercent: percentFromWindow(codexFiveHourWindow),
+		CodexFiveHourResetAt: int64FromMap(codexFiveHourWindow, "reset_at"),
+		CodexWeeklyPercent:   percentFromWindow(codexWeeklyWindow),
+		CodexWeeklyResetAt:   int64FromMap(codexWeeklyWindow, "reset_at"),
 	}
 }
 
-func intFromMap(data map[string]any, key string) int {
+func resolveCliproxyUsageWindows(body map[string]any) (map[string]any, map[string]any) {
+	rateLimit := mapFromMap(body, "rate_limit")
+	primaryWindow := mapFromMap(rateLimit, "primary_window")
+	secondaryWindow := mapFromMap(rateLimit, "secondary_window")
+	return classifyCliproxyUsageWindows(primaryWindow, secondaryWindow)
+}
+
+func resolveCliproxyCodexUsageWindows(body map[string]any) (map[string]any, map[string]any) {
+	for _, item := range sliceFromMap(body, "additional_rate_limits") {
+		itemMap, ok := item.(map[string]any)
+		if !ok || !strings.Contains(strings.ToLower(stringFromMap(itemMap, "limit_name")+" "+stringFromMap(itemMap, "metered_feature")), "codex") {
+			continue
+		}
+		rateLimit := mapFromMap(itemMap, "rate_limit")
+		primaryWindow := mapFromMap(rateLimit, "primary_window")
+		secondaryWindow := mapFromMap(rateLimit, "secondary_window")
+		return classifyCliproxyUsageWindows(primaryWindow, secondaryWindow)
+	}
+	return nil, nil
+}
+
+func classifyCliproxyUsageWindows(primaryWindow map[string]any, secondaryWindow map[string]any) (map[string]any, map[string]any) {
+	windows := []map[string]any{}
+	if len(primaryWindow) > 0 {
+		windows = append(windows, primaryWindow)
+	}
+	if len(secondaryWindow) > 0 {
+		windows = append(windows, secondaryWindow)
+	}
+	var fiveHourWindow map[string]any
+	var weeklyWindow map[string]any
+	for _, window := range windows {
+		if int64FromMap(window, "limit_window_seconds") >= int64(24*60*60) {
+			weeklyWindow = window
+			continue
+		}
+		fiveHourWindow = window
+	}
+	return fiveHourWindow, weeklyWindow
+}
+
+func percentFromWindow(data map[string]any) int {
+	return int(math.Round(float64FromMap(data, "used_percent")))
+}
+
+func mapFromMap(data map[string]any, key string) map[string]any {
+	value, ok := data[key]
+	if !ok {
+		return nil
+	}
+	typedValue, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+	return typedValue
+}
+
+func sliceFromMap(data map[string]any, key string) []any {
+	value, ok := data[key]
+	if !ok {
+		return nil
+	}
+	typedValue, ok := value.([]any)
+	if !ok {
+		return nil
+	}
+	return typedValue
+}
+
+func stringFromMap(data map[string]any, key string) string {
+	value, ok := data[key]
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprintf("%v", value))
+}
+
+func int64FromMap(data map[string]any, key string) int64 {
+	return int64(float64FromMap(data, key))
+}
+
+func float64FromMap(data map[string]any, key string) float64 {
 	value, ok := data[key]
 	if !ok {
 		return 0
 	}
 	switch typedValue := value.(type) {
 	case float64:
-		return int(typedValue)
-	case int:
 		return typedValue
+	case int:
+		return float64(typedValue)
 	case int64:
-		return int(typedValue)
+		return float64(typedValue)
 	case string:
-		parsedValue, _ := strconv.Atoi(strings.TrimSpace(typedValue))
+		parsedValue, _ := strconv.ParseFloat(strings.TrimSpace(typedValue), 64)
 		return parsedValue
 	default:
 		return 0
 	}
+}
+
+func intFromMap(data map[string]any, key string) int {
+	return int(float64FromMap(data, key))
 }
 
 func parseOptionalBool(raw string) *bool {

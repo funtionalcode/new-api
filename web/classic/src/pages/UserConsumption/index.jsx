@@ -19,8 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Card, Input, Table, Typography } from '@douyinfe/semi-ui';
-import { API, renderQuota, showError } from '../../helpers';
+import { Button, Card, Checkbox, Input, Table, Typography } from '@douyinfe/semi-ui';
+import { API, isAdmin, renderQuota, showError } from '../../helpers';
 
 const { Text } = Typography;
 
@@ -47,6 +47,11 @@ const formatTime = (timestamp) => {
   return new Date(timestamp * 1000).toLocaleString();
 };
 
+const formatDate = (timestamp) => {
+  if (!timestamp) return '-';
+  return new Date(timestamp * 1000).toLocaleDateString();
+};
+
 const formatTokens = (value) => Number(value || 0).toLocaleString();
 
 export default function UserConsumption() {
@@ -59,9 +64,10 @@ export default function UserConsumption() {
   );
   const [username, setUsername] = useState('');
   const [tokenName, setTokenName] = useState('');
-  const [authIndex, setAuthIndex] = useState('');
+  const [groupByDay, setGroupByDay] = useState(false);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+  const isAdminUser = isAdmin();
 
   const loadConsumption = async () => {
     setLoading(true);
@@ -72,15 +78,15 @@ export default function UserConsumption() {
           page_size: 100,
           start_timestamp: parseTimestampFromInput(startInput),
           end_timestamp: parseTimestampFromInput(endInput),
-          username: username.trim() || undefined,
+          username: isAdminUser ? username.trim() || undefined : undefined,
           token_name: tokenName.trim() || undefined,
-          auth_index: authIndex.trim() || undefined,
+          group_by: groupByDay ? 'day' : undefined,
         },
       });
       if (res.data.success) {
         setRows(res.data.data?.items || []);
       } else {
-        showError(res.data.message || t('加载用户消耗失败'));
+        showError(res.data.message || t('Load user consumption failed'));
       }
     } catch (error) {
       showError(error);
@@ -116,6 +122,14 @@ export default function UserConsumption() {
   );
 
   const columns = [
+    ...(groupByDay
+      ? [
+          {
+            title: t('Date'),
+            render: (_, record) => formatDate(record.day),
+          },
+        ]
+      : []),
     {
       title: t('用户'),
       render: (_, record) => (
@@ -134,26 +148,17 @@ export default function UserConsumption() {
         </div>
       ),
     },
-    {
-      title: t('认证文件'),
-      render: (_, record) => (
-        <div>
-          <div>{record.auth_name || '-'}</div>
-          <Text type='tertiary'>{record.auth_index || '-'}</Text>
-        </div>
-      ),
-    },
     { title: t('请求数'), dataIndex: 'request_count' },
     {
-      title: t('Prompt Tokens'),
+      title: t('提示 Tokens'),
       render: (_, record) => formatTokens(record.prompt_tokens),
     },
     {
-      title: t('Completion Tokens'),
+      title: t('补全 Tokens'),
       render: (_, record) => formatTokens(record.completion_tokens),
     },
     {
-      title: t('Total Tokens'),
+      title: t('总 Tokens'),
       render: (_, record) => formatTokens(record.total_tokens),
     },
     {
@@ -169,7 +174,7 @@ export default function UserConsumption() {
   return (
     <div className='mt-[60px] px-2'>
       <div className='space-y-4'>
-        <Card title={t('用户消耗筛选')}>
+        <Card title={t('Consumption Filters')}>
           <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-6'>
             <Input
               type='datetime-local'
@@ -177,21 +182,26 @@ export default function UserConsumption() {
               onChange={setStartInput}
             />
             <Input type='datetime-local' value={endInput} onChange={setEndInput} />
-            <Input
-              value={username}
-              placeholder={t('按用户名筛选')}
-              onChange={setUsername}
-            />
+            {isAdminUser && (
+              <Input
+                value={username}
+                placeholder={t('Filter by username')}
+                onChange={setUsername}
+              />
+            )}
             <Input
               value={tokenName}
-              placeholder={t('按令牌名称筛选')}
+              placeholder={t('Filter by token name')}
               onChange={setTokenName}
             />
-            <Input
-              value={authIndex}
-              placeholder={t('按认证文件索引筛选')}
-              onChange={setAuthIndex}
-            />
+            <div className='flex items-center'>
+              <Checkbox
+                checked={groupByDay}
+                onChange={(event) => setGroupByDay(event.target.checked)}
+              >
+                {t('Group by day')}
+              </Checkbox>
+            </div>
             <Button type='primary' loading={loading} onClick={loadConsumption}>
               {t('查询')}
             </Button>
@@ -200,22 +210,24 @@ export default function UserConsumption() {
 
         <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-5'>
           <Card title={t('请求数')}>{formatTokens(totals.requestCount)}</Card>
-          <Card title={t('Prompt Tokens')}>{formatTokens(totals.promptTokens)}</Card>
-          <Card title={t('Completion Tokens')}>
+          <Card title={t('提示 Tokens')}>{formatTokens(totals.promptTokens)}</Card>
+          <Card title={t('补全 Tokens')}>
             {formatTokens(totals.completionTokens)}
           </Card>
-          <Card title={t('Total Tokens')}>{formatTokens(totals.totalTokens)}</Card>
+          <Card title={t('总 Tokens')}>{formatTokens(totals.totalTokens)}</Card>
           <Card title={t('额度')}>{renderQuota(totals.quota)}</Card>
         </div>
 
-        <Card title={t('用户消耗明细')}>
+        <Card title={t('User Consumption Details')}>
           <Table
             columns={columns}
             dataSource={rows}
             loading={loading}
             pagination={false}
             rowKey={(record) =>
-              `${record.user_id}-${record.token_id}-${record.auth_index}`
+              groupByDay
+                ? `${record.day}-${record.user_id}-${record.token_id}`
+                : `${record.user_id}-${record.token_id}`
             }
           />
         </Card>

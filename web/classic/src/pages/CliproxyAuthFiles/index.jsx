@@ -20,7 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Card, Form, Modal, Table, Tag, Typography } from '@douyinfe/semi-ui';
-import { API, isRoot, renderQuota, showError, showSuccess } from '../../helpers';
+import { API, isRoot, showError, showSuccess } from '../../helpers';
 
 const { Text } = Typography;
 
@@ -28,6 +28,19 @@ const getAuthIndex = (authFile) => authFile?.authIndex || authFile?.auth_index |
 const getAuthName = (authFile) => authFile?.name || authFile?.authName || authFile?.auth_name || '';
 const getAuthFileContent = (authFile) => authFile?.authFile || authFile?.auth_file || '';
 const getAccountId = (authFile) => authFile?.accountId || authFile?.account_id || '';
+
+const formatUsagePercent = (value) => {
+  const percent = Number(value || 0);
+  if (!Number.isFinite(percent) || percent <= 0) return '-';
+  return `${Math.round(percent)}%`;
+};
+
+const renderUsageLimit = (percent, resetAt) => (
+  <div>
+    <div>{formatUsagePercent(percent)}</div>
+    <Text type='tertiary'>{formatTime(resetAt)}</Text>
+  </div>
+);
 
 
 const emptyBindingForm = {
@@ -359,20 +372,44 @@ export default function CliproxyAuthFiles() {
       ),
     },
     { title: t('认证文件'), dataIndex: 'auth_name' },
-    { title: t('索引'), dataIndex: 'auth_index' },
-    { title: t('账号'), dataIndex: 'account_id' },
     {
-      title: t('用量'),
-      render: (_, record) => (
-        <div>
-          <div>{Number(record.last_usage_tokens || 0).toLocaleString()} {t('Tokens')}</div>
-          <Text type='tertiary'>{renderQuota(record.last_usage_quota || 0)}</Text>
-        </div>
-      ),
+      title: t('套餐'),
+      render: (_, record) => record.last_plan_type || '-',
     },
     {
-      title: t('最近刷新'),
-      render: (_, record) => formatTime(record.last_refreshed_at),
+      title: t('5小时限额'),
+      render: (_, record) =>
+        renderUsageLimit(record.last_five_hour_percent, record.last_five_hour_reset_at),
+    },
+    {
+      title: t('周限额'),
+      render: (_, record) =>
+        renderUsageLimit(record.last_weekly_percent, record.last_weekly_reset_at),
+    },
+    {
+      title: t('Codex 5小时限额'),
+      render: (_, record) =>
+        renderUsageLimit(
+          record.last_codex_five_hour_percent,
+          record.last_codex_five_hour_reset_at,
+        ),
+    },
+    {
+      title: t('Codex 周限额'),
+      render: (_, record) =>
+        renderUsageLimit(
+          record.last_codex_weekly_percent,
+          record.last_codex_weekly_reset_at,
+        ),
+    },
+    {
+      title: t('刷新进度'),
+      render: (_, record) => (
+        <div>
+          <div>{record.last_error ? t('刷新失败') : t('刷新成功')}</div>
+          <Text type='tertiary'>{formatTime(record.last_refreshed_at)}</Text>
+        </div>
+      ),
     },
     {
       title: t('状态'),
