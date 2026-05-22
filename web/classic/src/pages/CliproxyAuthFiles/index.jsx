@@ -19,21 +19,16 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Button,
-  Card,
-  Form,
-  Input,
-  Modal,
-  Select,
-  Switch,
-  Table,
-  Tag,
-  Typography,
-} from '@douyinfe/semi-ui';
-import { API, renderQuota, showError, showSuccess } from '../../helpers';
+import { Button, Card, Form, Modal, Table, Tag, Typography } from '@douyinfe/semi-ui';
+import { API, isRoot, renderQuota, showError, showSuccess } from '../../helpers';
 
 const { Text } = Typography;
+
+const getAuthIndex = (authFile) => authFile?.authIndex || authFile?.auth_index || '';
+const getAuthName = (authFile) => authFile?.name || authFile?.authName || authFile?.auth_name || '';
+const getAuthFileContent = (authFile) => authFile?.authFile || authFile?.auth_file || '';
+const getAccountId = (authFile) => authFile?.accountId || authFile?.account_id || '';
+
 
 const emptyBindingForm = {
   id: undefined,
@@ -88,6 +83,17 @@ export default function CliproxyAuthFiles() {
   const [savingConfig, setSavingConfig] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [bindingForm, setBindingForm] = useState(emptyBindingForm);
+  const rootUser = isRoot();
+
+  const remoteFileOptions = useMemo(
+    () =>
+      remoteFiles.map((authFile) => ({
+        label: `${getAuthName(authFile) || '-'} (${getAuthIndex(authFile) || '-'})`,
+        value: getAuthIndex(authFile),
+        authFile,
+      })),
+    [remoteFiles],
+  );
 
   const userOptions = useMemo(
     () =>
@@ -200,10 +206,10 @@ export default function CliproxyAuthFiles() {
   const openCreateModal = (remoteFile) => {
     setBindingForm(
       buildBindingForm({
-        auth_index: remoteFile?.authIndex || remoteFile?.auth_index || '',
-        auth_name: remoteFile?.name || remoteFile?.authName || '',
-        auth_file: remoteFile?.authFile || remoteFile?.auth_file || '',
-        account_id: remoteFile?.accountId || remoteFile?.account_id || '',
+        auth_index: getAuthIndex(remoteFile),
+        auth_name: getAuthName(remoteFile),
+        auth_file: getAuthFileContent(remoteFile),
+        account_id: getAccountId(remoteFile),
         enabled: remoteFile?.enabled !== false,
       }),
     );
@@ -226,7 +232,7 @@ export default function CliproxyAuthFiles() {
       return;
     }
     if (!bindingForm.auth_index.trim()) {
-      showError(t('认证文件索引不能为空'));
+      showError(t('请选择认证文件'));
       return;
     }
 
@@ -304,9 +310,11 @@ export default function CliproxyAuthFiles() {
   };
 
   useEffect(() => {
-    loadOptions();
-    loadBindings();
-  }, []);
+    if (rootUser) {
+      loadOptions();
+      loadBindings();
+    }
+  }, [rootUser]);
 
   const remoteColumns = [
     { title: t('认证文件'), dataIndex: 'name' },
@@ -326,14 +334,18 @@ export default function CliproxyAuthFiles() {
         </Tag>
       ),
     },
-    {
-      title: t('操作'),
-      render: (_, record) => (
-        <Button size='small' onClick={() => openCreateModal(record)}>
-          {t('绑定用户')}
-        </Button>
-      ),
-    },
+    ...(rootUser
+      ? [
+          {
+            title: t('操作'),
+            render: (_, record) => (
+              <Button size='small' onClick={() => openCreateModal(record)}>
+                {t('绑定用户')}
+              </Button>
+            ),
+          },
+        ]
+      : []),
   ];
 
   const bindingColumns = [
@@ -353,7 +365,7 @@ export default function CliproxyAuthFiles() {
       title: t('用量'),
       render: (_, record) => (
         <div>
-          <div>{Number(record.last_usage_tokens || 0).toLocaleString()} Tokens</div>
+          <div>{Number(record.last_usage_tokens || 0).toLocaleString()} {t('Tokens')}</div>
           <Text type='tertiary'>{renderQuota(record.last_usage_quota || 0)}</Text>
         </div>
       ),
@@ -391,38 +403,40 @@ export default function CliproxyAuthFiles() {
   return (
     <div className='mt-[60px] px-2'>
       <div className='space-y-4'>
-        <Card title={t('Cliproxy API 配置')}>
-          <Form layout='horizontal'>
-            <Form.Input
-              field='baseURL'
-              label={t('Cliproxy API 地址')}
-              value={options.CliproxyAPIBaseURL}
-              onChange={(value) =>
-                setOptions((current) => ({
-                  ...current,
-                  CliproxyAPIBaseURL: value,
-                }))
-              }
-              placeholder='http://127.0.0.1:8317'
-            />
-            <Form.Input
-              field='password'
-              mode='password'
-              label={t('Cliproxy API 登录密码')}
-              value={options.CliproxyAPIPassword}
-              onChange={(value) =>
-                setOptions((current) => ({
-                  ...current,
-                  CliproxyAPIPassword: value,
-                }))
-              }
-              placeholder={t('留空则不修改')}
-            />
-            <Button type='primary' loading={savingConfig} onClick={saveConfig}>
-              {t('保存配置')}
-            </Button>
-          </Form>
-        </Card>
+        {rootUser && (
+          <Card title={t('Cliproxy API 配置')}>
+            <Form layout='horizontal'>
+              <Form.Input
+                field='baseURL'
+                label={t('Cliproxy API 地址')}
+                value={options.CliproxyAPIBaseURL}
+                onChange={(value) =>
+                  setOptions((current) => ({
+                    ...current,
+                    CliproxyAPIBaseURL: value,
+                  }))
+                }
+                placeholder='http://127.0.0.1:8317'
+              />
+              <Form.Input
+                field='password'
+                mode='password'
+                label={t('Cliproxy API 登录密码')}
+                value={options.CliproxyAPIPassword}
+                onChange={(value) =>
+                  setOptions((current) => ({
+                    ...current,
+                    CliproxyAPIPassword: value,
+                  }))
+                }
+                placeholder={t('留空则不修改')}
+              />
+              <Button type='primary' loading={savingConfig} onClick={saveConfig}>
+                {t('保存配置')}
+              </Button>
+            </Form>
+          </Card>
+        )}
 
         <Card
           title={t('远端认证文件')}
@@ -441,22 +455,24 @@ export default function CliproxyAuthFiles() {
           />
         </Card>
 
-        <Card
-          title={t('认证文件绑定')}
-          headerExtraContent={
-            <Button type='primary' onClick={() => openCreateModal()}>
-              {t('新增绑定')}
-            </Button>
-          }
-        >
-          <Table
-            columns={bindingColumns}
-            dataSource={bindings}
-            loading={bindingLoading}
-            pagination={false}
-            rowKey='id'
-          />
-        </Card>
+        {rootUser && (
+          <Card
+            title={t('认证文件绑定')}
+            headerExtraContent={
+              <Button type='primary' onClick={() => openCreateModal()}>
+                {t('新增绑定')}
+              </Button>
+            }
+          >
+            <Table
+              columns={bindingColumns}
+              dataSource={bindings}
+              loading={bindingLoading}
+              pagination={false}
+              rowKey='id'
+            />
+          </Card>
+        )}
       </div>
 
       <Modal
@@ -467,6 +483,26 @@ export default function CliproxyAuthFiles() {
         confirmLoading={loading}
       >
         <Form layout='vertical'>
+          <Form.Select
+            field='auth_index'
+            label={t('认证文件')}
+            filter
+            value={bindingForm.auth_index}
+            optionList={remoteFileOptions}
+            onChange={(value) => {
+              const selected = remoteFileOptions.find((option) => option.value === value);
+              const authFile = selected?.authFile;
+              setBindingForm((current) => ({
+                ...current,
+                auth_index: value,
+                auth_name: getAuthName(authFile),
+                auth_file: getAuthFileContent(authFile),
+                account_id: getAccountId(authFile),
+                enabled: authFile?.enabled !== false,
+              }));
+            }}
+            placeholder={t('请选择认证文件')}
+          />
           <Form.Select
             field='user_id'
             label={t('用户')}
@@ -485,55 +521,6 @@ export default function CliproxyAuthFiles() {
             }}
             placeholder={t('搜索并选择用户')}
           />
-          <Form.Input
-            field='auth_index'
-            label={t('认证文件索引')}
-            value={bindingForm.auth_index}
-            onChange={(value) =>
-              setBindingForm((current) => ({ ...current, auth_index: value }))
-            }
-          />
-          <Form.Input
-            field='auth_name'
-            label={t('认证文件名称')}
-            value={bindingForm.auth_name}
-            onChange={(value) =>
-              setBindingForm((current) => ({ ...current, auth_name: value }))
-            }
-          />
-          <Form.Input
-            field='account_id'
-            label={t('账号 ID')}
-            value={bindingForm.account_id}
-            onChange={(value) =>
-              setBindingForm((current) => ({ ...current, account_id: value }))
-            }
-          />
-          <Form.TextArea
-            field='auth_file'
-            label={t('认证文件内容')}
-            value={bindingForm.auth_file}
-            onChange={(value) =>
-              setBindingForm((current) => ({ ...current, auth_file: value }))
-            }
-          />
-          <Form.TextArea
-            field='description'
-            label={t('备注')}
-            value={bindingForm.description}
-            onChange={(value) =>
-              setBindingForm((current) => ({ ...current, description: value }))
-            }
-          />
-          <div className='flex items-center gap-3'>
-            <Text>{t('启用')}</Text>
-            <Switch
-              checked={bindingForm.enabled}
-              onChange={(checked) =>
-                setBindingForm((current) => ({ ...current, enabled: checked }))
-              }
-            />
-          </div>
         </Form>
       </Modal>
     </div>

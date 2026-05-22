@@ -126,7 +126,7 @@ export default function UserConsumption() {
       ),
     },
     {
-      title: 'Token',
+      title: t('Token'),
       render: (_, record) => (
         <div>
           <div>{record.token_name || '-'}</div>
@@ -145,15 +145,15 @@ export default function UserConsumption() {
     },
     { title: t('请求数'), dataIndex: 'request_count' },
     {
-      title: 'Prompt Tokens',
+      title: t('Prompt Tokens'),
       render: (_, record) => formatTokens(record.prompt_tokens),
     },
     {
-      title: 'Completion Tokens',
+      title: t('Completion Tokens'),
       render: (_, record) => formatTokens(record.completion_tokens),
     },
     {
-      title: 'Total Tokens',
+      title: t('Total Tokens'),
       render: (_, record) => formatTokens(record.total_tokens),
     },
     {
@@ -200,11 +200,11 @@ export default function UserConsumption() {
 
         <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-5'>
           <Card title={t('请求数')}>{formatTokens(totals.requestCount)}</Card>
-          <Card title='Prompt Tokens'>{formatTokens(totals.promptTokens)}</Card>
-          <Card title='Completion Tokens'>
+          <Card title={t('Prompt Tokens')}>{formatTokens(totals.promptTokens)}</Card>
+          <Card title={t('Completion Tokens')}>
             {formatTokens(totals.completionTokens)}
           </Card>
-          <Card title='Total Tokens'>{formatTokens(totals.totalTokens)}</Card>
+          <Card title={t('Total Tokens')}>{formatTokens(totals.totalTokens)}</Card>
           <Card title={t('额度')}>{renderQuota(totals.quota)}</Card>
         </div>
 
