@@ -235,8 +235,51 @@ export function processChartData(
           text: tt('Call Count Ranking'),
         },
       },
+      spec_token_line: {
+        type: 'area',
+        data: [{ id: 'tokenLineData', values: [] }],
+        xField: 'Time',
+        yField: 'Tokens',
+        seriesField: 'Model',
+        legends: { visible: true, selectMode: 'single' },
+        title: {
+          visible: true,
+          text: tt('Token Trend'),
+          subtext: tt('No data available'),
+        },
+      },
+      spec_token_pie: {
+        type: 'pie',
+        data: [{ id: 'tokenPie0', values: [] }],
+        outerRadius: 0.8,
+        innerRadius: 0.5,
+        padAngle: 0.6,
+        valueField: 'value',
+        categoryField: 'type',
+        title: {
+          visible: true,
+          text: tt('Token Distribution'),
+          subtext: tt('No data available'),
+        },
+        legends: { visible: false },
+        label: { visible: false },
+      },
+      spec_token_rank_bar: {
+        type: 'bar',
+        data: [{ id: 'tokenRankData', values: [] }],
+        xField: 'Model',
+        yField: 'Tokens',
+        seriesField: 'Model',
+        legends: { visible: true, selectMode: 'single' },
+        title: {
+          visible: true,
+          text: tt('Token Ranking'),
+          subtext: tt('No data available'),
+        },
+      },
       totalQuotaDisplay: formatQuotaTotal(0),
       totalCountDisplay: formatInt(0),
+      totalTokenDisplay: formatInt(0),
     }
   }
 
@@ -714,8 +757,243 @@ export function processChartData(
       background: { fill: 'transparent' },
       animation: true,
     },
+
+    // Token charts
+    spec_token_pie: (() => {
+      const tokenPieValues = Array.from(modelTotalsMap.entries())
+        .map(([model, stats]) => ({
+          type: model,
+          value: Number(stats.tokens) || 0,
+        }))
+        .filter((item) => item.value > 0)
+        .sort((a, b) => b.value - a.value)
+      return {
+        type: 'pie',
+        data: [{ id: 'tokenPie0', values: tokenPieValues }],
+        outerRadius: 0.8,
+        innerRadius: 0.5,
+        padAngle: 0.6,
+        valueField: 'value',
+        categoryField: 'type',
+        pie: {
+          style:
+            chartCornerRadius == null ? {} : { cornerRadius: chartCornerRadius },
+          state: {
+            hover: { outerRadius: 0.85, stroke: '#000', lineWidth: 1 },
+            selected: { outerOuterRadius: 0.85, stroke: '#000', lineWidth: 1 },
+          },
+        },
+        title: {
+          visible: true,
+          text: tt('Token Distribution'),
+        },
+        legends: { visible: true, orient: 'left' },
+        label: { visible: true },
+        color: modelColor,
+        tooltip: {
+          mark: {
+            content: [
+              {
+                key: (datum: Record<string, unknown>) => datum?.type,
+                value: (datum: Record<string, unknown>) =>
+                  formatInt(Number(datum?.value) || 0),
+              },
+            ],
+          },
+        },
+        background: { fill: 'transparent' },
+        animation: true,
+      }
+    })(),
+
+    spec_token_line: (() => {
+      const MAX_TOKEN_TREND_MODELS = 20
+      const rankedTokenModels = Array.from(modelTotalsMap.entries())
+        .map(([model, stats]) => ({
+          Model: model,
+          Tokens: Number(stats.tokens) || 0,
+        }))
+        .sort((a, b) => b.Tokens - a.Tokens)
+      const topTokenModels = rankedTokenModels
+        .slice(0, MAX_TOKEN_TREND_MODELS)
+        .map((item) => item.Model)
+      const otherTokenModels = rankedTokenModels
+        .slice(MAX_TOKEN_TREND_MODELS)
+        .map((item) => item.Model)
+
+      const tokenLineValues: Array<{
+        Time: string
+        Model: string
+        Tokens: number
+      }> = []
+      chartTimes.forEach((time) => {
+        const timeData = topTokenModels.map((model) => {
+          const stats = timeModelMap.get(time)?.get(model)
+          return {
+            Time: time,
+            Model: model,
+            Tokens: Number(stats?.tokens) || 0,
+          }
+        })
+        if (otherTokenModels.length > 0) {
+          const otherTokens = otherTokenModels.reduce((sum, model) => {
+            const stats = timeModelMap.get(time)?.get(model)
+            return sum + (Number(stats?.tokens) || 0)
+          }, 0)
+          timeData.push({
+            Time: time,
+            Model: otherLabel,
+            Tokens: otherTokens,
+          })
+        }
+        tokenLineValues.push(...timeData)
+      })
+      tokenLineValues.sort((a, b) => a.Time.localeCompare(b.Time))
+
+      return {
+        type: 'area',
+        data: [{ id: 'tokenLineData', values: tokenLineValues }],
+        xField: 'Time',
+        yField: 'Tokens',
+        seriesField: 'Model',
+        stack: false,
+        legends: { visible: true, selectMode: 'single' },
+        color: modelColor,
+        title: {
+          visible: true,
+          text: tt('Token Trend'),
+        },
+        tooltip: {
+          mark: {
+            content: [
+              {
+                key: (datum: Record<string, unknown>) => datum?.Model,
+                value: (datum: Record<string, unknown>) =>
+                  formatInt(Number(datum?.Tokens) || 0),
+              },
+            ],
+          },
+          dimension: {
+            content: [
+              {
+                key: (datum: Record<string, unknown>) => datum?.Model,
+                value: (datum: Record<string, unknown>) =>
+                  Number(datum?.Tokens) || 0,
+              },
+            ],
+            updateContent: (
+              array: Array<{
+                key: string
+                value: string | number
+              }>
+            ) => {
+              const modelItems = array.filter(
+                (item) => !isOtherTooltipKey(item.key)
+              )
+              const otherItems = array.filter((item) =>
+                isOtherTooltipKey(item.key)
+              )
+              modelItems.sort(
+                (a, b) => (Number(b.value) || 0) - (Number(a.value) || 0)
+              )
+              array = [...modelItems, ...otherItems]
+
+              let sum = 0
+              for (let i = 0; i < array.length; i++) {
+                const v = Number(array[i].value) || 0
+                sum += v
+                array[i].value = formatInt(v)
+              }
+              array.unshift({
+                key: tt('Total:'),
+                value: formatInt(sum),
+              })
+              return array
+            },
+          },
+        },
+        area: {
+          style: {
+            fillOpacity: 0.08,
+            curveType: 'monotone',
+          },
+        },
+        line: {
+          style: {
+            lineWidth: 2,
+            curveType: 'monotone',
+          },
+        },
+        point: { visible: false },
+        background: { fill: 'transparent' },
+        animation: true,
+      }
+    })(),
+
+    spec_token_rank_bar: (() => {
+      const MAX_TOKEN_RANK = 20
+      const allTokenRanks = Array.from(modelTotalsMap.entries())
+        .map(([model, stats]) => ({
+          Model: model,
+          Tokens: Number(stats.tokens) || 0,
+        }))
+        .sort((a, b) => b.Tokens - a.Tokens)
+
+      let tokenRankValues: typeof allTokenRanks
+      if (allTokenRanks.length > MAX_TOKEN_RANK) {
+        const topModels = allTokenRanks.slice(0, MAX_TOKEN_RANK)
+        const otherTokens = allTokenRanks
+          .slice(MAX_TOKEN_RANK)
+          .reduce((sum, item) => sum + item.Tokens, 0)
+        tokenRankValues = [
+          ...topModels,
+          { Model: otherLabel, Tokens: otherTokens },
+        ]
+      } else {
+        tokenRankValues = allTokenRanks
+      }
+
+      return {
+        type: 'bar',
+        data: [{ id: 'tokenRankData', values: tokenRankValues }],
+        xField: 'Model',
+        yField: 'Tokens',
+        seriesField: 'Model',
+        legends: { visible: true, selectMode: 'single' },
+        color: modelColor,
+        title: {
+          visible: true,
+          text: tt('Token Ranking'),
+        },
+        bar: {
+          state: {
+            hover: { stroke: '#000', lineWidth: 1 },
+          },
+        },
+        tooltip: {
+          mark: {
+            content: [
+              {
+                key: (datum: Record<string, unknown>) => datum?.Model,
+                value: (datum: Record<string, unknown>) =>
+                  formatInt(Number(datum?.Tokens) || 0),
+              },
+            ],
+          },
+        },
+        background: { fill: 'transparent' },
+        animation: true,
+      }
+    })(),
+
     totalQuotaDisplay: formatQuotaTotal(totalQuotaRaw),
     totalCountDisplay: formatInt(totalTimes),
+    totalTokenDisplay: formatInt(
+      Array.from(modelTotalsMap.values()).reduce(
+        (sum, x) => sum + (Number(x.tokens) || 0),
+        0
+      )
+    ),
   }
 }
 

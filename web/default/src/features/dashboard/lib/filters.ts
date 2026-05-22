@@ -31,6 +31,7 @@ import type {
   DashboardChartPreferences,
   DashboardFilters,
   ModelAnalyticsChartTab,
+  TokenAnalyticsChartTab,
 } from '@/features/dashboard/types'
 
 function isTimeGranularity(value: unknown): value is TimeGranularity {
@@ -52,6 +53,12 @@ function isConsumptionDistributionChartType(
 function isModelAnalyticsChartTab(
   value: unknown
 ): value is ModelAnalyticsChartTab {
+  return value === 'trend' || value === 'proportion' || value === 'top'
+}
+
+function isTokenAnalyticsChartTab(
+  value: unknown
+): value is TokenAnalyticsChartTab {
   return value === 'trend' || value === 'proportion' || value === 'top'
 }
 
@@ -113,6 +120,9 @@ export function getSavedChartPreferences(): DashboardChartPreferences {
       modelAnalyticsChart: isModelAnalyticsChartTab(parsed.modelAnalyticsChart)
         ? parsed.modelAnalyticsChart
         : fallbackPreferences.modelAnalyticsChart,
+      tokenAnalyticsChart: isTokenAnalyticsChartTab(parsed.tokenAnalyticsChart)
+        ? parsed.tokenAnalyticsChart
+        : fallbackPreferences.tokenAnalyticsChart,
       defaultTimeRangeDays: isTimeRangePresetDays(parsed.defaultTimeRangeDays)
         ? parsed.defaultTimeRangeDays
         : fallbackPreferences.defaultTimeRangeDays,

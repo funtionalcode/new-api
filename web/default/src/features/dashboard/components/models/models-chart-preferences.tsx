@@ -42,6 +42,7 @@ import {
 import {
   CONSUMPTION_DISTRIBUTION_CHART_OPTIONS,
   MODEL_ANALYTICS_CHART_OPTIONS,
+  TOKEN_ANALYTICS_CHART_OPTIONS,
   TIME_GRANULARITY_OPTIONS,
   TIME_RANGE_PRESETS,
 } from '@/features/dashboard/constants'
@@ -49,6 +50,7 @@ import type {
   ConsumptionDistributionChartType,
   DashboardChartPreferences,
   ModelAnalyticsChartTab,
+  TokenAnalyticsChartTab,
 } from '@/features/dashboard/types'
 
 interface ModelsChartPreferencesProps {
@@ -216,6 +218,40 @@ export function ModelsChartPreferences(props: ModelsChartPreferencesProps) {
               <SelectContent alignItemWithTrigger={false}>
                 <SelectGroup>
                   {MODEL_ANALYTICS_CHART_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {t(option.labelKey)}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className='grid gap-2'>
+            <Label htmlFor='token-analytics-chart'>
+              {t('Default token chart')}
+            </Label>
+            <Select
+              items={[
+                ...TOKEN_ANALYTICS_CHART_OPTIONS.map((option) => ({
+                  value: option.value,
+                  label: t(option.labelKey),
+                })),
+              ]}
+              value={draft.tokenAnalyticsChart}
+              onValueChange={(value) =>
+                setDraft((prev) => ({
+                  ...prev,
+                  tokenAnalyticsChart: value as TokenAnalyticsChartTab,
+                }))
+              }
+            >
+              <SelectTrigger id='token-analytics-chart'>
+                <SelectValue placeholder={t('Select default chart')} />
+              </SelectTrigger>
+              <SelectContent alignItemWithTrigger={false}>
+                <SelectGroup>
+                  {TOKEN_ANALYTICS_CHART_OPTIONS.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {t(option.labelKey)}
                     </SelectItem>

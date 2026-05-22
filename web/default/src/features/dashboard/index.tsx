@@ -77,6 +77,18 @@ const LazyUserCharts = lazy(() =>
   }))
 )
 
+const LazyTokenStatCards = lazy(() =>
+  import('./components/models/token-stat-cards').then((m) => ({
+    default: m.TokenStatCards,
+  }))
+)
+
+const LazyTokenCharts = lazy(() =>
+  import('./components/models/token-charts').then((m) => ({
+    default: m.TokenCharts,
+  }))
+)
+
 function LogStatCardsFallback() {
   return (
     <div className='overflow-hidden rounded-lg border'>
@@ -146,6 +158,10 @@ const SECTION_META: Record<
     titleKey: 'User Analytics',
     descriptionKey: 'View user consumption statistics and charts',
   },
+  tokens: {
+    titleKey: 'Token Consumption',
+    descriptionKey: 'View token consumption analytics and charts',
+  },
 }
 
 export function Dashboard() {
@@ -194,7 +210,9 @@ export function Dashboard() {
   const visibleSections = useMemo(
     () =>
       DASHBOARD_SECTION_IDS.filter(
-        (section) => section !== 'overview' && (section !== 'users' || isAdmin)
+        (section) =>
+          section !== 'overview' &&
+          (section !== 'users' || isAdmin)
       ),
     [isAdmin]
   )
@@ -306,6 +324,30 @@ export function Dashboard() {
                 <LazyUserCharts />
               </Suspense>
             </FadeIn>
+          )}
+          {activeSection === 'tokens' && (
+            <>
+              <FadeIn>
+                <Suspense fallback={<LogStatCardsFallback />}>
+                  <LazyTokenStatCards
+                    filters={modelFilters}
+                    onDataUpdate={handleDataUpdate}
+                  />
+                </Suspense>
+              </FadeIn>
+              <FadeIn delay={0.1}>
+                <Suspense fallback={<ModelChartsFallback />}>
+                  <LazyTokenCharts
+                    data={modelData}
+                    loading={dataLoading}
+                    defaultChartTab={chartPreferences.tokenAnalyticsChart}
+                    timeGranularity={
+                      modelFilters.time_granularity || DEFAULT_TIME_GRANULARITY
+                    }
+                  />
+                </Suspense>
+              </FadeIn>
+            </>
           )}
         </div>
       </SectionPageLayout.Content>

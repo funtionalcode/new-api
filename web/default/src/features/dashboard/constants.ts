@@ -27,6 +27,7 @@ export const MAX_CHART_TREND_POINTS = 7
 export const DEFAULT_DASHBOARD_CHART_PREFERENCES: DashboardChartPreferences = {
   consumptionDistributionChart: 'bar',
   modelAnalyticsChart: 'trend',
+  tokenAnalyticsChart: 'trend',
   defaultTimeRangeDays: 1,
   defaultTimeGranularity: DEFAULT_TIME_GRANULARITY,
 }
@@ -59,6 +60,12 @@ export const MODEL_ANALYTICS_CHART_OPTIONS = [
   { value: 'trend', labelKey: 'Call Trend' },
   { value: 'proportion', labelKey: 'Call Count Distribution' },
   { value: 'top', labelKey: 'Call Count Ranking' },
+] as const
+
+export const TOKEN_ANALYTICS_CHART_OPTIONS = [
+  { value: 'trend', labelKey: 'Token Trend' },
+  { value: 'proportion', labelKey: 'Token Distribution' },
+  { value: 'top', labelKey: 'Token Ranking' },
 ] as const
 
 export const EMPTY_DASHBOARD_FILTERS: DashboardFilters = {
