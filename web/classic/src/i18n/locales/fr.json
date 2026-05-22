@@ -3717,7 +3717,11 @@
         "最近调用": "Dernier appel",
         "请求数": "Requêtes",
         "认证文件": "Fichier d’authentification",
-        "日期": "Date"
+        "日期": "Date",
+        "Filter by username": "Filtrer par nom d’utilisateur",
+        "Filter by token name": "Filtrer par nom de token",
+        "Group by day": "Regrouper par jour",
+        "Token Consumption": "Consommation de tokens"
     },
     "Load user consumption failed": "Échec du chargement de la consommation utilisateur",
     "Consumption Filters": "Filtres de consommation",

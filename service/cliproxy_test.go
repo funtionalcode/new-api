@@ -80,6 +80,47 @@ func TestCliproxyAPIClientCallAPI(t *testing.T) {
 	require.Equal(t, float64(5678), result.Body["quota"])
 }
 
+func TestCliproxyAPIClientCallAPISupportsStatusCodeAndStringBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "/v0/management/api-call", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status_code":200,"body":"{\"plan_type\":\"prolite\",\"rate_limit\":{\"primary_window\":{\"used_percent\":25}}}"}`))
+	}))
+	defer server.Close()
+
+	client, err := NewCliproxyAPIClient(server.URL, "cliproxyapi")
+	require.NoError(t, err)
+
+	result, err := client.CallAPI(context.Background(), CliproxyAPICallRequest{
+		AuthIndex: "f2ca5514ba44085e",
+		Method:    http.MethodGet,
+		URL:       "https://chatgpt.com/backend-api/wham/usage",
+	})
+	require.NoError(t, err)
+	require.Equal(t, 200, result.Status)
+	require.Equal(t, "prolite", result.Body["plan_type"])
+}
+
+func TestCliproxyAPIClientCallAPIRejectsInnerErrorStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status_code":401,"body":{"error":"token expired"}}`))
+	}))
+	defer server.Close()
+
+	client, err := NewCliproxyAPIClient(server.URL, "cliproxyapi")
+	require.NoError(t, err)
+
+	_, err = client.CallAPI(context.Background(), CliproxyAPICallRequest{
+		AuthIndex: "f2ca5514ba44085e",
+		Method:    http.MethodGet,
+		URL:       "https://chatgpt.com/backend-api/wham/usage",
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "上游状态码: 401")
+}
+
 func TestNewCliproxyAPIClientRejectsInvalidBaseURL(t *testing.T) {
 	_, err := NewCliproxyAPIClient("file:///tmp/socket", "cliproxyapi")
 	require.Error(t, err)

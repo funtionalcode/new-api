@@ -3686,7 +3686,11 @@
         "最近调用": "最終呼び出し",
         "请求数": "リクエスト数",
         "认证文件": "認証ファイル",
-        "日期": "日付"
+        "日期": "日付",
+        "Filter by username": "ユーザー名で絞り込み",
+        "Filter by token name": "トークン名で絞り込み",
+        "Group by day": "日別にグループ化",
+        "Token Consumption": "Token 消費量"
     },
     "Load user consumption failed": "ユーザー消費量の読み込みに失敗しました",
     "Consumption Filters": "消費量フィルター",

@@ -3845,7 +3845,11 @@
         "按认证文件索引筛选": "按认证文件索引筛选",
         "最近调用": "最近调用",
         "请求数": "请求数",
-        "认证文件": "认证文件"
+        "认证文件": "认证文件",
+        "Filter by username": "按用户名筛选",
+        "Filter by token name": "按令牌名称筛选",
+        "Group by day": "按天分组",
+        "Token Consumption": "Token 消耗"
     },
     "Load user consumption failed": "加载用户消耗失败",
     "Consumption Filters": "用户消耗筛选",

@@ -3861,7 +3861,11 @@
         "按认证文件索引筛选": "Filter by auth index",
         "最近调用": "Last Called",
         "请求数": "Requests",
-        "认证文件": "Auth File"
+        "认证文件": "Auth File",
+        "Filter by username": "Filter by username",
+        "Filter by token name": "Filter by token name",
+        "Group by day": "Group by day",
+        "Token Consumption": "Token Consumption"
     },
     "Load user consumption failed": "Failed to load user consumption",
     "Consumption Filters": "Consumption Filters",

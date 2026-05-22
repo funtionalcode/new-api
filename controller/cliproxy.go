@@ -152,7 +152,16 @@ func RefreshCliproxyAuthFileBindingUsage(c *gin.Context) {
 		common.ApiSuccess(c, updatedBinding)
 		return
 	}
-	usage := extractCliproxyUsage(result)
+	usage, usageErr := extractCliproxyUsage(result)
+	if usageErr != nil {
+		updatedBinding, updateErr := model.UpdateCliproxyAuthFileBindingUsage(id, model.CliproxyUsageRefreshUpdate{LastError: usageErr.Error()})
+		if updateErr != nil {
+			common.ApiError(c, fmt.Errorf("解析额度失败: %s；保存错误失败: %w", usageErr.Error(), updateErr))
+			return
+		}
+		common.ApiSuccess(c, updatedBinding)
+		return
+	}
 	updatedBinding, err := model.UpdateCliproxyAuthFileBindingUsage(id, model.CliproxyUsageRefreshUpdate{
 		LastUsageTokens:          usage.UsedTokens,
 		LastUsageQuota:           usage.Quota,
@@ -259,15 +268,21 @@ func buildCliproxyUsageRefreshRequest(binding *model.CliproxyAuthFileBinding) se
 	}
 }
 
-func extractCliproxyUsage(result *service.CliproxyAPICallResponse) cliproxyUsageRefreshBody {
+func extractCliproxyUsage(result *service.CliproxyAPICallResponse) (cliproxyUsageRefreshBody, error) {
 	if result == nil {
-		return cliproxyUsageRefreshBody{}
+		return cliproxyUsageRefreshBody{}, fmt.Errorf("刷新结果为空")
 	}
 	body := result.Body
 	if len(body) == 0 {
 		body = result.Data
 	}
+	if len(body) == 0 {
+		return cliproxyUsageRefreshBody{}, fmt.Errorf("刷新结果缺少用量数据")
+	}
 	fiveHourWindow, weeklyWindow := resolveCliproxyUsageWindows(body)
+	if len(fiveHourWindow) == 0 && len(weeklyWindow) == 0 && stringFromMap(body, "plan_type") == "" {
+		return cliproxyUsageRefreshBody{}, fmt.Errorf("刷新结果格式无效")
+	}
 	codexFiveHourWindow, codexWeeklyWindow := resolveCliproxyCodexUsageWindows(body)
 	return cliproxyUsageRefreshBody{
 		UsedTokens:           intFromMap(body, "used_tokens"),
@@ -281,7 +296,7 @@ func extractCliproxyUsage(result *service.CliproxyAPICallResponse) cliproxyUsage
 		CodexFiveHourResetAt: int64FromMap(codexFiveHourWindow, "reset_at"),
 		CodexWeeklyPercent:   percentFromWindow(codexWeeklyWindow),
 		CodexWeeklyResetAt:   int64FromMap(codexWeeklyWindow, "reset_at"),
-	}
+	}, nil
 }
 
 func resolveCliproxyUsageWindows(body map[string]any) (map[string]any, map[string]any) {

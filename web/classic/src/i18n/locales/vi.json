@@ -4248,7 +4248,11 @@
         "最近调用": "Lần gọi gần nhất",
         "请求数": "Số yêu cầu",
         "认证文件": "Tệp xác thực",
-        "日期": "Ngày"
+        "日期": "Ngày",
+        "Filter by username": "Lọc theo tên người dùng",
+        "Filter by token name": "Lọc theo tên token",
+        "Group by day": "Nhóm theo ngày",
+        "Token Consumption": "Mức tiêu thụ token"
     },
     "Load user consumption failed": "Tải mức tiêu thụ người dùng thất bại",
     "Consumption Filters": "Bộ lọc tiêu thụ",

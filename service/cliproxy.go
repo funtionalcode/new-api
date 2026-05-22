@@ -62,9 +62,42 @@ type CliproxyAPICallRequest struct {
 }
 
 type CliproxyAPICallResponse struct {
-	Status int            `json:"status"`
-	Body   map[string]any `json:"body"`
-	Data   map[string]any `json:"data"`
+	Status     int            `json:"status"`
+	StatusCode int            `json:"status_code"`
+	Body       map[string]any `json:"-"`
+	Data       map[string]any `json:"-"`
+}
+
+func (response *CliproxyAPICallResponse) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Status     int `json:"status"`
+		StatusCode int `json:"status_code"`
+		Body       any `json:"body"`
+		Data       any `json:"data"`
+	}
+	if err := common.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	response.Status = raw.Status
+	response.StatusCode = raw.StatusCode
+	response.Body = parseCliproxyAPICallPayload(raw.Body)
+	response.Data = parseCliproxyAPICallPayload(raw.Data)
+	return nil
+}
+
+func parseCliproxyAPICallPayload(value any) map[string]any {
+	switch typedValue := value.(type) {
+	case map[string]any:
+		return typedValue
+	case string:
+		var data map[string]any
+		if err := common.UnmarshalJsonStr(strings.TrimSpace(typedValue), &data); err != nil {
+			return nil
+		}
+		return data
+	default:
+		return nil
+	}
 }
 
 func NewCliproxyAPIClient(baseURL string, password string) (*CliproxyAPIClient, error) {
@@ -174,7 +207,20 @@ func (client *CliproxyAPIClient) CallAPI(ctx context.Context, payload CliproxyAP
 	if err := common.DecodeJson(resp.Body, &result); err != nil {
 		return nil, fmt.Errorf("解析刷新结果失败: %w", err)
 	}
+	normalizeCliproxyAPICallResponse(&result)
+	if result.Status >= http.StatusBadRequest {
+		return nil, fmt.Errorf("刷新额度失败，上游状态码: %d", result.Status)
+	}
 	return &result, nil
+}
+
+func normalizeCliproxyAPICallResponse(result *CliproxyAPICallResponse) {
+	if result.Status == 0 && result.StatusCode > 0 {
+		result.Status = result.StatusCode
+	}
+	if len(result.Body) == 0 && len(result.Data) > 0 {
+		result.Body = result.Data
+	}
 }
 
 func (client *CliproxyAPIClient) setAuthHeader(req *http.Request) {

@@ -244,10 +244,10 @@ func GetUserTokenUsageSummary(query UserTokenUsageQuery, startIdx int, num int) 
 	}
 	total := int64(len(groups))
 	var summaries []*UserTokenUsageSummary
-	selectClause := "logs.user_id, logs.username, logs.token_id, logs.token_name, coalesce(max(cliproxy_auth_file_bindings.auth_index), '') as auth_index, coalesce(max(cliproxy_auth_file_bindings.auth_name), '') as auth_name, count(*) as request_count, coalesce(sum(logs.prompt_tokens), 0) as prompt_tokens, coalesce(sum(logs.completion_tokens), 0) as completion_tokens, coalesce(sum(logs.prompt_tokens), 0) + coalesce(sum(logs.completion_tokens), 0) as total_tokens, coalesce(sum(logs.quota), 0) as quota, coalesce(max(logs.created_at), 0) as last_called_at"
+	selectClause := "logs.user_id, MAX(logs.username) AS username, logs.token_id, logs.token_name, coalesce(max(cliproxy_auth_file_bindings.auth_index), '') as auth_index, coalesce(max(cliproxy_auth_file_bindings.auth_name), '') as auth_name, count(*) as request_count, coalesce(sum(logs.prompt_tokens), 0) as prompt_tokens, coalesce(sum(logs.completion_tokens), 0) as completion_tokens, coalesce(sum(logs.prompt_tokens), 0) + coalesce(sum(logs.completion_tokens), 0) as total_tokens, coalesce(sum(logs.quota), 0) as quota, coalesce(max(logs.created_at), 0) as last_called_at"
 	err := buildUserTokenUsageBaseQuery(query).
 		Select(selectClause).
-		Group("logs.user_id, logs.username, logs.token_id, logs.token_name").
+		Group("logs.user_id, logs.token_id, logs.token_name").
 		Order(resolveUserTokenUsageOrder(query)).
 		Limit(num).
 		Offset(startIdx).
@@ -270,10 +270,10 @@ func GetUserTokenUsageByDay(query UserTokenUsageQuery, startIdx int, num int) ([
 	}
 	total := int64(len(groups))
 	var summaries []*UserTokenDailyUsage
-	selectClause := fmt.Sprintf("%s as day, logs.user_id, logs.username, logs.token_id, logs.token_name, count(*) as request_count, coalesce(sum(logs.prompt_tokens), 0) as prompt_tokens, coalesce(sum(logs.completion_tokens), 0) as completion_tokens, coalesce(sum(logs.prompt_tokens), 0) + coalesce(sum(logs.completion_tokens), 0) as total_tokens, coalesce(sum(logs.quota), 0) as quota, coalesce(max(logs.created_at), 0) as last_called_at", dayExpr)
+	selectClause := fmt.Sprintf("%s as day, logs.user_id, MAX(logs.username) AS username, logs.token_id, logs.token_name, count(*) as request_count, coalesce(sum(logs.prompt_tokens), 0) as prompt_tokens, coalesce(sum(logs.completion_tokens), 0) as completion_tokens, coalesce(sum(logs.prompt_tokens), 0) + coalesce(sum(logs.completion_tokens), 0) as total_tokens, coalesce(sum(logs.quota), 0) as quota, coalesce(max(logs.created_at), 0) as last_called_at", dayExpr)
 	err := buildUserTokenUsageBaseQuery(query).
 		Select(selectClause).
-		Group(fmt.Sprintf("%s, logs.user_id, logs.username, logs.token_id, logs.token_name", dayExpr)).
+		Group(fmt.Sprintf("%s, logs.user_id, logs.token_id, logs.token_name", dayExpr)).
 		Order(resolveUserTokenDailyUsageOrder(query)).
 		Limit(num).
 		Offset(startIdx).

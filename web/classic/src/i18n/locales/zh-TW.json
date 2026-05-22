@@ -3710,7 +3710,11 @@
         "最近调用": "最近呼叫",
         "请求数": "請求數",
         "认证文件": "認證文件",
-        "日期": "日期"
+        "日期": "日期",
+        "Filter by username": "按使用者名稱篩選",
+        "Filter by token name": "按令牌名稱篩選",
+        "Group by day": "按天分組",
+        "Token Consumption": "Token 消耗"
     },
     "Load user consumption failed": "載入使用者消耗失敗",
     "Consumption Filters": "使用者消耗篩選",
