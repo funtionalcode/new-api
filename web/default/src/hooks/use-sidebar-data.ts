@@ -33,6 +33,7 @@ import {
   CreditCard,
   ListTodo,
   Settings,
+  BarChart3,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { WORKSPACE_IDS } from '@/components/layout/lib/workspace-registry'
@@ -80,6 +81,11 @@ export function useSidebarData(): SidebarData {
             title: t('Dashboard'),
             url: '/dashboard/models',
             icon: LayoutDashboard,
+          },
+          {
+            title: t('Token Consumption'),
+            url: '/dashboard/tokens',
+            icon: BarChart3,
           },
           {
             title: t('API Keys'),
