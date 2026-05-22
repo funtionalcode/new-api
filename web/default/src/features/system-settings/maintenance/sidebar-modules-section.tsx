@@ -136,6 +136,14 @@ export function SidebarModulesSection({
         title: t('Users'),
         description: t('Administer user accounts and roles.'),
       },
+      authFiles: {
+        title: t('Auth Files'),
+        description: t('Manage Cliproxy auth files and user bindings.'),
+      },
+      userConsumption: {
+        title: t('User Consumption'),
+        description: t('Analyze token-level user consumption.'),
+      },
       setting: {
         title: t('System settings'),
         description: t('Advanced platform configuration.'),
