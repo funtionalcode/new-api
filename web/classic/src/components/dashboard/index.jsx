@@ -60,6 +60,7 @@ const Dashboard = () => {
   // ========== 主要数据管理 ==========
   const dashboardData = useDashboardData(userState, userDispatch, statusState);
   const [usageViewMode, setUsageViewMode] = useState('quota');
+  const [userData, setUserData] = useState([]);
 
   // ========== 图表管理 ==========
   const dashboardCharts = useDashboardCharts(
@@ -72,6 +73,7 @@ const Dashboard = () => {
     dashboardData.setLineData,
     dashboardData.setModelColors,
     dashboardData.t,
+    usageViewMode,
   );
 
   // ========== 统计数据 ==========
@@ -89,9 +91,10 @@ const Dashboard = () => {
 
   // ========== 数据处理 ==========
   const loadUserData = async () => {
-    const userData = await dashboardData.loadUserQuotaData();
-    if (userData && userData.length > 0) {
-      dashboardCharts.updateUserChartData(userData);
+    const data = await dashboardData.loadUserQuotaData();
+    if (data && data.length > 0) {
+      setUserData(data);
+      dashboardCharts.updateUserChartData(data);
     }
   };
 
@@ -117,6 +120,16 @@ const Dashboard = () => {
     await dashboardData.handleSearchConfirm(dashboardCharts.updateChartData);
     await loadUserData();
   };
+
+  // ========== usageViewMode 变化时重新处理图表数据 ==========
+  useEffect(() => {
+    if (dashboardData.quotaData && dashboardData.quotaData.length > 0) {
+      dashboardCharts.updateChartData(dashboardData.quotaData);
+    }
+    if (userData && userData.length > 0) {
+      dashboardCharts.updateUserChartData(userData);
+    }
+  }, [usageViewMode]);
 
   // ========== 数据准备 ==========
   const apiInfoData = statusState?.status?.api_info || [];

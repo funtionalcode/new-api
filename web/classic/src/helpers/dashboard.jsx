@@ -85,6 +85,7 @@ export const updateChartSpec = (
   subtitle,
   newColors,
   dataId,
+  tooltip,
 ) => {
   setterFunc((prev) => ({
     ...prev,
@@ -96,6 +97,7 @@ export const updateChartSpec = (
     color: {
       specified: newColors,
     },
+    ...(tooltip ? { tooltip } : {}),
   }));
 };
 
@@ -348,12 +350,14 @@ export const aggregateDataByTimeAndModel = (data, dataExportDefaultTime) => {
         time: timeKey,
         model: modelKey,
         quota: 0,
+        tokens: 0,
         count: 0,
       });
     }
 
     const existing = aggregatedData.get(key);
     existing.quota += item.quota;
+    existing.tokens += item.token_used || 0;
     existing.count += item.count;
   });
 

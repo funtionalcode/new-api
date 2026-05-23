@@ -52,6 +52,7 @@ export const useDashboardCharts = (
   setLineData,
   setModelColors,
   t,
+  usageViewMode,
 ) => {
   // ========== 图表规格状态 ==========
   const [spec_pie, setSpecPie] = useState({
@@ -505,19 +506,24 @@ export const useDashboardCharts = (
         dataExportDefaultTime,
       );
 
+      const isTokensMode = usageViewMode === 'tokens';
+
       let newLineData = [];
 
       chartTimePoints.forEach((time) => {
         let timeData = Array.from(uniqueModels).map((model) => {
           const key = `${time}-${model}`;
           const aggregated = aggregatedData.get(key);
+          const rawValue = isTokensMode
+            ? (aggregated?.tokens || 0)
+            : (aggregated?.quota || 0);
           return {
             Time: time,
             Model: model,
-            rawQuota: aggregated?.quota || 0,
-            Usage: aggregated?.quota
-              ? getQuotaWithUnit(aggregated.quota, 4)
-              : 0,
+            rawQuota: rawValue,
+            Usage: isTokensMode
+              ? renderNumber(aggregated?.tokens || 0)
+              : (aggregated?.quota ? getQuotaWithUnit(aggregated.quota, 4) : 0),
           };
         });
 
@@ -537,12 +543,97 @@ export const useDashboardCharts = (
         'id0',
       );
 
+      const lineTooltip = isTokensMode
+        ? {
+            mark: {
+              content: [
+                {
+                  key: (datum) => datum['Model'],
+                  value: (datum) => renderNumber(datum['rawQuota'] || 0),
+                },
+              ],
+            },
+            dimension: {
+              content: [
+                {
+                  key: (datum) => datum['Model'],
+                  value: (datum) => datum['rawQuota'] || 0,
+                },
+              ],
+              updateContent: (array) => {
+                array.sort((a, b) => b.value - a.value);
+                let sum = 0;
+                for (let i = 0; i < array.length; i++) {
+                  if (array[i].key == '其他') {
+                    continue;
+                  }
+                  let value = parseFloat(array[i].value);
+                  if (isNaN(value)) {
+                    value = 0;
+                  }
+                  if (array[i].datum && array[i].datum.TimeSum) {
+                    sum = array[i].datum.TimeSum;
+                  }
+                  array[i].value = renderNumber(value);
+                }
+                array.unshift({
+                  key: t('总计'),
+                  value: renderNumber(sum),
+                });
+                return array;
+              },
+            },
+          }
+        : {
+            mark: {
+              content: [
+                {
+                  key: (datum) => datum['Model'],
+                  value: (datum) => renderQuota(datum['rawQuota'] || 0, 4),
+                },
+              ],
+            },
+            dimension: {
+              content: [
+                {
+                  key: (datum) => datum['Model'],
+                  value: (datum) => datum['rawQuota'] || 0,
+                },
+              ],
+              updateContent: (array) => {
+                array.sort((a, b) => b.value - a.value);
+                let sum = 0;
+                for (let i = 0; i < array.length; i++) {
+                  if (array[i].key == '其他') {
+                    continue;
+                  }
+                  let value = parseFloat(array[i].value);
+                  if (isNaN(value)) {
+                    value = 0;
+                  }
+                  if (array[i].datum && array[i].datum.TimeSum) {
+                    sum = array[i].datum.TimeSum;
+                  }
+                  array[i].value = renderQuota(value, 4);
+                }
+                array.unshift({
+                  key: t('总计'),
+                  value: renderQuota(sum, 4),
+                });
+                return array;
+              },
+            },
+          };
+
       updateChartSpec(
         setSpecLine,
         newLineData,
-        `${t('总计')}：${renderQuota(totalQuota, 2)}`,
+        isTokensMode
+          ? `${t('总计')}：${renderNumber(totalTokens)}`
+          : `${t('总计')}：${renderQuota(totalQuota, 2)}`,
         newModelColors,
         'barData',
+        lineTooltip,
       );
 
       // ===== 模型调用次数折线图 =====
@@ -614,6 +705,7 @@ export const useDashboardCharts = (
       setTimes,
       setConsumeTokens,
       t,
+      usageViewMode,
     ],
   );
 
@@ -626,37 +718,114 @@ export const useDashboardCharts = (
         10,
       );
 
+      const isTokensMode = usageViewMode === 'tokens';
+
       const userRankValues = rankingData.map((item) => ({
         User: item.User,
-        rawQuota: item.Quota,
-        Quota: getQuotaWithUnit(item.Quota, 4),
+        rawQuota: isTokensMode ? (item.Tokens || 0) : item.Quota,
+        Quota: isTokensMode
+          ? renderNumber(item.Tokens || 0)
+          : getQuotaWithUnit(item.Quota, 4),
       })).sort((a, b) => b.rawQuota - a.rawQuota);
 
-      const totalUserQuota = rankingData.reduce((s, i) => s + i.Quota, 0);
+      const totalUserQuota = isTokensMode
+        ? rankingData.reduce((s, i) => s + (i.Tokens || 0), 0)
+        : rankingData.reduce((s, i) => s + i.Quota, 0);
+
+      const userRankTooltip = {
+        mark: {
+          content: [{
+            key: (datum) => datum['User'],
+            value: (datum) => isTokensMode
+              ? renderNumber(datum['rawQuota'] || 0)
+              : renderQuota(datum['rawQuota'] || 0, 4),
+          }],
+        },
+      };
 
       setSpecUserRank((prev) => ({
         ...prev,
         data: [{ id: 'userRankData', values: userRankValues }],
         title: {
           ...prev.title,
-          subtext: `${t('总计')}：${renderQuota(totalUserQuota, 2)}`,
+          subtext: isTokensMode
+            ? `${t('总计')}：${renderNumber(totalUserQuota)}`
+            : `${t('总计')}：${renderQuota(totalUserQuota, 2)}`,
         },
+        label: {
+          ...prev.label,
+          formatMethod: (value, datum) => isTokensMode
+            ? renderNumber(datum['rawQuota'] || 0)
+            : renderQuota(datum['rawQuota'] || 0, 2),
+        },
+        tooltip: userRankTooltip,
       }));
 
       const userTrendValues = userTrend.map((item) => ({
         Time: item.Time,
         User: item.User,
-        rawQuota: item.Quota,
-        Usage: item.Quota ? getQuotaWithUnit(item.Quota, 4) : 0,
+        rawQuota: isTokensMode ? (item.Tokens || 0) : item.Quota,
+        Usage: isTokensMode
+          ? renderNumber(item.Tokens || 0)
+          : (item.Quota ? getQuotaWithUnit(item.Quota, 4) : 0),
       }));
+
+      const userTrendTooltip = {
+        mark: {
+          content: [{
+            key: (datum) => datum['User'],
+            value: (datum) => isTokensMode
+              ? renderNumber(datum['rawQuota'] || 0)
+              : renderQuota(datum['rawQuota'] || 0, 4),
+          }],
+        },
+        dimension: {
+          content: [{
+            key: (datum) => datum['User'],
+            value: (datum) => datum['rawQuota'] || 0,
+          }],
+          updateContent: (array) => {
+            array.sort((a, b) => b.value - a.value);
+            let sum = 0;
+            for (let i = 0; i < array.length; i++) {
+              let value = parseFloat(array[i].value);
+              if (isNaN(value)) value = 0;
+              sum += value;
+              array[i].value = isTokensMode
+                ? renderNumber(value)
+                : renderQuota(value, 4);
+            }
+            array.unshift({
+              key: t('总计'),
+              value: isTokensMode
+                ? renderNumber(sum)
+                : renderQuota(sum, 4),
+            });
+            return array;
+          },
+        },
+      };
+
+      const userTrendAxes = [{
+        orient: 'left',
+        label: {
+          formatMethod: (value) => isTokensMode
+            ? renderNumber(value)
+            : renderQuota(value, 2),
+        },
+      }];
 
       setSpecUserTrend((prev) => ({
         ...prev,
         data: [{ id: 'userTrendData', values: userTrendValues }],
         title: {
           ...prev.title,
-          subtext: `${t('总计')}：${renderQuota(totalUserQuota, 2)}`,
+          subtext: isTokensMode
+            ? `${t('总计')}：${renderNumber(totalUserQuota)}`
+            : `${t('总计')}：${renderQuota(totalUserQuota, 2)}`,
         },
+        axes: userTrendAxes,
+        tooltip: userTrendTooltip,
       }));
 
       const tokenTrendValues = userTrend.map((item) => ({
@@ -675,7 +844,7 @@ export const useDashboardCharts = (
         },
       }));
     },
-    [dataExportDefaultTime, t],
+    [dataExportDefaultTime, t, usageViewMode],
   );
 
   // ========== 初始化图表主题 ==========
