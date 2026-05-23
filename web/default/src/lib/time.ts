@@ -24,7 +24,7 @@ import dayjs from '@/lib/dayjs'
 /**
  * Time granularity type
  */
-export type TimeGranularity = 'hour' | 'day' | 'week'
+export type TimeGranularity = 'hour' | 'day' | 'week' | 'month'
 
 /**
  * Convert Date object to Unix timestamp (seconds)
@@ -164,16 +164,21 @@ export function formatChartTime(
   granularity: TimeGranularity = 'day'
 ): string {
   const d = dayjs(timestamp * 1000)
-  let result = d.format('MM-DD')
 
   if (granularity === 'hour') {
-    result += ` ${d.format('HH')}:00`
+    return d.format('MM-DD HH') + ':00'
   } else if (granularity === 'week') {
-    const weekEnd = d.add(6, 'day')
-    result += ` - ${weekEnd.format('MM-DD')}`
+    // 对齐到本周一（ISO 8601 周起始日）
+    const dayOfWeek = d.day() // 0=周日, 1=周一, ..., 6=周六
+    const diffToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+    const monday = d.subtract(diffToMonday, 'day')
+    const sunday = monday.add(6, 'day')
+    return `${monday.format('MM-DD')} - ${sunday.format('MM-DD')}`
+  } else if (granularity === 'month') {
+    return d.format('YYYY-MM')
   }
 
-  return result
+  return d.format('MM-DD')
 }
 
 /**

@@ -241,21 +241,26 @@ export function timestamp2string1(
   if (dataExportDefaultTime === 'hour') {
     str += ' ' + hour + ':00';
   } else if (dataExportDefaultTime === 'week') {
-    let nextWeek = new Date(timestamp * 1000 + 6 * 24 * 60 * 60 * 1000);
-    let nextWeekYear = nextWeek.getFullYear();
-    let nextMonth = (nextWeek.getMonth() + 1).toString();
-    let nextDay = nextWeek.getDate().toString();
-    if (nextMonth.length === 1) {
-      nextMonth = '0' + nextMonth;
-    }
-    if (nextDay.length === 1) {
-      nextDay = '0' + nextDay;
-    }
-    // 周视图结束日期也仅在跨年时显示年份
-    let nextStr = showYear
-      ? nextWeekYear + '-' + nextMonth + '-' + nextDay
-      : nextMonth + '-' + nextDay;
-    str += ' - ' + nextStr;
+    // 对齐到本周一（ISO 8601 周起始日）
+    const dayOfWeek = date.getDay(); // 0=周日, 1=周一, ..., 6=周六
+    const diffToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    const monday = new Date(date);
+    monday.setDate(date.getDate() - diffToMonday);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+
+    const mMonth = (monday.getMonth() + 1).toString().padStart(2, '0');
+    const mDay = monday.getDate().toString().padStart(2, '0');
+    const sMonth = (sunday.getMonth() + 1).toString().padStart(2, '0');
+    const sDay = sunday.getDate().toString().padStart(2, '0');
+
+    let startStr = showYear
+      ? monday.getFullYear() + '-' + mMonth + '-' + mDay
+      : mMonth + '-' + mDay;
+    let endStr = showYear
+      ? sunday.getFullYear() + '-' + sMonth + '-' + sDay
+      : sMonth + '-' + sDay;
+    str = startStr + ' - ' + endStr;
   } else if (dataExportDefaultTime === 'month') {
     str = year + '-' + month;
   }
