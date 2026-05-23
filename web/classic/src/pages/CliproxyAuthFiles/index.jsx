@@ -110,6 +110,7 @@ export default function CliproxyAuthFiles() {
   const [loading, setLoading] = useState(false);
   const [remoteLoading, setRemoteLoading] = useState(false);
   const [bindingLoading, setBindingLoading] = useState(false);
+  const [refreshingAll, setRefreshingAll] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [bindingForm, setBindingForm] = useState(emptyBindingForm);
@@ -340,6 +341,40 @@ export default function CliproxyAuthFiles() {
     }
   };
 
+  const refreshAllUsage = async () => {
+    if (bindings.length === 0) {
+      showError(t('没有需要刷新的绑定'));
+      return;
+    }
+    setRefreshingAll(true);
+    let successCount = 0;
+    let failCount = 0;
+    try {
+      const results = await Promise.allSettled(
+        bindings.map((binding) =>
+          API.post(`/api/cliproxy/auth-files/bindings/${binding.id}/refresh-usage`),
+        ),
+      );
+      results.forEach((result) => {
+        if (result.status === 'fulfilled' && result.value?.data?.success) {
+          successCount++;
+        } else {
+          failCount++;
+        }
+      });
+      if (failCount === 0) {
+        showSuccess(t('全部刷新成功，共 {{count}} 条', { count: successCount }));
+      } else {
+        showError(t('刷新完成：成功 {{success}} 条，失败 {{fail}} 条', { success: successCount, fail: failCount }));
+      }
+      await loadBindings();
+    } catch (error) {
+      showError(error);
+    } finally {
+      setRefreshingAll(false);
+    }
+  };
+
   useEffect(() => {
     loadBindings();
     if (rootUser) {
@@ -519,11 +554,18 @@ export default function CliproxyAuthFiles() {
         <Card
           title={t('认证文件绑定')}
           headerExtraContent={
-            adminUser ? (
-              <Button type='primary' onClick={() => openCreateModal()}>
-                {t('新增绑定')}
-              </Button>
-            ) : null
+            <div className='flex gap-2'>
+              {adminUser && (
+                <Button loading={refreshingAll} onClick={refreshAllUsage}>
+                  {t('刷新全部额度')}
+                </Button>
+              )}
+              {adminUser && (
+                <Button type='primary' onClick={() => openCreateModal()}>
+                  {t('新增绑定')}
+                </Button>
+              )}
+            </div>
           }
         >
           <Table
