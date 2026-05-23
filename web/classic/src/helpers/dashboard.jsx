@@ -267,7 +267,7 @@ export const processRawData = (
 
   data.forEach((item) => {
     result.uniqueModels.add(item.model_name);
-    result.totalTokens += item.token_used;
+    result.totalTokens += item.token_used || 0;
     result.totalQuota += item.quota;
     result.totalTimes += item.count;
 
@@ -373,18 +373,38 @@ export const generateChartTimePoints = (
     new Set([...aggregatedData.values()].map((d) => d.time)),
   );
 
-  if (chartTimePoints.length < DEFAULTS.MAX_TREND_POINTS) {
+  if (chartTimePoints.length < DEFAULTS.MAX_TREND_POINTS && data.length > 0) {
     const lastTime = Math.max(...data.map((item) => item.created_at));
-    const interval = getTimeInterval(dataExportDefaultTime, true);
+    const lastDate = new Date(lastTime * 1000);
 
-    // 生成时间点数组，用于检查是否跨年
-    const generatedTimestamps = Array.from(
+    const generatedDates = Array.from(
       { length: DEFAULTS.MAX_TREND_POINTS },
-      (_, i) => lastTime - (6 - i) * interval,
-    );
-    const showYear = isDataCrossYear(generatedTimestamps);
+      (_, i) => {
+        const offset = DEFAULTS.MAX_TREND_POINTS - 1 - i;
+        const date = new Date(lastDate);
 
-    chartTimePoints = generatedTimestamps.map((ts) =>
+        if (dataExportDefaultTime === 'hour') {
+          date.setHours(date.getHours() - offset, 0, 0, 0);
+        } else if (dataExportDefaultTime === 'week') {
+          const dayOfWeek = date.getDay();
+          const diffToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+          date.setDate(date.getDate() - diffToMonday - offset * 7);
+          date.setHours(0, 0, 0, 0);
+        } else if (dataExportDefaultTime === 'month') {
+          date.setDate(1);
+          date.setMonth(date.getMonth() - offset);
+          date.setHours(0, 0, 0, 0);
+        } else {
+          date.setDate(date.getDate() - offset);
+          date.setHours(0, 0, 0, 0);
+        }
+
+        return Math.floor(date.getTime() / 1000);
+      },
+    );
+    const showYear = isDataCrossYear(generatedDates);
+
+    chartTimePoints = generatedDates.map((ts) =>
       timestamp2string1(ts, dataExportDefaultTime, showYear),
     );
   }

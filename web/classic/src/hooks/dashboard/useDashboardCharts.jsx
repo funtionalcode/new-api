@@ -452,10 +452,10 @@ export const useDashboardCharts = (
   }, []);
 
   const updateChartData = useCallback(
-    (data) => {
+    (data, timeGranularity = dataExportDefaultTime) => {
       const processedData = processRawData(
         data,
-        dataExportDefaultTime,
+        timeGranularity,
         initializeMaps,
         updateMapValue,
       );
@@ -476,7 +476,7 @@ export const useDashboardCharts = (
         timeQuotaMap,
         timeTokensMap,
         timeCountMap,
-        dataExportDefaultTime,
+        timeGranularity,
       );
       setTrendData(trendDataResult);
 
@@ -485,7 +485,7 @@ export const useDashboardCharts = (
 
       const aggregatedData = aggregateDataByTimeAndModel(
         data,
-        dataExportDefaultTime,
+        timeGranularity,
       );
 
       const modelTotals = new Map();
@@ -503,7 +503,7 @@ export const useDashboardCharts = (
       const chartTimePoints = generateChartTimePoints(
         aggregatedData,
         data,
-        dataExportDefaultTime,
+        timeGranularity,
       );
 
       const isTokensMode = usageViewMode === 'tokens';
@@ -515,15 +515,13 @@ export const useDashboardCharts = (
           const key = `${time}-${model}`;
           const aggregated = aggregatedData.get(key);
           const rawValue = isTokensMode
-            ? (aggregated?.tokens || 0)
-            : (aggregated?.quota || 0);
+            ? Number(aggregated?.tokens || 0)
+            : Number(aggregated?.quota || 0);
           return {
             Time: time,
             Model: model,
             rawQuota: rawValue,
-            Usage: isTokensMode
-              ? renderNumber(aggregated?.tokens || 0)
-              : (aggregated?.quota ? getQuotaWithUnit(aggregated.quota, 4) : 0),
+            Usage: rawValue,
           };
         });
 
@@ -711,10 +709,10 @@ export const useDashboardCharts = (
 
   // ========== 用户维度图表数据处理 ==========
   const updateUserChartData = useCallback(
-    (data) => {
+    (data, timeGranularity = dataExportDefaultTime) => {
       const { rankingData, trendData: userTrend } = processUserData(
         data,
-        dataExportDefaultTime,
+        timeGranularity,
         10,
       );
 
@@ -761,14 +759,18 @@ export const useDashboardCharts = (
         tooltip: userRankTooltip,
       }));
 
-      const userTrendValues = userTrend.map((item) => ({
-        Time: item.Time,
-        User: item.User,
-        rawQuota: isTokensMode ? (item.Tokens || 0) : item.Quota,
-        Usage: isTokensMode
-          ? renderNumber(item.Tokens || 0)
-          : (item.Quota ? getQuotaWithUnit(item.Quota, 4) : 0),
-      }));
+      const userTrendValues = userTrend.map((item) => {
+        const rawValue = isTokensMode
+          ? Number(item.Tokens || 0)
+          : Number(item.Quota || 0);
+
+        return {
+          Time: item.Time,
+          User: item.User,
+          rawQuota: rawValue,
+          Usage: rawValue,
+        };
+      });
 
       const userTrendTooltip = {
         mark: {

@@ -90,11 +90,11 @@ const Dashboard = () => {
   );
 
   // ========== 数据处理 ==========
-  const loadUserData = async () => {
+  const loadUserData = async (timeGranularity) => {
     const data = await dashboardData.loadUserQuotaData();
     if (data && data.length > 0) {
       setUserData(data);
-      dashboardCharts.updateUserChartData(data);
+      dashboardCharts.updateUserChartData(data, timeGranularity);
     }
   };
 
@@ -126,9 +126,9 @@ const Dashboard = () => {
     dashboardData.handleInputChange(value, 'data_export_default_time');
     const data = await dashboardData.loadQuotaData();
     if (data && data.length > 0) {
-      dashboardCharts.updateChartData(data);
+      dashboardCharts.updateChartData(data, value);
     }
-    await loadUserData();
+    await loadUserData(value);
   };
 
   // ========== usageViewMode 变化时重新处理图表数据 ==========
