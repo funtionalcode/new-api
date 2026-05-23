@@ -121,6 +121,16 @@ const Dashboard = () => {
     await loadUserData();
   };
 
+  // ========== 时间粒度变化处理 ==========
+  const handleTimeGranularityChange = async (value) => {
+    dashboardData.handleInputChange(value, 'data_export_default_time');
+    const data = await dashboardData.loadQuotaData();
+    if (data && data.length > 0) {
+      dashboardCharts.updateChartData(data);
+    }
+    await loadUserData();
+  };
+
   // ========== usageViewMode 变化时重新处理图表数据 ==========
   useEffect(() => {
     if (dashboardData.quotaData && dashboardData.quotaData.length > 0) {
@@ -217,6 +227,9 @@ const Dashboard = () => {
             FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}
             hasApiInfoPanel={dashboardData.hasApiInfoPanel}
             t={dashboardData.t}
+            dataExportDefaultTime={dashboardData.dataExportDefaultTime}
+            timeOptions={dashboardData.timeOptions}
+            onTimeGranularityChange={handleTimeGranularityChange}
           />
 
           {dashboardData.hasApiInfoPanel && (

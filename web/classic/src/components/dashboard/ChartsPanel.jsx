@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Card, Tabs, TabPane } from '@douyinfe/semi-ui';
+import { Card, Tabs, TabPane, Select } from '@douyinfe/semi-ui';
 import { PieChart } from 'lucide-react';
 import { VChart } from '@visactor/react-vchart';
 
@@ -37,6 +37,9 @@ const ChartsPanel = ({
   FLEX_CENTER_GAP2,
   hasApiInfoPanel,
   t,
+  dataExportDefaultTime,
+  timeOptions,
+  onTimeGranularityChange,
 }) => {
   return (
     <Card
@@ -47,6 +50,13 @@ const ChartsPanel = ({
           <div className={FLEX_CENTER_GAP2}>
             <PieChart size={16} />
             {t('模型数据分析')}
+            <Select
+              value={dataExportDefaultTime}
+              onChange={(value) => onTimeGranularityChange(value)}
+              optionList={timeOptions}
+              size='small'
+              style={{ width: 80 }}
+            />
           </div>
           <Tabs
             type='slash'
