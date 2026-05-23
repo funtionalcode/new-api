@@ -19,8 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Card, Form, Modal, Progress, Table, Tag, Typography } from '@douyinfe/semi-ui';
-import { API, isRoot, showError, showSuccess } from '../../helpers';
+import { Button, Card, Form, Modal, Progress, Table, Tag, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { API, isAdmin, isRoot, showError, showSuccess } from '../../helpers';
 
 const { Text } = Typography;
 
@@ -45,15 +45,17 @@ const renderUsageLimit = (percent, resetAt) => {
   const normalizedPercent = normalizeUsagePercent(percent);
 
   return (
-    <div style={{ minWidth: 120 }}>
-      <Progress
-        percent={normalizedPercent}
-        stroke={getUsageColor(normalizedPercent)}
-        format={() => `${normalizedPercent}%`}
-        style={{ marginBottom: 2 }}
-      />
-      <Text type='tertiary'>{formatTime(resetAt)}</Text>
-    </div>
+    <Tooltip content={`${normalizedPercent}%/100%`}>
+      <div style={{ minWidth: 120 }}>
+        <Progress
+          percent={normalizedPercent}
+          stroke={getUsageColor(normalizedPercent)}
+          format={() => `${normalizedPercent}%`}
+          style={{ marginBottom: 2 }}
+        />
+        <Text type='tertiary'>{formatTime(resetAt)}</Text>
+      </div>
+    </Tooltip>
   );
 };
 
@@ -112,6 +114,7 @@ export default function CliproxyAuthFiles() {
   const [modalVisible, setModalVisible] = useState(false);
   const [bindingForm, setBindingForm] = useState(emptyBindingForm);
   const rootUser = isRoot();
+  const adminUser = isAdmin();
 
   const remoteFileOptions = useMemo(
     () =>
@@ -338,9 +341,9 @@ export default function CliproxyAuthFiles() {
   };
 
   useEffect(() => {
+    loadBindings();
     if (rootUser) {
       loadOptions();
-      loadBindings();
     }
   }, [rootUser]);
 
@@ -362,7 +365,7 @@ export default function CliproxyAuthFiles() {
         </Tag>
       ),
     },
-    ...(rootUser
+    ...(adminUser
       ? [
           {
             title: t('操作'),
@@ -441,12 +444,16 @@ export default function CliproxyAuthFiles() {
           <Button size='small' onClick={() => refreshUsage(record)}>
             {t('刷新额度')}
           </Button>
-          <Button size='small' onClick={() => openEditModal(record)}>
-            {t('编辑')}
-          </Button>
-          <Button size='small' type='danger' onClick={() => deleteBinding(record)}>
-            {t('删除')}
-          </Button>
+          {adminUser && (
+            <Button size='small' onClick={() => openEditModal(record)}>
+              {t('编辑')}
+            </Button>
+          )}
+          {adminUser && (
+            <Button size='small' type='danger' onClick={() => deleteBinding(record)}>
+              {t('删除')}
+            </Button>
+          )}
         </div>
       ),
     },
@@ -490,41 +497,43 @@ export default function CliproxyAuthFiles() {
           </Card>
         )}
 
-        <Card
-          title={t('远端认证文件')}
-          headerExtraContent={
-            <Button loading={remoteLoading} onClick={loadRemoteFiles}>
-              {t('拉取远端列表')}
-            </Button>
-          }
-        >
-          <Table
-            columns={remoteColumns}
-            dataSource={remoteFiles}
-            loading={remoteLoading}
-            pagination={false}
-            rowKey={(record) => record.authIndex || record.auth_index}
-          />
-        </Card>
-
-        {rootUser && (
+        {adminUser && (
           <Card
-            title={t('认证文件绑定')}
+            title={t('远端认证文件')}
             headerExtraContent={
-              <Button type='primary' onClick={() => openCreateModal()}>
-                {t('新增绑定')}
+              <Button loading={remoteLoading} onClick={loadRemoteFiles}>
+                {t('拉取远端列表')}
               </Button>
             }
           >
             <Table
-              columns={bindingColumns}
-              dataSource={bindings}
-              loading={bindingLoading}
+              columns={remoteColumns}
+              dataSource={remoteFiles}
+              loading={remoteLoading}
               pagination={false}
-              rowKey='id'
+              rowKey={(record) => record.authIndex || record.auth_index}
             />
           </Card>
         )}
+
+        <Card
+          title={t('认证文件绑定')}
+          headerExtraContent={
+            adminUser ? (
+              <Button type='primary' onClick={() => openCreateModal()}>
+                {t('新增绑定')}
+              </Button>
+            ) : null
+          }
+        >
+          <Table
+            columns={bindingColumns}
+            dataSource={bindings}
+            loading={bindingLoading}
+            pagination={false}
+            rowKey='id'
+          />
+        </Card>
       </div>
 
       <Modal

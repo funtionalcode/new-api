@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Card, Input, Table, Tag, Typography } from '@douyinfe/semi-ui';
+import { Button, Card, Form, Input, Table, Typography } from '@douyinfe/semi-ui';
 import { API, isAdmin, showError } from '../../helpers';
 
 const { Text } = Typography;
@@ -58,10 +58,34 @@ export default function UserConsumption() {
     formatDatetimeInput(getDefaultEndTimestamp()),
   );
   const [username, setUsername] = useState('');
+  const [userOptions, setUserOptions] = useState([]);
   const [tokenName, setTokenName] = useState('');
+  const [channelId, setChannelId] = useState('');
+  const [modelName, setModelName] = useState('');
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const isAdminUser = isAdmin();
+
+  const searchUsers = async (keyword) => {
+    if (!keyword) return;
+    try {
+      const res = await API.get('/api/user/search', {
+        params: { keyword, group: '', p: 1, page_size: 20 },
+      });
+      if (res.data.success) {
+        setUserOptions(
+          (res.data.data?.items || []).map((user) => ({
+            label: `${user.username || '-'} (ID: ${user.id})`,
+            value: user.username || '',
+          })),
+        );
+      } else {
+        showError(res.data.message || t('搜索用户失败'));
+      }
+    } catch (error) {
+      showError(error);
+    }
+  };
 
   const loadConsumption = async () => {
     setLoading(true);
@@ -74,6 +98,8 @@ export default function UserConsumption() {
           end_timestamp: parseTimestampFromInput(endInput),
           username: isAdminUser ? username.trim() || undefined : undefined,
           token_name: tokenName.trim() || undefined,
+          channel_id: channelId.trim() || undefined,
+          model_name: modelName.trim() || undefined,
         },
       });
       if (res.data.success) {
@@ -121,13 +147,26 @@ export default function UserConsumption() {
       ),
     },
     {
-      title: t('Token'),
+      title: t('Auth File / Key'),
       render: (_, record) => (
         <div>
-          <div>{record.token_name || '-'}</div>
+          <div>{record.auth_name || record.auth_index || record.token_name || '-'}</div>
           <Text type='tertiary'>ID: {record.token_id}</Text>
         </div>
       ),
+    },
+    {
+      title: t('渠道'),
+      render: (_, record) => (
+        <div>
+          <div>{record.channel_name || '-'}</div>
+          <Text type='tertiary'>ID: {record.channel_id || '-'}</Text>
+        </div>
+      ),
+    },
+    {
+      title: t('模型'),
+      render: (_, record) => record.model_name || '-',
     },
     {
       title: t('提示 Tokens'),
@@ -159,9 +198,13 @@ export default function UserConsumption() {
             />
             <Input type='datetime-local' value={endInput} onChange={setEndInput} />
             {isAdminUser && (
-              <Input
+              <Form.Select
                 value={username}
-                placeholder={t('Filter by username')}
+                placeholder={t('搜索并选择用户')}
+                filter
+                remote
+                optionList={userOptions}
+                onSearch={searchUsers}
                 onChange={setUsername}
               />
             )}
@@ -169,6 +212,16 @@ export default function UserConsumption() {
               value={tokenName}
               placeholder={t('Filter by token name')}
               onChange={setTokenName}
+            />
+            <Input
+              value={channelId}
+              placeholder={t('Filter by channel ID')}
+              onChange={setChannelId}
+            />
+            <Input
+              value={modelName}
+              placeholder={t('Filter by model name')}
+              onChange={setModelName}
             />
             <Button type='primary' loading={loading} onClick={loadConsumption}>
               {t('查询')}
@@ -190,7 +243,9 @@ export default function UserConsumption() {
             dataSource={rows}
             loading={loading}
             pagination={false}
-            rowKey={(record) => `${record.user_id}-${record.token_id}`}
+            rowKey={(record) =>
+              `${record.user_id}-${record.token_id}-${record.channel_id}-${record.model_name}`
+            }
           />
         </Card>
       </div>

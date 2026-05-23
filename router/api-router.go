@@ -305,21 +305,21 @@ func SetApiRouter(router *gin.Engine) {
 
 		dataRoute := apiRouter.Group("/data")
 		dataRoute.GET("/", middleware.AdminAuth(), controller.GetAllQuotaDates)
-		dataRoute.GET("/users", middleware.AdminAuth(), controller.GetQuotaDatesByUser)
+		dataRoute.GET("/users", middleware.UserAuth(), controller.GetQuotaDatesByUser)
 		dataRoute.GET("/self", middleware.UserAuth(), controller.GetUserQuotaDates)
 
 		cliproxyRoute := apiRouter.Group("/cliproxy")
 		{
 			cliproxyRoute.GET("/user-consumption", middleware.UserAuth(), controller.GetCliproxyUserConsumption)
+			cliproxyRoute.GET("/auth-files/bindings", middleware.UserAuth(), controller.GetCliproxyAuthFileBindings)
+			cliproxyRoute.POST("/auth-files/bindings/:id/refresh-usage", middleware.UserAuth(), controller.RefreshCliproxyAuthFileBindingUsage)
 			cliproxyAdminRoute := cliproxyRoute.Group("")
 			cliproxyAdminRoute.Use(middleware.AdminAuth())
 			{
 				cliproxyAdminRoute.GET("/auth-files/remote", controller.GetCliproxyRemoteAuthFiles)
-				cliproxyAdminRoute.GET("/auth-files/bindings", controller.GetCliproxyAuthFileBindings)
 				cliproxyAdminRoute.POST("/auth-files/bindings", controller.CreateCliproxyAuthFileBinding)
 				cliproxyAdminRoute.PUT("/auth-files/bindings/:id", controller.UpdateCliproxyAuthFileBinding)
 				cliproxyAdminRoute.DELETE("/auth-files/bindings/:id", controller.DeleteCliproxyAuthFileBinding)
-				cliproxyAdminRoute.POST("/auth-files/bindings/:id/refresh-usage", controller.RefreshCliproxyAuthFileBindingUsage)
 			}
 		}
 

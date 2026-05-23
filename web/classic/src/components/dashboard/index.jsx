@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useContext, useEffect } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { getRelativeTime } from '../../helpers';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
@@ -59,6 +59,7 @@ const Dashboard = () => {
 
   // ========== 主要数据管理 ==========
   const dashboardData = useDashboardData(userState, userDispatch, statusState);
+  const [usageViewMode, setUsageViewMode] = useState('quota');
 
   // ========== 图表管理 ==========
   const dashboardCharts = useDashboardCharts(
@@ -83,15 +84,14 @@ const Dashboard = () => {
     dashboardData.performanceMetrics,
     dashboardData.navigate,
     dashboardData.t,
+    usageViewMode,
   );
 
   // ========== 数据处理 ==========
   const loadUserData = async () => {
-    if (dashboardData.isAdminUser) {
-      const userData = await dashboardData.loadUserQuotaData();
-      if (userData && userData.length > 0) {
-        dashboardCharts.updateUserChartData(userData);
-      }
+    const userData = await dashboardData.loadUserQuotaData();
+    if (userData && userData.length > 0) {
+      dashboardCharts.updateUserChartData(userData);
     }
   };
 
@@ -177,6 +177,8 @@ const Dashboard = () => {
       <StatsCards
         groupedStatsData={groupedStatsData}
         loading={dashboardData.loading}
+        usageViewMode={usageViewMode}
+        setUsageViewMode={setUsageViewMode}
         getTrendSpec={getTrendSpec}
         CARD_PROPS={CARD_PROPS}
         CHART_CONFIG={CHART_CONFIG}
@@ -197,7 +199,6 @@ const Dashboard = () => {
             spec_user_rank={dashboardCharts.spec_user_rank}
             spec_user_trend={dashboardCharts.spec_user_trend}
             spec_token_consumption={dashboardCharts.spec_token_consumption}
-            isAdminUser={dashboardData.isAdminUser}
             CARD_PROPS={CARD_PROPS}
             CHART_CONFIG={CHART_CONFIG}
             FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}

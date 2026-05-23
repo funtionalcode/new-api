@@ -30,7 +30,13 @@ func GetAllQuotaDates(c *gin.Context) {
 func GetQuotaDatesByUser(c *gin.Context) {
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
-	dates, err := model.GetQuotaDataGroupByUser(startTimestamp, endTimestamp)
+	var dates []*model.QuotaData
+	var err error
+	if c.GetInt("role") < common.RoleAdminUser {
+		dates, err = model.GetQuotaDataGroupByUserId(c.GetInt("id"), startTimestamp, endTimestamp)
+	} else {
+		dates, err = model.GetQuotaDataGroupByUser(startTimestamp, endTimestamp)
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return

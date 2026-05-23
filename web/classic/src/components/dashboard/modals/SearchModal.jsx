@@ -17,8 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useRef } from 'react';
+import React, { useState } from 'react';
 import { Modal, Form } from '@douyinfe/semi-ui';
+import { API, showError } from '../../../helpers';
 
 const SearchModal = ({
   searchModalVisible,
@@ -32,7 +33,7 @@ const SearchModal = ({
   handleInputChange,
   t,
 }) => {
-  const formRef = useRef();
+  const [userOptions, setUserOptions] = useState([]);
 
   const FORM_FIELD_PROPS = {
     className: 'w-full mb-2 !rounded-lg',
@@ -41,6 +42,27 @@ const SearchModal = ({
   const createFormField = (Component, props) => (
     <Component {...FORM_FIELD_PROPS} {...props} />
   );
+
+  const searchUsers = async (keyword) => {
+    if (!keyword) return;
+    try {
+      const res = await API.get('/api/user/search', {
+        params: { keyword, group: '', p: 1, page_size: 20 },
+      });
+      if (res.data.success) {
+        setUserOptions(
+          (res.data.data?.items || []).map((user) => ({
+            label: `${user.username || '-'} (ID: ${user.id})`,
+            value: user.username || '',
+          })),
+        );
+      } else {
+        showError(res.data.message || t('搜索用户失败'));
+      }
+    } catch (error) {
+      showError(error);
+    }
+  };
 
   const { start_timestamp, end_timestamp, username } = inputs;
 
@@ -54,7 +76,7 @@ const SearchModal = ({
       size={isMobile ? 'full-width' : 'small'}
       centered
     >
-      <Form ref={formRef} layout='vertical' className='w-full'>
+      <Form layout='vertical' className='w-full'>
         {createFormField(Form.DatePicker, {
           field: 'start_timestamp',
           label: t('起始时间'),
@@ -87,12 +109,16 @@ const SearchModal = ({
         })}
 
         {isAdminUser &&
-          createFormField(Form.Input, {
+          createFormField(Form.Select, {
             field: 'username',
             label: t('用户名称'),
             value: username,
-            placeholder: t('可选值'),
+            placeholder: t('搜索并选择用户'),
             name: 'username',
+            filter: true,
+            remote: true,
+            optionList: userOptions,
+            onSearch: searchUsers,
             onChange: (value) => handleInputChange(value, 'username'),
           })}
       </Form>

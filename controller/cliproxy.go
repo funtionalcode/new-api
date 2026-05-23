@@ -61,6 +61,10 @@ func GetCliproxyAuthFileBindings(c *gin.Context) {
 		AuthIndex: c.Query("auth_index"),
 		Enabled:   parseOptionalBool(c.Query("enabled")),
 	}
+	if c.GetInt("role") < common.RoleAdminUser {
+		query.UserId = c.GetInt("id")
+		query.Username = ""
+	}
 	bindings, total, err := model.GetCliproxyAuthFileBindings(query, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
@@ -137,6 +141,13 @@ func RefreshCliproxyAuthFileBindingUsage(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if c.GetInt("role") < common.RoleAdminUser && binding.UserId != c.GetInt("id") {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "无权刷新该认证文件绑定",
+		})
+		return
+	}
 	client, err := newCliproxyClientFromOptions()
 	if err != nil {
 		common.ApiError(c, err)
@@ -187,12 +198,15 @@ func GetCliproxyUserConsumption(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	channelId, _ := strconv.Atoi(c.Query("channel_id"))
 	query := model.UserTokenUsageQuery{
 		StartTimestamp: startTimestamp,
 		EndTimestamp:   endTimestamp,
 		Username:       c.Query("username"),
 		TokenName:      c.Query("token_name"),
 		AuthIndex:      c.Query("auth_index"),
+		ChannelId:      channelId,
+		ModelName:      c.Query("model_name"),
 		SortBy:         c.Query("sort_by"),
 		SortOrder:      c.Query("sort_order"),
 	}

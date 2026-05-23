@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Card, Avatar, Skeleton, Tag } from '@douyinfe/semi-ui';
+import { Card, Avatar, Skeleton, Tag, RadioGroup, Radio } from '@douyinfe/semi-ui';
 import { VChart } from '@visactor/react-vchart';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -26,6 +26,8 @@ import { useTranslation } from 'react-i18next';
 const StatsCards = ({
   groupedStatsData,
   loading,
+  usageViewMode,
+  setUsageViewMode,
   getTrendSpec,
   CARD_PROPS,
   CHART_CONFIG,
@@ -34,6 +36,17 @@ const StatsCards = ({
   const { t } = useTranslation();
   return (
     <div className='mb-4'>
+      <div className='flex justify-end mb-3'>
+        <RadioGroup
+          type='button'
+          buttonSize='small'
+          value={usageViewMode}
+          onChange={(event) => setUsageViewMode(event.target.value)}
+        >
+          <Radio value='quota'>{t('Consumption Amount')}</Radio>
+          <Radio value='tokens'>Tokens</Radio>
+        </RadioGroup>
+      </div>
       <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4'>
         {groupedStatsData.map((group, idx) => (
           <Card

@@ -32,7 +32,6 @@ const ChartsPanel = ({
   spec_user_rank,
   spec_user_trend,
   spec_token_consumption,
-  isAdminUser,
   CARD_PROPS,
   CHART_CONFIG,
   FLEX_CENTER_GAP2,
@@ -58,15 +57,9 @@ const ChartsPanel = ({
             <TabPane tab={<span>{t('调用趋势')}</span>} itemKey='2' />
             <TabPane tab={<span>{t('调用次数分布')}</span>} itemKey='3' />
             <TabPane tab={<span>{t('调用次数排行')}</span>} itemKey='4' />
-            {isAdminUser && (
-              <TabPane tab={<span>{t('用户消耗排行')}</span>} itemKey='5' />
-            )}
-            {isAdminUser && (
-              <TabPane tab={<span>{t('用户消耗趋势')}</span>} itemKey='6' />
-            )}
-            {isAdminUser && (
-              <TabPane tab={<span>{t('Token Consumption')}</span>} itemKey='7' />
-            )}
+            <TabPane tab={<span>{t('用户消耗排行')}</span>} itemKey='5' />
+            <TabPane tab={<span>{t('用户消耗趋势')}</span>} itemKey='6' />
+            <TabPane tab={<span>{t('Token Consumption')}</span>} itemKey='7' />
           </Tabs>
         </div>
       }
@@ -85,13 +78,13 @@ const ChartsPanel = ({
         {activeChartTab === '4' && (
           <VChart spec={spec_rank_bar} option={CHART_CONFIG} />
         )}
-        {activeChartTab === '5' && isAdminUser && (
+        {activeChartTab === '5' && (
           <VChart spec={spec_user_rank} option={CHART_CONFIG} />
         )}
-        {activeChartTab === '6' && isAdminUser && (
+        {activeChartTab === '6' && (
           <VChart spec={spec_user_trend} option={CHART_CONFIG} />
         )}
-        {activeChartTab === '7' && isAdminUser && (
+        {activeChartTab === '7' && (
           <VChart spec={spec_token_consumption} option={CHART_CONFIG} />
         )}
       </div>

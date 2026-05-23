@@ -214,7 +214,6 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   }, [activeUptimeTab]);
 
   const loadUserQuotaData = useCallback(async () => {
-    if (!isAdminUser) return [];
     try {
       const { start_timestamp, end_timestamp } = inputs;
       const localStartTimestamp = Date.parse(start_timestamp) / 1000;
@@ -232,7 +231,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
       console.error(err);
       return [];
     }
-  }, [inputs, isAdminUser]);
+  }, [inputs]);
 
   const getUserData = useCallback(async () => {
     let res = await API.get(`/api/user/self`);

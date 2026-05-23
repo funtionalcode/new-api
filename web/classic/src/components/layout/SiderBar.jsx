@@ -111,7 +111,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('认证文件'),
         itemKey: 'authFiles',
         to: '/cliproxy-auth-files',
-        className: isAdmin() ? '' : 'tableHiddle',
       },
       {
         text: t('用户消耗'),

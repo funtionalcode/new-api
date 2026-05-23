@@ -38,6 +38,7 @@ type CliproxyAuthFileBinding struct {
 }
 
 type CliproxyAuthFileBindingQuery struct {
+	UserId    int
 	Username  string
 	AuthIndex string
 	Enabled   *bool
@@ -76,6 +77,9 @@ type UserTokenUsageSummary struct {
 	TokenName        string `json:"token_name"`
 	AuthIndex        string `json:"auth_index"`
 	AuthName         string `json:"auth_name"`
+	ChannelId        int    `json:"channel_id"`
+	ChannelName      string `json:"channel_name"`
+	ModelName        string `json:"model_name"`
 	RequestCount     int64  `json:"request_count"`
 	PromptTokens     int64  `json:"prompt_tokens"`
 	CompletionTokens int64  `json:"completion_tokens"`
@@ -90,6 +94,9 @@ type UserTokenDailyUsage struct {
 	Username         string `json:"username"`
 	TokenId          int    `json:"token_id"`
 	TokenName        string `json:"token_name"`
+	ChannelId        int    `json:"channel_id"`
+	ChannelName      string `json:"channel_name"`
+	ModelName        string `json:"model_name"`
 	RequestCount     int64  `json:"request_count"`
 	PromptTokens     int64  `json:"prompt_tokens"`
 	CompletionTokens int64  `json:"completion_tokens"`
@@ -105,6 +112,8 @@ type UserTokenUsageQuery struct {
 	Username       string
 	TokenName      string
 	AuthIndex      string
+	ChannelId      int
+	ModelName      string
 	SortBy         string
 	SortOrder      string
 }
@@ -148,6 +157,9 @@ func GetCliproxyAuthFileBindings(query CliproxyAuthFileBindingQuery, startIdx in
 
 func buildCliproxyAuthFileBindingQuery(query CliproxyAuthFileBindingQuery) *gorm.DB {
 	dbQuery := DB.Model(&CliproxyAuthFileBinding{})
+	if query.UserId > 0 {
+		dbQuery = dbQuery.Where("user_id = ?", query.UserId)
+	}
 	if strings.TrimSpace(query.Username) != "" {
 		dbQuery = dbQuery.Where("username LIKE ?", "%"+strings.TrimSpace(query.Username)+"%")
 	}
@@ -233,21 +245,25 @@ func DeleteCliproxyAuthFileBindingById(id int) error {
 }
 
 func GetUserTokenUsageSummary(query UserTokenUsageQuery, startIdx int, num int) ([]*UserTokenUsageSummary, int64, error) {
+	groupClause := "logs.user_id, logs.token_id, logs.token_name, logs.channel_id, channels.name, logs.model_name"
 	baseQuery := buildUserTokenUsageBaseQuery(query)
 	var groups []struct {
-		UserId    int
-		TokenId   int
-		TokenName string
+		UserId      int
+		TokenId     int
+		TokenName   string
+		ChannelId   int
+		ChannelName string
+		ModelName   string
 	}
-	if err := baseQuery.Select("logs.user_id, logs.token_id, logs.token_name").Group("logs.user_id, logs.token_id, logs.token_name").Scan(&groups).Error; err != nil {
+	if err := baseQuery.Select("logs.user_id, logs.token_id, logs.token_name, logs.channel_id, channels.name as channel_name, logs.model_name").Group(groupClause).Scan(&groups).Error; err != nil {
 		return nil, 0, err
 	}
 	total := int64(len(groups))
 	var summaries []*UserTokenUsageSummary
-	selectClause := "logs.user_id, MAX(logs.username) AS username, logs.token_id, logs.token_name, coalesce(max(cliproxy_auth_file_bindings.auth_index), '') as auth_index, coalesce(max(cliproxy_auth_file_bindings.auth_name), '') as auth_name, count(*) as request_count, coalesce(sum(logs.prompt_tokens), 0) as prompt_tokens, coalesce(sum(logs.completion_tokens), 0) as completion_tokens, coalesce(sum(logs.prompt_tokens), 0) + coalesce(sum(logs.completion_tokens), 0) as total_tokens, coalesce(sum(logs.quota), 0) as quota, coalesce(max(logs.created_at), 0) as last_called_at"
+	selectClause := "logs.user_id, MAX(logs.username) AS username, logs.token_id, logs.token_name, coalesce(max(cliproxy_auth_file_bindings.auth_index), '') as auth_index, coalesce(max(cliproxy_auth_file_bindings.auth_name), '') as auth_name, logs.channel_id, coalesce(channels.name, '') as channel_name, logs.model_name, count(*) as request_count, coalesce(sum(logs.prompt_tokens), 0) as prompt_tokens, coalesce(sum(logs.completion_tokens), 0) as completion_tokens, coalesce(sum(logs.prompt_tokens), 0) + coalesce(sum(logs.completion_tokens), 0) as total_tokens, coalesce(sum(logs.quota), 0) as quota, coalesce(max(logs.created_at), 0) as last_called_at"
 	err := buildUserTokenUsageBaseQuery(query).
 		Select(selectClause).
-		Group("logs.user_id, logs.token_id, logs.token_name").
+		Group(groupClause).
 		Order(resolveUserTokenUsageOrder(query)).
 		Limit(num).
 		Offset(startIdx).
@@ -259,21 +275,24 @@ func GetUserTokenUsageByDay(query UserTokenUsageQuery, startIdx int, num int) ([
 	dayExpr := userTokenUsageDayExpr()
 	baseQuery := buildUserTokenUsageBaseQuery(query)
 	var groups []struct {
-		Day       int64
-		UserId    int
-		TokenId   int
-		TokenName string
+		Day         int64
+		UserId      int
+		TokenId     int
+		TokenName   string
+		ChannelId   int
+		ChannelName string
+		ModelName   string
 	}
-	groupClause := fmt.Sprintf("%s, logs.user_id, logs.token_id, logs.token_name", dayExpr)
-	if err := baseQuery.Select(fmt.Sprintf("%s as day, logs.user_id, logs.token_id, logs.token_name", dayExpr)).Group(groupClause).Scan(&groups).Error; err != nil {
+	groupClause := fmt.Sprintf("%s, logs.user_id, logs.token_id, logs.token_name, logs.channel_id, channels.name, logs.model_name", dayExpr)
+	if err := baseQuery.Select(fmt.Sprintf("%s as day, logs.user_id, logs.token_id, logs.token_name, logs.channel_id, channels.name as channel_name, logs.model_name", dayExpr)).Group(groupClause).Scan(&groups).Error; err != nil {
 		return nil, 0, err
 	}
 	total := int64(len(groups))
 	var summaries []*UserTokenDailyUsage
-	selectClause := fmt.Sprintf("%s as day, logs.user_id, MAX(logs.username) AS username, logs.token_id, logs.token_name, count(*) as request_count, coalesce(sum(logs.prompt_tokens), 0) as prompt_tokens, coalesce(sum(logs.completion_tokens), 0) as completion_tokens, coalesce(sum(logs.prompt_tokens), 0) + coalesce(sum(logs.completion_tokens), 0) as total_tokens, coalesce(sum(logs.quota), 0) as quota, coalesce(max(logs.created_at), 0) as last_called_at", dayExpr)
+	selectClause := fmt.Sprintf("%s as day, logs.user_id, MAX(logs.username) AS username, logs.token_id, logs.token_name, logs.channel_id, coalesce(channels.name, '') as channel_name, logs.model_name, count(*) as request_count, coalesce(sum(logs.prompt_tokens), 0) as prompt_tokens, coalesce(sum(logs.completion_tokens), 0) as completion_tokens, coalesce(sum(logs.prompt_tokens), 0) + coalesce(sum(logs.completion_tokens), 0) as total_tokens, coalesce(sum(logs.quota), 0) as quota, coalesce(max(logs.created_at), 0) as last_called_at", dayExpr)
 	err := buildUserTokenUsageBaseQuery(query).
 		Select(selectClause).
-		Group(fmt.Sprintf("%s, logs.user_id, logs.token_id, logs.token_name", dayExpr)).
+		Group(groupClause).
 		Order(resolveUserTokenDailyUsageOrder(query)).
 		Limit(num).
 		Offset(startIdx).
@@ -289,7 +308,7 @@ func userTokenUsageDayExpr() string {
 }
 
 func buildUserTokenUsageBaseQuery(query UserTokenUsageQuery) *gorm.DB {
-	dbQuery := LOG_DB.Table("logs").Joins("LEFT JOIN cliproxy_auth_file_bindings ON cliproxy_auth_file_bindings.user_id = logs.user_id").Where("logs.type = ?", LogTypeConsume)
+	dbQuery := LOG_DB.Table("logs").Joins("LEFT JOIN cliproxy_auth_file_bindings ON cliproxy_auth_file_bindings.user_id = logs.user_id AND cliproxy_auth_file_bindings.auth_index = logs.token_name").Joins("LEFT JOIN channels ON channels.id = logs.channel_id").Where("logs.type = ?", LogTypeConsume)
 	if query.StartTimestamp > 0 {
 		dbQuery = dbQuery.Where("logs.created_at >= ?", query.StartTimestamp)
 	}
@@ -307,6 +326,12 @@ func buildUserTokenUsageBaseQuery(query UserTokenUsageQuery) *gorm.DB {
 	}
 	if strings.TrimSpace(query.AuthIndex) != "" {
 		dbQuery = dbQuery.Where("cliproxy_auth_file_bindings.auth_index = ?", strings.TrimSpace(query.AuthIndex))
+	}
+	if query.ChannelId > 0 {
+		dbQuery = dbQuery.Where("logs.channel_id = ?", query.ChannelId)
+	}
+	if strings.TrimSpace(query.ModelName) != "" {
+		dbQuery = dbQuery.Where("logs.model_name LIKE ?", "%"+strings.TrimSpace(query.ModelName)+"%")
 	}
 	return dbQuery
 }

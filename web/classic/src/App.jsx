@@ -144,9 +144,9 @@ function App() {
         <Route
           path='/console/cliproxy-auth-files'
           element={
-            <AdminRoute>
+            <PrivateRoute>
               <CliproxyAuthFiles />
-            </AdminRoute>
+            </PrivateRoute>
           }
         />
         <Route

@@ -41,7 +41,27 @@ export const useDashboardStats = (
   performanceMetrics,
   navigate,
   t,
+  usageViewMode,
 ) => {
+  const resourceUsageItem =
+    usageViewMode === 'tokens'
+      ? {
+          title: t('Statistical Tokens'),
+          value: isNaN(consumeTokens) ? 0 : consumeTokens.toLocaleString(),
+          icon: <IconTextStroked />,
+          avatarColor: 'pink',
+          trendData: trendData.tokens,
+          trendColor: '#ec4899',
+        }
+      : {
+          title: t('统计额度'),
+          value: renderQuota(consumeQuota),
+          icon: <IconCoinMoneyStroked />,
+          avatarColor: 'yellow',
+          trendData: trendData.consumeQuota,
+          trendColor: '#f59e0b',
+        };
+
   const groupedStatsData = useMemo(
     () => [
       {
@@ -91,24 +111,7 @@ export const useDashboardStats = (
       {
         title: createSectionTitle(Zap, t('资源消耗')),
         color: 'bg-yellow-50',
-        items: [
-          {
-            title: t('统计额度'),
-            value: renderQuota(consumeQuota),
-            icon: <IconCoinMoneyStroked />,
-            avatarColor: 'yellow',
-            trendData: trendData.consumeQuota,
-            trendColor: '#f59e0b',
-          },
-          {
-            title: t('统计Tokens'),
-            value: isNaN(consumeTokens) ? 0 : consumeTokens.toLocaleString(),
-            icon: <IconTextStroked />,
-            avatarColor: 'pink',
-            trendData: trendData.tokens,
-            trendColor: '#ec4899',
-          },
-        ],
+        items: [resourceUsageItem],
       },
       {
         title: createSectionTitle(Gauge, t('性能指标')),
@@ -140,6 +143,7 @@ export const useDashboardStats = (
       times,
       consumeQuota,
       consumeTokens,
+      resourceUsageItem,
       trendData,
       performanceMetrics,
       navigate,
