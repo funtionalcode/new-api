@@ -107,7 +107,7 @@ export const useMessageEdit = (
                   ...prevMsg,
                   createLoadingAssistantMessage(),
                 ]);
-                sendRequest(payload, inputs.stream);
+                sendRequest(payload, inputs.stream, inputs.imageEnabled);
               }, 100);
             },
             onCancel: () => {

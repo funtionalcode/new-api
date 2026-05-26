@@ -288,7 +288,7 @@ const Playground = () => {
         inputs,
         parameterEnabled,
       );
-      sendRequest(payload, inputs.stream);
+      sendRequest(payload, inputs.stream, inputs.imageEnabled);
 
       // 禁用图片模式
       if (inputs.imageEnabled) {

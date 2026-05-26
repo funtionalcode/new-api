@@ -22,6 +22,7 @@ import {
   showError,
   formatMessageForAPI,
   isValidMessage,
+  getTextContent,
 } from './utils';
 import axios from 'axios';
 import { MESSAGE_ROLES } from '../constants/playground.constants';
@@ -36,7 +37,6 @@ export let API = axios.create({
   },
 });
 
-
 function redirectToOAuthUrl(url, options = {}) {
   const { openInNewTab = false } = options;
   const targetUrl = typeof url === 'string' ? url : url.toString();
@@ -48,7 +48,6 @@ function redirectToOAuthUrl(url, options = {}) {
 
   window.location.assign(targetUrl);
 }
-
 
 function patchAPIInstance(instance) {
   const originalGet = instance.get.bind(instance);
@@ -109,12 +108,44 @@ API.interceptors.response.use(
 // playground
 
 // 构建API请求负载
+export const buildImageGenerationPayload = (messages, inputs) => {
+  const lastUserMessage = [...messages]
+    .reverse()
+    .find((message) => message.role === MESSAGE_ROLES.USER);
+
+  const payload = {
+    model: inputs.model,
+    group: inputs.group,
+    prompt: lastUserMessage ? getTextContent(lastUserMessage).trim() : '',
+  };
+
+  const parameterMappings = {
+    imageN: 'n',
+    imageSize: 'size',
+    imageQuality: 'quality',
+    imageResponseFormat: 'response_format',
+  };
+
+  Object.entries(parameterMappings).forEach(([key, param]) => {
+    const value = inputs[key];
+    if (value !== undefined && value !== null && value !== '') {
+      payload[param] = value;
+    }
+  });
+
+  return payload;
+};
+
 export const buildApiPayload = (
   messages,
   systemPrompt,
   inputs,
   parameterEnabled,
 ) => {
+  if (inputs.imageEnabled) {
+    return buildImageGenerationPayload(messages, inputs);
+  }
+
   const processedMessages = messages
     .filter(isValidMessage)
     .map(formatMessageForAPI)
