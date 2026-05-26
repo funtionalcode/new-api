@@ -64,6 +64,11 @@ const SearchActions = memo(
       setTokenUnit?.(tokenUnit === 'K' ? 'M' : 'K');
     }, [tokenUnit, setTokenUnit]);
 
+    const getTokenUnitText = useCallback(
+      () => (tokenUnit === 'K' ? 'K（千）' : 'M（百万）'),
+      [tokenUnit],
+    );
+
     return (
       <div className='flex items-center gap-2 w-full'>
         <div className='flex-1'>
@@ -138,7 +143,7 @@ const SearchActions = memo(
               type={tokenUnit === 'K' ? 'primary' : 'tertiary'}
               onClick={handleTokenUnitToggle}
             >
-              {tokenUnit}
+              {getTokenUnitText()}
             </Button>
           </>
         )}

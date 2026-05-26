@@ -56,7 +56,7 @@ const PricingDisplaySettings = ({
     },
     {
       value: 'tokenUnit',
-      label: t('按K显示单位'),
+      label: tokenUnit === 'K' ? t('按K显示单位（千）') : t('按M显示单位（百万）'),
     },
   ];
 

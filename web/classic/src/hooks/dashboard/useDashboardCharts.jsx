@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { initVChartSemiTheme } from '@visactor/vchart-semi-theme';
 import {
   modelColorMap,
@@ -54,6 +54,43 @@ export const useDashboardCharts = (
   t,
   usageViewMode,
 ) => {
+  const lineTotalTitle = useMemo(
+    () => (usageViewMode === 'tokens'
+      ? `${t('总计')}：${renderNumber(0)}`
+      : `${t('总计')}：${renderQuota(0, 2)}`),
+    [t, usageViewMode],
+  );
+
+  const getLineTotalTitle = useCallback(
+    (total) => (usageViewMode === 'tokens'
+      ? `${t('总计')}：${renderNumber(total)}`
+      : `${t('总计')}：${renderQuota(total, 2)}`),
+    [t, usageViewMode],
+  );
+
+  const updateLineTotalBySelectedModels = useCallback((selectedModels) => {
+    setSpecLine((prev) => {
+      const values = prev.data?.[0]?.values || [];
+      const models = Array.isArray(selectedModels) ? selectedModels : [];
+      const selectedSet = new Set(models);
+      const shouldUseAllModels = selectedSet.size === 0;
+      const total = values.reduce((sum, item) => {
+        if (shouldUseAllModels || selectedSet.has(item.Model)) {
+          return sum + Number(item.rawQuota || 0);
+        }
+        return sum;
+      }, 0);
+
+      return {
+        ...prev,
+        title: {
+          ...prev.title,
+          subtext: getLineTotalTitle(total),
+        },
+      };
+    });
+  }, [getLineTotalTitle]);
+
   // ========== 图表规格状态 ==========
   const [spec_pie, setSpecPie] = useState({
     type: 'pie',
@@ -131,7 +168,7 @@ export const useDashboardCharts = (
     title: {
       visible: true,
       text: t('模型消耗分布'),
-      subtext: `${t('总计')}：${renderQuota(0, 2)}`,
+      subtext: lineTotalTitle,
     },
     bar: {
       state: {
@@ -626,9 +663,7 @@ export const useDashboardCharts = (
       updateChartSpec(
         setSpecLine,
         newLineData,
-        isTokensMode
-          ? `${t('总计')}：${renderNumber(totalTokens)}`
-          : `${t('总计')}：${renderQuota(totalQuota, 2)}`,
+        getLineTotalTitle(isTokensMode ? totalTokens : totalQuota),
         newModelColors,
         'barData',
         lineTooltip,
@@ -702,7 +737,7 @@ export const useDashboardCharts = (
       setConsumeQuota,
       setTimes,
       setConsumeTokens,
-      t,
+      getLineTotalTitle,
       usageViewMode,
     ],
   );
@@ -866,6 +901,7 @@ export const useDashboardCharts = (
     spec_token_consumption,
     updateChartData,
     updateUserChartData,
+    updateLineTotalBySelectedModels,
     generateModelColors,
   };
 };

@@ -230,6 +230,11 @@ const Dashboard = () => {
             dataExportDefaultTime={dashboardData.dataExportDefaultTime}
             timeOptions={dashboardData.timeOptions}
             onTimeGranularityChange={handleTimeGranularityChange}
+            onLineLegendSelectedDataChange={(event) =>
+              dashboardCharts.updateLineTotalBySelectedModels(
+                event?.model?.getSelectedData?.(),
+              )
+            }
           />
 
           {dashboardData.hasApiInfoPanel && (

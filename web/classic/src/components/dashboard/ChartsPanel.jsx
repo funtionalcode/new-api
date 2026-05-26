@@ -40,6 +40,7 @@ const ChartsPanel = ({
   dataExportDefaultTime,
   timeOptions,
   onTimeGranularityChange,
+  onLineLegendSelectedDataChange,
 }) => {
   return (
     <Card
@@ -77,7 +78,11 @@ const ChartsPanel = ({
     >
       <div className='h-96 p-2'>
         {activeChartTab === '1' && (
-          <VChart spec={spec_line} option={CHART_CONFIG} />
+          <VChart
+            spec={spec_line}
+            option={CHART_CONFIG}
+            onLegendSelectedDataChange={onLineLegendSelectedDataChange}
+          />
         )}
         {activeChartTab === '2' && (
           <VChart spec={spec_model_line} option={CHART_CONFIG} />

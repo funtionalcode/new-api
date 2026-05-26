@@ -668,7 +668,7 @@ export const calculateModelPrice = ({
     const isTokensDisplay = quotaDisplayType === 'TOKENS';
     const inputRatioPriceUSD = record.model_ratio * 2 * usedGroupRatio;
     const unitDivisor = tokenUnit === 'K' ? 1000 : 1;
-    const unitLabel = tokenUnit === 'K' ? 'K' : 'M';
+    const unitLabel = tokenUnit === 'K' ? 'K（千）' : 'M（百万）';
     const hasRatioValue = (value) =>
       value !== undefined &&
       value !== null &&

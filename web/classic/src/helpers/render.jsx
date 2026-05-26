@@ -990,10 +990,12 @@ export const renderGroupOption = (item) => {
 };
 
 export function renderNumber(num) {
-  if (num >= 1000000000) {
-    return (num / 1000000000).toFixed(1) + 'B';
+  if (num >= 100000000) {
+    return (num / 100000000).toFixed(1) + '亿（100,000,000）';
+  } else if (num >= 10000000) {
+    return (num / 10000000).toFixed(1) + '千万（10,000,000）';
   } else if (num >= 1000000) {
-    return (num / 1000000).toFixed(1) + 'M';
+    return (num / 1000000).toFixed(1) + '百万（1,000,000）';
   } else if (num >= 10000) {
     return (num / 1000).toFixed(1) + 'k';
   } else {
