@@ -54,6 +54,8 @@ export const useDashboardCharts = (
   t,
   usageViewMode,
 ) => {
+  const [selectedLineModels, setSelectedLineModels] = useState([]);
+
   const lineTotalTitle = useMemo(
     () => (usageViewMode === 'tokens'
       ? `${t('总计')}：${renderNumber(0)}`
@@ -68,28 +70,44 @@ export const useDashboardCharts = (
     [t, usageViewMode],
   );
 
+  const getLineTotalBySelectedModels = useCallback((values, selectedModels) => {
+    const models = Array.isArray(selectedModels) ? selectedModels : [];
+    const selectedSet = new Set(models);
+    const shouldUseAllModels = selectedSet.size === 0;
+
+    return values.reduce((sum, item) => {
+      if (shouldUseAllModels || selectedSet.has(item.Model)) {
+        return sum + Number(item.rawQuota || 0);
+      }
+      return sum;
+    }, 0);
+  }, []);
+
   const updateLineTotalBySelectedModels = useCallback((selectedModels) => {
+    const models = Array.isArray(selectedModels) ? selectedModels : [];
+    setSelectedLineModels(models);
+
     setSpecLine((prev) => {
       const values = prev.data?.[0]?.values || [];
-      const models = Array.isArray(selectedModels) ? selectedModels : [];
-      const selectedSet = new Set(models);
-      const shouldUseAllModels = selectedSet.size === 0;
-      const total = values.reduce((sum, item) => {
-        if (shouldUseAllModels || selectedSet.has(item.Model)) {
-          return sum + Number(item.rawQuota || 0);
-        }
-        return sum;
-      }, 0);
+      const total = getLineTotalBySelectedModels(values, models);
+
+      const nextLegends = { ...(prev.legends || {}) };
+      if (models.length > 0) {
+        nextLegends.defaultSelected = models;
+      } else {
+        delete nextLegends.defaultSelected;
+      }
 
       return {
         ...prev,
+        legends: nextLegends,
         title: {
           ...prev.title,
           subtext: getLineTotalTitle(total),
         },
       };
     });
-  }, [getLineTotalTitle]);
+  }, [getLineTotalBySelectedModels, getLineTotalTitle]);
 
   // ========== 图表规格状态 ==========
   const [spec_pie, setSpecPie] = useState({
@@ -660,14 +678,33 @@ export const useDashboardCharts = (
             },
           };
 
-      updateChartSpec(
-        setSpecLine,
+      const selectedLineTotal = getLineTotalBySelectedModels(
         newLineData,
-        getLineTotalTitle(isTokensMode ? totalTokens : totalQuota),
-        newModelColors,
-        'barData',
-        lineTooltip,
+        selectedLineModels,
       );
+
+      setSpecLine((prev) => {
+        const nextLegends = { ...(prev.legends || {}) };
+        if (selectedLineModels.length > 0) {
+          nextLegends.defaultSelected = selectedLineModels;
+        } else {
+          delete nextLegends.defaultSelected;
+        }
+
+        return {
+          ...prev,
+          data: [{ id: 'barData', values: newLineData }],
+          title: {
+            ...prev.title,
+            subtext: getLineTotalTitle(selectedLineTotal),
+          },
+          color: {
+            specified: newModelColors,
+          },
+          tooltip: lineTooltip,
+          legends: nextLegends,
+        };
+      });
 
       // ===== 模型调用次数折线图 =====
       let modelLineData = [];
@@ -737,7 +774,9 @@ export const useDashboardCharts = (
       setConsumeQuota,
       setTimes,
       setConsumeTokens,
+      getLineTotalBySelectedModels,
       getLineTotalTitle,
+      selectedLineModels,
       usageViewMode,
     ],
   );
