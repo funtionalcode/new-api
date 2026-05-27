@@ -29,6 +29,7 @@ import {
   TabPane,
   Popover,
   Modal,
+  Tag,
 } from '@douyinfe/semi-ui';
 import {
   IconMail,
@@ -37,6 +38,7 @@ import {
   IconKey,
   IconLock,
   IconDelete,
+  IconEdit,
 } from '@douyinfe/semi-icons';
 import { SiTelegram, SiWechat, SiLinux, SiDiscord } from 'react-icons/si';
 import { UserPlus, ShieldCheck } from 'lucide-react';
@@ -69,8 +71,10 @@ const AccountManagement = ({
   passkeySupported,
   passkeyRegisterLoading,
   passkeyDeleteLoading,
+  passkeyRemarkLoading,
   onPasskeyRegister,
   onPasskeyDelete,
+  onPasskeyRemarkUpdate,
 }) => {
   const renderAccountInfo = (accountId, label) => {
     if (!accountId || accountId === '') {
@@ -101,6 +105,8 @@ const AccountManagement = ({
     React.useState(false);
   const [customOAuthBindings, setCustomOAuthBindings] = React.useState([]);
   const [customOAuthLoading, setCustomOAuthLoading] = React.useState({});
+  const [remarkDialogVisible, setRemarkDialogVisible] = React.useState(false);
+  const [remarkInput, setRemarkInput] = React.useState('');
 
   // Fetch custom OAuth bindings
   const loadCustomOAuthBindings = async () => {
@@ -168,7 +174,15 @@ const AccountManagement = ({
     ? new Date(passkeyStatus.last_used_at).toLocaleString()
     : t('尚未使用');
 
+  const handleRemarkSave = async () => {
+    if (onPasskeyRemarkUpdate) {
+      await onPasskeyRemarkUpdate(remarkInput);
+      setRemarkDialogVisible(false);
+    }
+  };
+
   return (
+    <>
     <Card className='!rounded-2xl'>
       {/* 卡片头部 */}
       <div className='flex items-center mb-4'>
@@ -250,11 +264,15 @@ const AccountManagement = ({
                         {t('微信')}
                       </div>
                       <div className='text-sm text-gray-500 truncate'>
-                        {!status.wechat_login
-                          ? t('未启用')
-                          : isBound(userState.user?.wechat_id)
-                            ? t('已绑定')
-                            : t('未绑定')}
+                        {!status.wechat_login ? (
+                          t('未启用')
+                        ) : isBound(userState.user?.wechat_id) ? (
+                          <Tag color='green' size='small'>
+                            {t('已绑定')}
+                          </Tag>
+                        ) : (
+                          t('未绑定')
+                        )}
                       </div>
                     </div>
                   </div>
@@ -678,6 +696,23 @@ const AccountManagement = ({
                           <div>
                             {t('最后使用时间')}：{lastUsedLabel}
                           </div>
+                          {passkeyEnabled && (
+                            <div className='flex items-center gap-1'>
+                              <span>{t('备注')}：</span>
+                              <span>{passkeyStatus?.remark || t('无备注')}</span>
+                              <Button
+                                type='tertiary'
+                                size='small'
+                                className='!ml-1 !p-0 !h-4'
+                                onClick={() => {
+                                  setRemarkInput(passkeyStatus?.remark || '');
+                                  setRemarkDialogVisible(true);
+                                }}
+                              >
+                                <IconEdit size='small' />
+                              </Button>
+                            </div>
+                          )}
                           {/*{passkeyEnabled && (*/}
                           {/*  <div>*/}
                           {/*    {t('备份支持')}：*/}
@@ -768,6 +803,27 @@ const AccountManagement = ({
         </TabPane>
       </Tabs>
     </Card>
+
+    <Modal
+      title={t('编辑备注')}
+      visible={remarkDialogVisible}
+      onCancel={() => setRemarkDialogVisible(false)}
+      onOk={handleRemarkSave}
+      confirmLoading={passkeyRemarkLoading}
+      okText={t('保存')}
+      cancelText={t('取消')}
+    >
+      <div className='space-y-2'>
+        <div className='text-sm text-gray-500'>{t('为您的 Passkey 添加备注以便识别')}</div>
+        <Input
+          value={remarkInput}
+          onChange={setRemarkInput}
+          placeholder={t('请输入备注')}
+          maxLength={50}
+        />
+      </div>
+    </Modal>
+    </>
   );
 };
 

@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Card, Form, Input, Table, Typography } from '@douyinfe/semi-ui';
+import { VChart } from '@visactor/react-vchart';
 import { API, isAdmin, showError } from '../../helpers';
 
 const { Text } = Typography;
@@ -49,6 +50,13 @@ const formatTime = (timestamp) => {
 
 const formatTokens = (value) => Number(value || 0).toLocaleString();
 
+const formatQuota = (value) => {
+  const num = Number(value || 0);
+  if (num >= 1e8) return `${(num / 1e8).toFixed(2)}亿`;
+  if (num >= 1e4) return `${(num / 1e4).toFixed(2)}万`;
+  return num.toLocaleString();
+};
+
 export default function UserConsumption() {
   const { t } = useTranslation();
   const [startInput, setStartInput] = useState(() =>
@@ -60,10 +68,10 @@ export default function UserConsumption() {
   const [username, setUsername] = useState('');
   const [userOptions, setUserOptions] = useState([]);
   const [tokenName, setTokenName] = useState('');
-  const [channelId, setChannelId] = useState('');
-  const [modelName, setModelName] = useState('');
+  const [authIndex, setAuthIndex] = useState('');
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('trend');
   const isAdminUser = isAdmin();
 
   const searchUsers = async (keyword) => {
@@ -98,14 +106,13 @@ export default function UserConsumption() {
           end_timestamp: parseTimestampFromInput(endInput),
           username: isAdminUser ? username.trim() || undefined : undefined,
           token_name: tokenName.trim() || undefined,
-          channel_id: channelId.trim() || undefined,
-          model_name: modelName.trim() || undefined,
+          auth_index: authIndex.trim() || undefined,
         },
       });
       if (res.data.success) {
         setRows(res.data.data?.items || []);
       } else {
-        showError(res.data.message || t('Load user consumption failed'));
+        showError(res.data.message || t('加载用户消耗数据失败'));
       }
     } catch (error) {
       showError(error);
@@ -118,55 +125,177 @@ export default function UserConsumption() {
     loadConsumption();
   }, []);
 
-  const totals = useMemo(
-    () =>
-      rows.reduce(
-        (acc, row) => ({
-          promptTokens: acc.promptTokens + Number(row.prompt_tokens || 0),
-          completionTokens:
-            acc.completionTokens + Number(row.completion_tokens || 0),
-          totalTokens: acc.totalTokens + Number(row.total_tokens || 0),
-        }),
-        {
-          promptTokens: 0,
-          completionTokens: 0,
-          totalTokens: 0,
-        },
-      ),
-    [rows],
-  );
+  const stats = useMemo(() => {
+    if (!rows || rows.length === 0) {
+      return { totalTokens: 0, totalCount: 0, avgTokens: 0, totalQuota: 0 };
+    }
+
+    let totalTokens = 0;
+    let totalCount = 0;
+    let totalQuota = 0;
+
+    for (const item of rows) {
+      totalTokens += Number(item.total_tokens || 0);
+      totalCount += Number(item.request_count || 0);
+      totalQuota += Number(item.quota || 0);
+    }
+
+    return {
+      totalTokens,
+      totalCount,
+      avgTokens: totalCount > 0 ? Math.round(totalTokens / totalCount) : 0,
+      totalQuota,
+    };
+  }, [rows]);
+
+  const tokenGroupedData = useMemo(() => {
+    const tokenMap = new Map();
+
+    for (const row of rows) {
+      const key = row.token_id;
+      const existing = tokenMap.get(key) || {
+        token_id: row.token_id,
+        token_name: row.token_name,
+        auth_index: row.auth_index,
+        auth_name: row.auth_name,
+        total_tokens: 0,
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        request_count: 0,
+        quota: 0,
+        users: new Set(),
+        last_called_at: 0,
+      };
+
+      existing.total_tokens += Number(row.total_tokens || 0);
+      existing.prompt_tokens += Number(row.prompt_tokens || 0);
+      existing.completion_tokens += Number(row.completion_tokens || 0);
+      existing.request_count += Number(row.request_count || 0);
+      existing.quota += Number(row.quota || 0);
+      if (row.username) existing.users.add(row.username);
+      existing.last_called_at = Math.max(existing.last_called_at, row.last_called_at || 0);
+
+      tokenMap.set(key, existing);
+    }
+
+    return Array.from(tokenMap.values()).sort((a, b) => b.total_tokens - a.total_tokens);
+  }, [rows]);
+
+  const chartData = useMemo(() => {
+    const topN = 15;
+    const topItems = tokenGroupedData.slice(0, topN);
+    const otherTokens = tokenGroupedData.slice(topN).reduce((sum, item) => sum + item.total_tokens, 0);
+    return otherTokens > 0
+      ? [...topItems, { token_name: t('其他'), total_tokens: otherTokens }]
+      : topItems;
+  }, [tokenGroupedData, t]);
+
+  const trendSpec = useMemo(() => ({
+    type: 'area',
+    data: [{
+      values: chartData.map((item) => ({
+        x: item.token_name || `Token #${item.token_id}`,
+        y: item.total_tokens,
+      })),
+    }],
+    xField: 'x',
+    yField: 'y',
+    color: ['var(--semi-color-primary)'],
+    area: { visible: true, opacity: 0.3 },
+    line: { visible: true, style: { lineWidth: 2 } },
+    point: { visible: false },
+    axes: [
+      { orient: 'bottom', label: { visible: true, style: { angle: -45, textAlign: 'right' } } },
+      { orient: 'left', label: { visible: true, formatMethod: (val) => val.toLocaleString() } },
+    ],
+    tooltip: {
+      mark: {
+        content: [{ key: t('Tokens'), value: (datum) => datum.y?.toLocaleString() }],
+      },
+    },
+  }), [chartData, t]);
+
+  const proportionSpec = useMemo(() => ({
+    type: 'pie',
+    data: [{
+      values: chartData.map((item) => ({
+        type: item.token_name || `Token #${item.token_id}`,
+        value: item.total_tokens,
+      })),
+    }],
+    valueField: 'value',
+    categoryField: 'type',
+    label: { visible: true, position: 'outside', formatMethod: (val) => val.toLocaleString() },
+    tooltip: {
+      mark: {
+        content: [{ key: t('Tokens'), value: (datum) => datum.value?.toLocaleString() }],
+      },
+    },
+  }), [chartData, t]);
+
+  const topSpec = useMemo(() => ({
+    type: 'bar',
+    data: [{
+      values: chartData.map((item) => ({
+        x: item.token_name || `Token #${item.token_id}`,
+        y: item.total_tokens,
+      })),
+    }],
+    xField: 'x',
+    yField: 'y',
+    color: ['var(--semi-color-secondary)'],
+    bar: { style: { cornerRadius: [4, 4, 0, 0] } },
+    axes: [
+      { orient: 'bottom', label: { visible: true, style: { angle: -45, textAlign: 'right' } } },
+      { orient: 'left', label: { visible: true, formatMethod: (val) => val.toLocaleString() } },
+    ],
+    tooltip: {
+      mark: {
+        content: [{ key: t('Tokens'), value: (datum) => datum.y?.toLocaleString() }],
+      },
+    },
+  }), [chartData, t]);
+
+  const getChartSpec = () => {
+    switch (activeTab) {
+      case 'proportion': return proportionSpec;
+      case 'top': return topSpec;
+      default: return trendSpec;
+    }
+  };
+
+  const statCards = [
+    { title: t('总 Tokens'), value: formatTokens(stats.totalTokens), desc: t('所有消耗的 Tokens') },
+    { title: t('总请求数'), value: formatTokens(stats.totalCount), desc: t('API 调用次数') },
+    { title: t('平均 Tokens'), value: formatTokens(stats.avgTokens), desc: t('每次请求平均') },
+    { title: t('总配额'), value: formatQuota(stats.totalQuota), desc: t('消耗的配额') },
+  ];
 
   const columns = [
-    {
-      title: t('用户'),
-      render: (_, record) => (
-        <div>
-          <div>{record.username || '-'}</div>
-          <Text type='tertiary'>ID: {record.user_id}</Text>
-        </div>
-      ),
-    },
     {
       title: t('Auth File / Key'),
       render: (_, record) => (
         <div>
-          <div>{record.auth_name || record.auth_index || record.token_name || '-'}</div>
+          <div>{record.token_name || '-'}</div>
           <Text type='tertiary'>ID: {record.token_id}</Text>
         </div>
       ),
     },
     {
-      title: t('渠道'),
+      title: t('用户'),
       render: (_, record) => (
         <div>
-          <div>{record.channel_name || '-'}</div>
-          <Text type='tertiary'>ID: {record.channel_id || '-'}</Text>
+          <div>{record.users.size}</div>
+          <Text type='tertiary'>
+            {Array.from(record.users).slice(0, 3).join(', ')}
+            {record.users.size > 3 && ` +${record.users.size - 3}`}
+          </Text>
         </div>
       ),
     },
     {
-      title: t('模型'),
-      render: (_, record) => record.model_name || '-',
+      title: t('请求数'),
+      render: (_, record) => formatTokens(record.request_count),
     },
     {
       title: t('提示 Tokens'),
@@ -181,6 +310,10 @@ export default function UserConsumption() {
       render: (_, record) => formatTokens(record.total_tokens),
     },
     {
+      title: t('配额'),
+      render: (_, record) => formatQuota(record.quota),
+    },
+    {
       title: t('最近调用'),
       render: (_, record) => formatTime(record.last_called_at),
     },
@@ -189,7 +322,7 @@ export default function UserConsumption() {
   return (
     <div className='mt-[60px] px-2'>
       <div className='space-y-4'>
-        <Card title={t('Consumption Filters')}>
+        <Card title={t('消耗过滤')}>
           <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-6'>
             <Input
               type='datetime-local'
@@ -210,18 +343,13 @@ export default function UserConsumption() {
             )}
             <Input
               value={tokenName}
-              placeholder={t('Filter by token name')}
+              placeholder={t('按令牌名称过滤')}
               onChange={setTokenName}
             />
             <Input
-              value={channelId}
-              placeholder={t('Filter by channel ID')}
-              onChange={setChannelId}
-            />
-            <Input
-              value={modelName}
-              placeholder={t('Filter by model name')}
-              onChange={setModelName}
+              value={authIndex}
+              placeholder={t('按认证文件过滤')}
+              onChange={setAuthIndex}
             />
             <Button type='primary' loading={loading} onClick={loadConsumption}>
               {t('查询')}
@@ -229,23 +357,59 @@ export default function UserConsumption() {
           </div>
         </Card>
 
-        <div className='grid gap-4 md:grid-cols-3'>
-          <Card title={t('提示 Tokens')}>{formatTokens(totals.promptTokens)}</Card>
-          <Card title={t('补全 Tokens')}>
-            {formatTokens(totals.completionTokens)}
-          </Card>
-          <Card title={t('总 Tokens')}>{formatTokens(totals.totalTokens)}</Card>
+        <div className='grid gap-4 md:grid-cols-4'>
+          {statCards.map((card) => (
+            <Card key={card.title}>
+              <div className='text-xs text-gray-500 mb-1'>{card.title}</div>
+              <div className='text-2xl font-bold'>{card.value}</div>
+              <div className='text-xs text-gray-400 mt-1'>{card.desc}</div>
+            </Card>
+          ))}
         </div>
 
-        <Card title={t('User Consumption Details')}>
+        <Card
+          title={t('Token 消耗')}
+          headerExtraContent={
+            <div className='flex gap-2'>
+              {[
+                { key: 'trend', label: t('趋势') },
+                { key: 'proportion', label: t('分布') },
+                { key: 'top', label: t('排行') },
+              ].map((tab) => (
+                <Button
+                  key={tab.key}
+                  size='small'
+                  type={activeTab === tab.key ? 'primary' : 'tertiary'}
+                  onClick={() => setActiveTab(tab.key)}
+                >
+                  {tab.label}
+                </Button>
+              ))}
+            </div>
+          }
+        >
+          <div className='h-[300px]'>
+            {chartData.length > 0 ? (
+              <VChart
+                key={`token-chart-${activeTab}`}
+                spec={getChartSpec()}
+                option={{ theme: { isHorizontal: false } }}
+              />
+            ) : (
+              <div className='flex h-full items-center justify-center text-gray-500'>
+                {t('暂无消耗数据')}
+              </div>
+            )}
+          </div>
+        </Card>
+
+        <Card title={t('Token 消耗详情')}>
           <Table
             columns={columns}
-            dataSource={rows}
+            dataSource={tokenGroupedData}
             loading={loading}
             pagination={false}
-            rowKey={(record) =>
-              `${record.user_id}-${record.token_id}-${record.channel_id}-${record.model_name}`
-            }
+            rowKey='token_id'
           />
         </Card>
       </div>

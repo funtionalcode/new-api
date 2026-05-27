@@ -74,9 +74,10 @@ const PersonalSetting = () => {
   const [disableButton, setDisableButton] = useState(false);
   const [countdown, setCountdown] = useState(30);
   const [systemToken, setSystemToken] = useState('');
-  const [passkeyStatus, setPasskeyStatus] = useState({ enabled: false });
+  const [passkeyStatus, setPasskeyStatus] = useState({ enabled: false, remark: '' });
   const [passkeyRegisterLoading, setPasskeyRegisterLoading] = useState(false);
   const [passkeyDeleteLoading, setPasskeyDeleteLoading] = useState(false);
+  const [passkeyRemarkLoading, setPasskeyRemarkLoading] = useState(false);
   const [passkeySupported, setPasskeySupported] = useState(false);
   const [
     passkeyRequiredVerificationMethod,
@@ -228,6 +229,7 @@ const PersonalSetting = () => {
           last_used_at: data?.last_used_at || null,
           backup_eligible: data?.backup_eligible || false,
           backup_state: data?.backup_state || false,
+          remark: data?.remark || '',
         });
       } else {
         showError(message);
@@ -352,6 +354,23 @@ const PersonalSetting = () => {
 
   const handleRemovePasskey = async () => {
     await startPasskeyManagementVerification(removePasskey);
+  };
+
+  const updatePasskeyRemark = async (remark) => {
+    setPasskeyRemarkLoading(true);
+    try {
+      const res = await API.put('/api/user/passkey/remark', { remark });
+      const { success, message } = res.data;
+      if (!success) {
+        throw new Error(message || t('操作失败，请重试'));
+      }
+      showSuccess(t('备注已更新'));
+      await loadPasskeyStatus();
+    } catch (error) {
+      showError(error?.message || t('操作失败，请重试'));
+    } finally {
+      setPasskeyRemarkLoading(false);
+    }
   };
 
   const handlePasskeyVerificationCancel = () => {
@@ -579,8 +598,10 @@ const PersonalSetting = () => {
                 passkeySupported={passkeySupported}
                 passkeyRegisterLoading={passkeyRegisterLoading}
                 passkeyDeleteLoading={passkeyDeleteLoading}
+                passkeyRemarkLoading={passkeyRemarkLoading}
                 onPasskeyRegister={handleRegisterPasskey}
                 onPasskeyDelete={handleRemovePasskey}
+                onPasskeyRemarkUpdate={updatePasskeyRemark}
               />
 
               {/* 偏好设置（语言等） */}

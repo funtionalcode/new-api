@@ -586,26 +586,51 @@ export default function CliproxyAuthFiles() {
         confirmLoading={loading}
       >
         <Form layout='vertical'>
-          <Form.Select
-            field='auth_index'
-            label={t('认证文件')}
-            filter
-            value={bindingForm.auth_index}
-            optionList={remoteFileOptions}
-            onChange={(value) => {
-              const selected = remoteFileOptions.find((option) => option.value === value);
-              const authFile = selected?.authFile;
-              setBindingForm((current) => ({
-                ...current,
-                auth_index: value,
-                auth_name: getAuthName(authFile),
-                auth_file: getAuthFileContent(authFile),
-                account_id: getAccountId(authFile),
-                enabled: authFile?.enabled !== false,
-              }));
-            }}
-            placeholder={t('请选择认证文件')}
-          />
+          {bindingForm.auth_index && !bindingForm.id ? (
+            // 从远端认证文件点击"绑定用户"时，认证文件信息只读回显
+            <>
+              <Form.Input
+                field='auth_index_display'
+                label={t('认证文件')}
+                value={bindingForm.auth_index}
+                disabled
+              />
+              <Form.Input
+                field='auth_name_display'
+                label={t('认证名称')}
+                value={bindingForm.auth_name || '-'}
+                disabled
+              />
+              <Form.Input
+                field='account_id_display'
+                label={t('账号')}
+                value={bindingForm.account_id || '-'}
+                disabled
+              />
+            </>
+          ) : (
+            // 新增绑定或编辑时，认证文件可选择
+            <Form.Select
+              field='auth_index'
+              label={t('认证文件')}
+              filter
+              value={bindingForm.auth_index}
+              optionList={remoteFileOptions}
+              onChange={(value) => {
+                const selected = remoteFileOptions.find((option) => option.value === value);
+                const authFile = selected?.authFile;
+                setBindingForm((current) => ({
+                  ...current,
+                  auth_index: value,
+                  auth_name: getAuthName(authFile),
+                  auth_file: getAuthFileContent(authFile),
+                  account_id: getAccountId(authFile),
+                  enabled: authFile?.enabled !== false,
+                }));
+              }}
+              placeholder={t('请选择认证文件')}
+            />
+          )}
           <Form.Select
             field='user_id'
             label={t('用户')}
