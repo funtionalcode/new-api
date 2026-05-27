@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { Typography, TextArea, Button } from '@douyinfe/semi-ui';
 import MarkdownRenderer from '../common/markdown/MarkdownRenderer';
 import ThinkingContent from './ThinkingContent';
@@ -27,11 +27,136 @@ import {
   X,
   Settings,
   AlertTriangle,
-  Volume2,
   Download,
+  Play,
+  Pause,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { isAdmin } from '../../helpers/utils';
+
+const formatAudioTime = (seconds) => {
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    return '0:00';
+  }
+
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`;
+};
+
+const AudioVoiceBar = ({ audioItem, index, onDownload, t }) => {
+  const audioRef = useRef(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [hasError, setHasError] = useState(false);
+
+  const progress = duration > 0 ? Math.min(currentTime / duration, 1) : 0;
+
+  const handleTogglePlay = async () => {
+    const audio = audioRef.current;
+    if (!audio || hasError) {
+      return;
+    }
+
+    if (audio.paused) {
+      try {
+        await audio.play();
+      } catch (error) {
+        setHasError(true);
+      }
+      return;
+    }
+
+    audio.pause();
+  };
+
+  const handleSeek = (event) => {
+    const audio = audioRef.current;
+    if (!audio || duration <= 0) {
+      return;
+    }
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const nextProgress = Math.min(
+      Math.max((event.clientX - rect.left) / rect.width, 0),
+      1,
+    );
+    audio.currentTime = nextProgress * duration;
+  };
+
+  return (
+    <div className='flex items-center gap-2 max-w-sm'>
+      <div className='relative flex flex-1 items-center gap-4 rounded-2xl bg-gray-100 px-4 py-3 min-w-0'>
+        <button
+          type='button'
+          onClick={handleTogglePlay}
+          className='w-11 h-11 rounded-full bg-gray-800 text-white flex items-center justify-center shrink-0 hover:bg-gray-700 transition-colors'
+          aria-label={isPlaying ? t('Pause audio') : t('Play audio')}
+          disabled={hasError}
+        >
+          {isPlaying ? (
+            <Pause size={22} />
+          ) : (
+            <Play size={22} className='ml-0.5' />
+          )}
+        </button>
+        <div
+          className='relative flex-1 h-5 cursor-pointer min-w-[120px]'
+          onClick={handleSeek}
+          role='slider'
+          aria-label={t('Audio progress')}
+          aria-valuemin={0}
+          aria-valuemax={Math.floor(duration || 0)}
+          aria-valuenow={Math.floor(currentTime || 0)}
+        >
+          <div className='absolute left-0 right-0 top-1/2 h-0.5 -translate-y-1/2 bg-gray-400' />
+          <div
+            className='absolute left-0 top-1/2 h-0.5 -translate-y-1/2 bg-gray-700'
+            style={{ width: `${progress * 100}%` }}
+          />
+          <div
+            className='absolute top-1/2 w-8 h-8 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-sm'
+            style={{ left: `${progress * 100}%` }}
+          />
+        </div>
+        <span className='text-2xl font-medium text-gray-800 tabular-nums shrink-0'>
+          {formatAudioTime(duration || currentTime)}
+        </span>
+        <audio
+          ref={audioRef}
+          src={audioItem.audio.url}
+          preload='metadata'
+          className='hidden'
+          onLoadedMetadata={(event) =>
+            setDuration(event.currentTarget.duration)
+          }
+          onTimeUpdate={(event) =>
+            setCurrentTime(event.currentTarget.currentTime)
+          }
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+          onEnded={() => setIsPlaying(false)}
+          onError={() => setHasError(true)}
+        />
+        {hasError && (
+          <div className='absolute inset-x-4 bottom-1 text-xs text-red-500'>
+            音频加载失败
+          </div>
+        )}
+      </div>
+      <Button
+        icon={<Download size={18} />}
+        onClick={() => onDownload(audioItem, index)}
+        theme='borderless'
+        type='tertiary'
+        size='large'
+        className='!rounded-full shrink-0'
+        aria-label={t('Download audio')}
+      />
+    </div>
+  );
+};
 
 const MessageContent = ({
   message,
@@ -367,49 +492,13 @@ const MessageContent = ({
                 {audioContents.length > 0 && (
                   <div className='mb-3 space-y-2'>
                     {audioContents.map((audioItem, index) => (
-                      <div
+                      <AudioVoiceBar
                         key={index}
-                        className='rounded-2xl px-4 py-3 shadow-sm border max-w-sm'
-                        style={{
-                          background: 'var(--semi-color-bg-0)',
-                          borderColor: 'var(--semi-color-border)',
-                        }}
-                      >
-                        <div className='flex items-center gap-3'>
-                          <div className='w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center shrink-0'>
-                            <Volume2 size={18} className='text-white' />
-                          </div>
-                          <div className='flex-1 min-w-0'>
-                            <audio
-                              controls
-                              src={audioItem.audio.url}
-                              className='w-full h-8 block'
-                              onError={(e) => {
-                                e.currentTarget.style.display = 'none';
-                                e.currentTarget.parentElement.nextSibling.style.display =
-                                  'block';
-                              }}
-                            />
-                          </div>
-                          <Button
-                            icon={<Download size={16} />}
-                            onClick={() =>
-                              handleAudioDownload(audioItem, index)
-                            }
-                            theme='borderless'
-                            type='tertiary'
-                            size='small'
-                            className='!rounded-full shrink-0'
-                            aria-label={t('Download audio')}
-                          />
-                        </div>
-                        <div
-                          className='text-red-500 text-sm p-2 bg-red-50 rounded-lg border border-red-200 mt-2'
-                          style={{ display: 'none' }}
-                        >
-                          音频加载失败
-                        </div>
-                      </div>
+                        audioItem={audioItem}
+                        index={index}
+                        onDownload={handleAudioDownload}
+                        t={t}
+                      />
                     ))}
                   </div>
                 )}
