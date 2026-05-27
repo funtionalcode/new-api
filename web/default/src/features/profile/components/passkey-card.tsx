@@ -17,7 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useCallback, useMemo, useState } from 'react'
-import { AlertTriangle, KeyRound, Loader2, ShieldAlert } from 'lucide-react'
+import {
+  AlertTriangle,
+  KeyRound,
+  Loader2,
+  Pencil,
+  ShieldAlert,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import dayjs from '@/lib/dayjs'
@@ -40,6 +46,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatusBadge } from '@/components/status-badge'
 import { usePasskeyManagement } from '@/features/auth/passkey'
@@ -59,17 +66,21 @@ export function PasskeyCard({ loading: pageLoading }: PasskeyCardProps) {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [restrictedMethod, setRestrictedMethod] =
     useState<VerificationMethod | null>(null)
+  const [remarkDialogOpen, setRemarkDialogOpen] = useState(false)
+  const [remarkInput, setRemarkInput] = useState('')
 
   const {
     status,
     loading,
     registering,
     removing,
+    updatingRemark,
     supported,
     enabled,
     lastUsed,
     register,
     remove,
+    updateRemark,
   } = usePasskeyManagement()
 
   const {
@@ -171,6 +182,18 @@ export function PasskeyCard({ loading: pageLoading }: PasskeyCardProps) {
     [setVerificationOpen]
   )
 
+  const handleOpenRemarkDialog = useCallback(() => {
+    setRemarkInput(status?.remark ?? '')
+    setRemarkDialogOpen(true)
+  }, [status?.remark])
+
+  const handleUpdateRemark = useCallback(async () => {
+    const success = await updateRemark(remarkInput.trim())
+    if (success) {
+      setRemarkDialogOpen(false)
+    }
+  }, [remarkInput, updateRemark])
+
   // Adapt the hook's `Promise<unknown>` return into the dialog's
   // `void | Promise<void>` signature without losing error propagation
   // semantics (errors are surfaced via toast inside the hook).
@@ -258,6 +281,21 @@ export function PasskeyCard({ loading: pageLoading }: PasskeyCardProps) {
                   <p className='text-muted-foreground text-sm'>
                     {t('Last used:')} {formattedLastUsed}
                   </p>
+                  {enabled && (
+                    <div className='flex items-center gap-1'>
+                      <p className='text-muted-foreground text-sm'>
+                        {t('Remark:')} {status?.remark || t('No remark')}
+                      </p>
+                      <Button
+                        variant='ghost'
+                        size='icon'
+                        className='h-6 w-6'
+                        onClick={handleOpenRemarkDialog}
+                      >
+                        <Pencil className='h-3 w-3' />
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -354,6 +392,35 @@ export function PasskeyCard({ loading: pageLoading }: PasskeyCardProps) {
         onCodeChange={setCode}
         onMethodChange={switchMethod}
       />
+
+      <AlertDialog open={remarkDialogOpen} onOpenChange={setRemarkDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('Edit Remark')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('Add a remark to help identify this Passkey.')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Input
+            value={remarkInput}
+            onChange={(e) => setRemarkInput(e.target.value)}
+            placeholder={t('Enter remark (optional)')}
+            maxLength={100}
+            disabled={updatingRemark}
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={updatingRemark}>
+              {t('Cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction disabled={updatingRemark} onClick={handleUpdateRemark}>
+              {updatingRemark && (
+                <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+              )}
+              {t('Save')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

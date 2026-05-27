@@ -27,6 +27,7 @@ export interface PasskeyStatus {
   last_used_at?: string | null
   backup_eligible?: boolean
   backup_state?: boolean
+  remark?: string
   [key: string]: unknown
 }
 

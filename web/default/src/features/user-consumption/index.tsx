@@ -46,6 +46,7 @@ import {
   parseTimestampFromInput,
 } from '@/lib/format'
 import { getUserConsumption } from './api'
+import { TokenStatCards, TokenConsumptionCharts } from './components'
 
 const daySeconds = 24 * 60 * 60
 
@@ -94,26 +95,46 @@ export function UserConsumption() {
   })
 
   const rows = query.data?.data?.items ?? []
-  const totals = useMemo(
-    () =>
-      rows.reduce(
-        (acc, row) => ({
-          requestCount: acc.requestCount + row.request_count,
-          promptTokens: acc.promptTokens + row.prompt_tokens,
-          completionTokens: acc.completionTokens + row.completion_tokens,
-          totalTokens: acc.totalTokens + row.total_tokens,
-          quota: acc.quota + row.quota,
-        }),
-        {
-          requestCount: 0,
-          promptTokens: 0,
-          completionTokens: 0,
-          totalTokens: 0,
-          quota: 0,
-        }
-      ),
-    [rows]
-  )
+
+  const tokenGroupedData = useMemo(() => {
+    const tokenMap = new Map<number, {
+      token_id: number
+      token_name: string
+      total_tokens: number
+      prompt_tokens: number
+      completion_tokens: number
+      request_count: number
+      quota: number
+      users: Set<string>
+      last_called_at: number
+    }>()
+
+    for (const row of rows) {
+      const existing = tokenMap.get(row.token_id) || {
+        token_id: row.token_id,
+        token_name: row.token_name,
+        total_tokens: 0,
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        request_count: 0,
+        quota: 0,
+        users: new Set(),
+        last_called_at: 0,
+      }
+
+      existing.total_tokens += row.total_tokens
+      existing.prompt_tokens += row.prompt_tokens
+      existing.completion_tokens += row.completion_tokens
+      existing.request_count += row.request_count
+      existing.quota += row.quota
+      if (row.username) existing.users.add(row.username)
+      existing.last_called_at = Math.max(existing.last_called_at, row.last_called_at)
+
+      tokenMap.set(row.token_id, existing)
+    }
+
+    return Array.from(tokenMap.values()).sort((a, b) => b.total_tokens - a.total_tokens)
+  }, [rows])
 
   return (
     <SectionPageLayout>
@@ -164,44 +185,15 @@ export function UserConsumption() {
             </CardContent>
           </Card>
 
-          <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-5'>
-            <Card>
-              <CardHeader className='pb-2'>
-                <CardDescription>{t('Requests')}</CardDescription>
-                <CardTitle>{totals.requestCount}</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className='pb-2'>
-                <CardDescription>{t('Prompt Tokens')}</CardDescription>
-                <CardTitle>{formatTokens(totals.promptTokens)}</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className='pb-2'>
-                <CardDescription>{t('Completion Tokens')}</CardDescription>
-                <CardTitle>{formatTokens(totals.completionTokens)}</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className='pb-2'>
-                <CardDescription>{t('Total Tokens')}</CardDescription>
-                <CardTitle>{formatTokens(totals.totalTokens)}</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className='pb-2'>
-                <CardDescription>{t('Quota')}</CardDescription>
-                <CardTitle>{formatLogQuota(totals.quota)}</CardTitle>
-              </CardHeader>
-            </Card>
-          </div>
+          <TokenStatCards data={rows} loading={query.isLoading} />
+
+          <TokenConsumptionCharts data={rows} loading={query.isLoading} />
 
           <Card>
             <CardHeader>
-              <CardTitle>{t('User Consumption Details')}</CardTitle>
+              <CardTitle>{t('Token Consumption Details')}</CardTitle>
               <CardDescription>
-                {t('Aggregated by user, token, and bound auth file.')}
+                {t('Aggregated by token with user breakdown.')}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -216,9 +208,8 @@ export function UserConsumption() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{t('User')}</TableHead>
                     <TableHead>{t('Token')}</TableHead>
-                    <TableHead>{t('Auth File')}</TableHead>
+                    <TableHead>{t('Users')}</TableHead>
                     <TableHead>{t('Requests')}</TableHead>
                     <TableHead>{t('Prompt Tokens')}</TableHead>
                     <TableHead>{t('Completion Tokens')}</TableHead>
@@ -228,21 +219,18 @@ export function UserConsumption() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {rows.length > 0 ? (
-                    rows.map((row) => (
-                      <TableRow key={`${row.user_id}-${row.token_id}-${row.auth_index}`}>
+                  {tokenGroupedData.length > 0 ? (
+                    tokenGroupedData.map((row) => (
+                      <TableRow key={row.token_id}>
                         <TableCell>
-                          <div className='font-medium'>{row.username || '-'}</div>
-                          <div className='text-muted-foreground text-xs'>ID: {row.user_id}</div>
-                        </TableCell>
-                        <TableCell>
-                          <div>{row.token_name || '-'}</div>
+                          <div className='font-medium'>{row.token_name || '-'}</div>
                           <div className='text-muted-foreground text-xs'>ID: {row.token_id}</div>
                         </TableCell>
                         <TableCell>
-                          <div>{row.auth_name || '-'}</div>
-                          <div className='text-muted-foreground font-mono text-xs'>
-                            {row.auth_index || '-'}
+                          <div className='text-sm'>{row.users.size}</div>
+                          <div className='text-muted-foreground text-xs'>
+                            {Array.from(row.users).slice(0, 3).join(', ')}
+                            {row.users.size > 3 && ` +${row.users.size - 3}`}
                           </div>
                         </TableCell>
                         <TableCell>{row.request_count}</TableCell>
@@ -255,7 +243,7 @@ export function UserConsumption() {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={9} className='text-muted-foreground py-8 text-center'>
+                      <TableCell colSpan={8} className='text-muted-foreground py-8 text-center'>
                         {query.isLoading ? t('Loading...') : t('No consumption data found')}
                       </TableCell>
                     </TableRow>

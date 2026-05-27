@@ -48,6 +48,15 @@ export async function deletePasskey(): Promise<ApiResponse> {
   return res.data
 }
 
+export async function updatePasskeyRemark(
+  remark: string
+): Promise<ApiResponse> {
+  const res = await api.put<ApiResponse>('/api/user/passkey/remark', {
+    remark,
+  })
+  return res.data
+}
+
 export async function beginPasskeyLogin(): Promise<
   ApiResponse<PasskeyOptionsPayload>
 > {
