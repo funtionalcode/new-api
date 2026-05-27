@@ -35,6 +35,11 @@ import {
   Volume2,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import {
+  MIMO_TTS_DEFAULT_VOICE,
+  MIMO_TTS_MODELS,
+  MIMO_TTS_VOICES,
+} from '../../constants/playground.constants';
 import { renderGroupOption, selectFilter } from '../../helpers';
 import ParameterControl from './ParameterControl';
 import ImageUrlInput from './ImageUrlInput';
@@ -53,6 +58,11 @@ const TTS_VOICE_OPTIONS = [
   { label: 'sage', value: 'sage' },
   { label: 'shimmer', value: 'shimmer' },
 ];
+
+const MIMO_TTS_VOICE_OPTIONS = MIMO_TTS_VOICES.map((voice) => ({
+  label: voice,
+  value: voice,
+}));
 
 const TTS_FORMAT_OPTIONS = [
   { label: 'mp3', value: 'mp3' },
@@ -83,6 +93,15 @@ const SettingsPanel = ({
   messages,
 }) => {
   const { t } = useTranslation();
+  const isMimoTTSModel = MIMO_TTS_MODELS.includes(inputs.model);
+  const ttsVoiceOptions = isMimoTTSModel
+    ? MIMO_TTS_VOICE_OPTIONS
+    : TTS_VOICE_OPTIONS;
+  const ttsVoiceValue = isMimoTTSModel
+    ? MIMO_TTS_VOICES.includes(inputs.ttsVoice)
+      ? inputs.ttsVoice
+      : MIMO_TTS_DEFAULT_VOICE
+    : inputs.ttsVoice || 'alloy';
 
   const currentConfig = {
     inputs,
@@ -258,9 +277,9 @@ const SettingsPanel = ({
                   {t('音色')}
                 </Typography.Text>
                 <Select
-                  value={inputs.ttsVoice || 'alloy'}
+                  value={ttsVoiceValue}
                   onChange={(value) => onInputChange('ttsVoice', value)}
-                  optionList={TTS_VOICE_OPTIONS}
+                  optionList={ttsVoiceOptions}
                   style={{ width: '100%' }}
                   className='!rounded-lg'
                   disabled={customRequestMode}

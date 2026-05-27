@@ -25,7 +25,12 @@ import {
   getTextContent,
 } from './utils';
 import axios from 'axios';
-import { MESSAGE_ROLES } from '../constants/playground.constants';
+import {
+  MIMO_TTS_DEFAULT_VOICE,
+  MIMO_TTS_MODELS,
+  MIMO_TTS_VOICES,
+  MESSAGE_ROLES,
+} from '../constants/playground.constants';
 
 export let API = axios.create({
   baseURL: import.meta.env.VITE_REACT_APP_SERVER_URL
@@ -140,12 +145,18 @@ export const buildAudioSpeechPayload = (messages, inputs) => {
   const lastUserMessage = [...messages]
     .reverse()
     .find((message) => message.role === MESSAGE_ROLES.USER);
+  const isMimoTTSModel = MIMO_TTS_MODELS.includes(inputs.model);
+  const voice = isMimoTTSModel
+    ? MIMO_TTS_VOICES.includes(inputs.ttsVoice)
+      ? inputs.ttsVoice
+      : MIMO_TTS_DEFAULT_VOICE
+    : inputs.ttsVoice || 'alloy';
 
   const payload = {
     model: inputs.model,
     group: inputs.group,
     input: lastUserMessage ? getTextContent(lastUserMessage).trim() : '',
-    voice: inputs.ttsVoice || 'alloy',
+    voice,
     response_format: inputs.ttsResponseFormat || 'mp3',
   };
 

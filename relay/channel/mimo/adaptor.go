@@ -29,6 +29,9 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	if baseURL == "" {
 		baseURL = "https://api.xiaomimimo.com"
 	}
+	if strings.HasSuffix(baseURL, "/v1") {
+		return fmt.Sprintf("%s/chat/completions", baseURL), nil
+	}
 	return fmt.Sprintf("%s/v1/chat/completions", baseURL), nil
 }
 

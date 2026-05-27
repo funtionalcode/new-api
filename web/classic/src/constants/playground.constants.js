@@ -115,6 +115,26 @@ export const DEFAULT_CONFIG = {
   customRequestBody: '',
 };
 
+export const MIMO_TTS_MODELS = [
+  'mimo-v2.5-tts',
+  'mimo-v2.5-tts-voiceclone',
+  'mimo-v2.5-tts-voicedesign',
+];
+
+export const MIMO_TTS_DEFAULT_VOICE = 'mimo_default';
+
+export const MIMO_TTS_VOICES = [
+  'mimo_default',
+  '冰糖',
+  '茉莉',
+  '苏打',
+  '白桦',
+  'Mia',
+  'Chloe',
+  'Milo',
+  'Dean',
+];
+
 // ========== 正则表达式 ==========
 export const THINK_TAG_REGEX = /<think>([\s\S]*?)<\/think>/g;
 

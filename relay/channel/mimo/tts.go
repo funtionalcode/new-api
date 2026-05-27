@@ -87,6 +87,9 @@ func getVoice(model string, voice string) string {
 	if model == "mimo-v2.5-tts-voicedesign" {
 		return ""
 	}
+	if strings.TrimSpace(voice) == "" || voice == "alloy" {
+		return "mimo_default"
+	}
 	return voice
 }
 

@@ -18,18 +18,42 @@ import (
 func TestGetRequestURLForAudioSpeech(t *testing.T) {
 	t.Parallel()
 
-	adaptor := &Adaptor{}
-	info := &relaycommon.RelayInfo{
-		RelayMode: relayconstant.RelayModeAudioSpeech,
-		ChannelMeta: &relaycommon.ChannelMeta{
-			ChannelBaseUrl: "https://api.xiaomimimo.com",
+	testCases := []struct {
+		name    string
+		baseURL string
+		want    string
+	}{
+		{
+			name:    "root base url",
+			baseURL: "https://api.xiaomimimo.com",
+			want:    "https://api.xiaomimimo.com/v1/chat/completions",
+		},
+		{
+			name:    "v1 base url",
+			baseURL: "https://api.xiaomimimo.com/v1",
+			want:    "https://api.xiaomimimo.com/v1/chat/completions",
 		},
 	}
 
-	got, err := adaptor.GetRequestURL(info)
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
 
-	require.NoError(t, err)
-	require.Equal(t, "https://api.xiaomimimo.com/v1/chat/completions", got)
+			adaptor := &Adaptor{}
+			info := &relaycommon.RelayInfo{
+				RelayMode: relayconstant.RelayModeAudioSpeech,
+				ChannelMeta: &relaycommon.ChannelMeta{
+					ChannelBaseUrl: testCase.baseURL,
+				},
+			}
+
+			got, err := adaptor.GetRequestURL(info)
+
+			require.NoError(t, err)
+			require.Equal(t, testCase.want, got)
+		})
+	}
 }
 
 func TestConvertAudioRequest(t *testing.T) {
@@ -68,6 +92,32 @@ func TestConvertAudioRequest(t *testing.T) {
 	responseFormat, ok := ctx.Get("response_format")
 	require.True(t, ok)
 	require.Equal(t, "wav", responseFormat)
+}
+
+func TestConvertAudioRequestDefaultsOpenAIVoiceToMimoDefault(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	adaptor := &Adaptor{}
+	info := &relaycommon.RelayInfo{
+		RelayMode:       relayconstant.RelayModeAudioSpeech,
+		OriginModelName: "mimo-v2.5-tts",
+	}
+	request := dto.AudioRequest{
+		Input: "Welcome to MiMo.",
+		Voice: "alloy",
+	}
+
+	reader, err := adaptor.ConvertAudioRequest(ctx, info, request)
+
+	require.NoError(t, err)
+	body, err := io.ReadAll(reader)
+	require.NoError(t, err)
+
+	var payload ttsRequest
+	require.NoError(t, common.Unmarshal(body, &payload))
+	require.Equal(t, "mimo_default", payload.Audio.Voice)
 }
 
 func TestConvertAudioRequestDefaultsFormatAndOmitsVoicedesignVoice(t *testing.T) {
