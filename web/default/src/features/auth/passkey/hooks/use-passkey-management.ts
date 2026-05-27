@@ -30,6 +30,7 @@ import {
   deletePasskey,
   finishPasskeyRegistration,
   getPasskeyStatus,
+  updatePasskeyRemark,
 } from '../api'
 import type { PasskeyStatus } from '../types'
 
@@ -46,6 +47,7 @@ export function usePasskeyManagement(
   const [loading, setLoading] = useState(true)
   const [registering, setRegistering] = useState(false)
   const [removing, setRemoving] = useState(false)
+  const [updatingRemark, setUpdatingRemark] = useState(false)
   const [supported, setSupported] = useState(false)
 
   const fetchStatus = useCallback(async () => {
@@ -169,6 +171,33 @@ export function usePasskeyManagement(
     }
   }, [fetchStatus])
 
+  const updateRemark = useCallback(
+    async (remark: string) => {
+      setUpdatingRemark(true)
+      try {
+        const res = await updatePasskeyRemark(remark)
+        if (!res.success) {
+          toast.error(
+            res.message || i18next.t('Failed to update Passkey remark')
+          )
+          return false
+        }
+
+        toast.success(i18next.t('Passkey remark updated successfully'))
+        await fetchStatus()
+        return true
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('[Passkey] Update remark error', error)
+        toast.error(i18next.t('Failed to update Passkey remark'))
+        return false
+      } finally {
+        setUpdatingRemark(false)
+      }
+    },
+    [fetchStatus]
+  )
+
   const enabled = useMemo(() => Boolean(status?.enabled), [status])
   const lastUsed = useMemo(() => status?.last_used_at ?? null, [status])
 
@@ -177,11 +206,13 @@ export function usePasskeyManagement(
     loading,
     registering,
     removing,
+    updatingRemark,
     supported,
     enabled,
     lastUsed,
     fetchStatus,
     register,
     remove,
+    updateRemark,
   }
 }

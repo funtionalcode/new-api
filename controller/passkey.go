@@ -174,6 +174,50 @@ func PasskeyDelete(c *gin.Context) {
 	})
 }
 
+func PasskeyUpdateRemark(c *gin.Context) {
+	user, err := getSessionUser(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	var req struct {
+		Remark string `json:"remark"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "无效的请求参数")
+		return
+	}
+
+	if len(req.Remark) > 100 {
+		common.ApiErrorMsg(c, "备注长度不能超过 100 个字符")
+		return
+	}
+
+	_, err = model.GetPasskeyByUserID(user.Id)
+	if err != nil {
+		if errors.Is(err, model.ErrPasskeyNotFound) {
+			common.ApiErrorMsg(c, "请先绑定 Passkey")
+			return
+		}
+		common.ApiError(c, err)
+		return
+	}
+
+	if err := model.UpdatePasskeyRemark(user.Id, req.Remark); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "备注已更新",
+	})
+}
+
 func PasskeyStatus(c *gin.Context) {
 	user, err := getSessionUser(c)
 	if err != nil {
@@ -203,6 +247,7 @@ func PasskeyStatus(c *gin.Context) {
 	data := gin.H{
 		"enabled":      true,
 		"last_used_at": credential.LastUsedAt,
+		"remark":       credential.Remark,
 	}
 
 	c.JSON(http.StatusOK, gin.H{

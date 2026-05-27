@@ -164,7 +164,9 @@ export function AccountBindingsTab({
         id: 'wechat',
         label: t('WeChat'),
         icon: SiWechat as React.ComponentType<{ className?: string }>,
-        value: undefined,
+        value: (profile as unknown as Record<string, unknown>).wechat_id as
+          | string
+          | undefined,
         isBound: Boolean(
           (profile as unknown as Record<string, unknown>).wechat_id
         ),

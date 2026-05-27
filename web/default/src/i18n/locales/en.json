@@ -3240,6 +3240,7 @@
     "Remaining quota units": "Remaining quota units",
     "Remaining:": "Remaining:",
     "Remark": "Remark",
+    "Remark:": "Remark:",
     "Remove": "Remove",
     "Remove ${{amount}}": "Remove ${{amount}}",
     "Remove all log entries created before the selected timestamp.": "Remove all log entries created before the selected timestamp.",
@@ -4537,6 +4538,15 @@
     "Selected User": "Selected User",
     "Usage refreshed successfully": "Usage refreshed successfully",
     "User Consumption": "User Consumption",
-    "User Consumption Details": "User Consumption Details"
+    "User Consumption Details": "User Consumption Details",
+    "Token Consumption Details": "Token Consumption Details",
+    "Aggregated by token with user breakdown.": "Aggregated by token with user breakdown.",
+    "All tokens consumed": "All tokens consumed",
+    "API calls made": "API calls made",
+    "Total Requests": "Total Requests",
+    "Quota consumed": "Quota consumed",
+    "Distribution": "Distribution",
+    "Top Tokens": "Top Tokens",
+    "Other": "Other"
   }
 }

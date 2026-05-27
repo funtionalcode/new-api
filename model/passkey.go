@@ -35,6 +35,7 @@ type PasskeyCredential struct {
 	BackupState     bool           `json:"backup_state"`
 	Transports      string         `json:"transports" gorm:"type:text"`
 	Attachment      string         `json:"attachment" gorm:"type:varchar(32)"`
+	Remark          string         `json:"remark" gorm:"type:varchar(255)"`
 	LastUsedAt      *time.Time     `json:"last_used_at"`
 	CreatedAt       time.Time      `json:"created_at"`
 	UpdatedAt       time.Time      `json:"updated_at"`
@@ -205,6 +206,17 @@ func DeletePasskeyByUserID(userID int) error {
 	if err := DB.Unscoped().Where("user_id = ?", userID).Delete(&PasskeyCredential{}).Error; err != nil {
 		common.SysLog(fmt.Sprintf("DeletePasskeyByUserID: failed to delete passkey for user %d: %v", userID, err))
 		return fmt.Errorf("删除失败，请重试")
+	}
+	return nil
+}
+
+func UpdatePasskeyRemark(userID int, remark string) error {
+	if userID == 0 {
+		return fmt.Errorf("无效的用户 ID")
+	}
+	if err := DB.Model(&PasskeyCredential{}).Where("user_id = ?", userID).Update("remark", remark).Error; err != nil {
+		common.SysLog(fmt.Sprintf("UpdatePasskeyRemark: failed to update remark for user %d: %v", userID, err))
+		return fmt.Errorf("更新备注失败，请重试")
 	}
 	return nil
 }
