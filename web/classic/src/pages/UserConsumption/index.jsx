@@ -50,6 +50,16 @@ const formatTime = (timestamp) => {
 
 const formatTokens = (value) => Number(value || 0).toLocaleString();
 
+const formatTokenUnit = (value) => {
+  const num = Number(value || 0);
+  if (num >= 1e10) return `${(num / 1e10).toFixed(2)}${'百亿'}`;
+  if (num >= 1e9) return `${(num / 1e9).toFixed(2)}${'十亿'}`;
+  if (num >= 1e8) return `${(num / 1e8).toFixed(2)}${'亿'}`;
+  if (num >= 1e7) return `${(num / 1e7).toFixed(2)}${'千万'}`;
+  if (num >= 1e6) return `${(num / 1e6).toFixed(2)}${'百万'}`;
+  return num.toLocaleString();
+};
+
 const formatQuota = (value) => {
   const num = Number(value || 0);
   if (num >= 1e8) return `${(num / 1e8).toFixed(2)}亿`;
@@ -206,11 +216,11 @@ export default function UserConsumption() {
     point: { visible: false },
     axes: [
       { orient: 'bottom', label: { visible: true, style: { angle: -45, textAlign: 'right' } } },
-      { orient: 'left', label: { visible: true, formatMethod: (val) => val.toLocaleString() } },
+      { orient: 'left', label: { visible: true, formatMethod: (val) => formatTokenUnit(val) } },
     ],
     tooltip: {
       mark: {
-        content: [{ key: t('Tokens'), value: (datum) => datum.y?.toLocaleString() }],
+        content: [{ key: t('Tokens'), value: (datum) => formatTokenUnit(datum.y) }],
       },
     },
   }), [chartData, t]);
@@ -225,10 +235,10 @@ export default function UserConsumption() {
     }],
     valueField: 'value',
     categoryField: 'type',
-    label: { visible: true, position: 'outside', formatMethod: (val) => val.toLocaleString() },
+    label: { visible: true, position: 'outside', formatMethod: (val) => formatTokenUnit(val) },
     tooltip: {
       mark: {
-        content: [{ key: t('Tokens'), value: (datum) => datum.value?.toLocaleString() }],
+        content: [{ key: t('Tokens'), value: (datum) => formatTokenUnit(datum.value) }],
       },
     },
   }), [chartData, t]);
@@ -247,11 +257,11 @@ export default function UserConsumption() {
     bar: { style: { cornerRadius: [4, 4, 0, 0] } },
     axes: [
       { orient: 'bottom', label: { visible: true, style: { angle: -45, textAlign: 'right' } } },
-      { orient: 'left', label: { visible: true, formatMethod: (val) => val.toLocaleString() } },
+      { orient: 'left', label: { visible: true, formatMethod: (val) => formatTokenUnit(val) } },
     ],
     tooltip: {
       mark: {
-        content: [{ key: t('Tokens'), value: (datum) => datum.y?.toLocaleString() }],
+        content: [{ key: t('Tokens'), value: (datum) => formatTokenUnit(datum.y) }],
       },
     },
   }), [chartData, t]);
@@ -265,9 +275,9 @@ export default function UserConsumption() {
   };
 
   const statCards = [
-    { title: t('总 Tokens'), value: formatTokens(stats.totalTokens), desc: t('所有消耗的 Tokens') },
+    { title: t('总 Tokens'), value: formatTokenUnit(stats.totalTokens), desc: t('所有消耗的 Tokens') },
     { title: t('总请求数'), value: formatTokens(stats.totalCount), desc: t('API 调用次数') },
-    { title: t('平均 Tokens'), value: formatTokens(stats.avgTokens), desc: t('每次请求平均') },
+    { title: t('平均 Tokens'), value: formatTokenUnit(stats.avgTokens), desc: t('每次请求平均') },
     { title: t('总配额'), value: formatQuota(stats.totalQuota), desc: t('消耗的配额') },
   ];
 
