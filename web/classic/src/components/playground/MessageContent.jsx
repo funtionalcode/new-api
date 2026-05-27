@@ -21,7 +21,15 @@ import React, { useRef, useEffect } from 'react';
 import { Typography, TextArea, Button } from '@douyinfe/semi-ui';
 import MarkdownRenderer from '../common/markdown/MarkdownRenderer';
 import ThinkingContent from './ThinkingContent';
-import { Loader2, Check, X, Settings, AlertTriangle } from 'lucide-react';
+import {
+  Loader2,
+  Check,
+  X,
+  Settings,
+  AlertTriangle,
+  Volume2,
+  Download,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { isAdmin } from '../../helpers/utils';
 
@@ -129,6 +137,20 @@ const MessageContent = ({
       return content;
     }
     return '';
+  };
+
+  const getAudioDownloadName = (audioItem, index) => {
+    const format = audioItem.audio.format || 'mp3';
+    return `tts-audio-${index + 1}.${format}`;
+  };
+
+  const handleAudioDownload = (audioItem, index) => {
+    const link = document.createElement('a');
+    link.href = audioItem.audio.url;
+    link.download = getAudioDownloadName(audioItem, index);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   };
 
   currentDisplayableFinalContent = getTextContent(message.content);
@@ -347,30 +369,46 @@ const MessageContent = ({
                     {audioContents.map((audioItem, index) => (
                       <div
                         key={index}
-                        className='rounded-lg p-3 shadow-sm border bg-white max-w-sm'
+                        className='rounded-2xl px-4 py-3 shadow-sm border max-w-sm'
+                        style={{
+                          background: 'var(--semi-color-bg-0)',
+                          borderColor: 'var(--semi-color-border)',
+                        }}
                       >
-                        <audio
-                          controls
-                          src={audioItem.audio.url}
-                          className='w-full'
-                          onError={(e) => {
-                            e.currentTarget.style.display = 'none';
-                            e.currentTarget.nextSibling.style.display = 'block';
-                          }}
-                        />
+                        <div className='flex items-center gap-3'>
+                          <div className='w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center shrink-0'>
+                            <Volume2 size={18} className='text-white' />
+                          </div>
+                          <div className='flex-1 min-w-0'>
+                            <audio
+                              controls
+                              src={audioItem.audio.url}
+                              className='w-full h-8 block'
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                e.currentTarget.parentElement.nextSibling.style.display =
+                                  'block';
+                              }}
+                            />
+                          </div>
+                          <Button
+                            icon={<Download size={16} />}
+                            onClick={() =>
+                              handleAudioDownload(audioItem, index)
+                            }
+                            theme='borderless'
+                            type='tertiary'
+                            size='small'
+                            className='!rounded-full shrink-0'
+                            aria-label={t('Download audio')}
+                          />
+                        </div>
                         <div
-                          className='text-red-500 text-sm p-2 bg-red-50 rounded-lg border border-red-200'
+                          className='text-red-500 text-sm p-2 bg-red-50 rounded-lg border border-red-200 mt-2'
                           style={{ display: 'none' }}
                         >
                           音频加载失败
                         </div>
-                        {(audioItem.audio.format ||
-                          audioItem.audio.contentType) && (
-                          <Typography.Text className='text-xs text-gray-500 mt-2 block'>
-                            {audioItem.audio.format ||
-                              audioItem.audio.contentType}
-                          </Typography.Text>
-                        )}
                       </div>
                     ))}
                   </div>

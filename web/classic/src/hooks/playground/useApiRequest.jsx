@@ -406,10 +406,7 @@ export const useApiRequest = (
             const autoCollapseState = applyAutoCollapseLogic(lastMessage, true);
             newMessages[newMessages.length - 1] = {
               ...lastMessage,
-              content: [
-                { type: 'text', text: t('语音生成完成') },
-                audioContent,
-              ],
+              content: [audioContent],
               status: MESSAGE_STATUS.COMPLETE,
               ...autoCollapseState,
             };
