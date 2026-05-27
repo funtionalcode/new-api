@@ -19,6 +19,11 @@ func TestPath2RelayModePlaygroundImagesGenerations(t *testing.T) {
 			want: RelayModeChatCompletions,
 		},
 		{
+			name: "playground audio speech",
+			path: "/pg/audio/speech",
+			want: RelayModeAudioSpeech,
+		},
+		{
 			name: "v1 images generations",
 			path: "/v1/images/generations",
 			want: RelayModeImagesGenerations,

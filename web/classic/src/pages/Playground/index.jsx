@@ -47,6 +47,7 @@ import {
   createLoadingAssistantMessage,
   getTextContent,
   buildApiPayload,
+  buildAudioSpeechPayload,
   encodeToBase64,
 } from '../../helpers';
 
@@ -282,6 +283,16 @@ const Playground = () => {
     setMessage((prevMessage) => {
       const newMessages = [...prevMessage, userMessageWithImages];
 
+      if (inputs.ttsEnabled) {
+        const payload = buildAudioSpeechPayload(newMessages, inputs);
+        sendRequest(payload, false, false, true);
+
+        const messagesWithLoading = [...newMessages, loadingMessage];
+        setTimeout(() => saveMessagesImmediately(messagesWithLoading), 0);
+
+        return messagesWithLoading;
+      }
+
       const payload = buildApiPayload(
         newMessages,
         null,
@@ -289,13 +300,6 @@ const Playground = () => {
         parameterEnabled,
       );
       sendRequest(payload, inputs.stream, inputs.imageEnabled);
-
-      // 禁用图片模式
-      if (inputs.imageEnabled) {
-        setTimeout(() => {
-          handleInputChange('imageEnabled', false);
-        }, 100);
-      }
 
       // 发送消息后保存，传入新消息列表（包含用户消息和加载消息）
       const messagesWithLoading = [...newMessages, loadingMessage];

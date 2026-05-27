@@ -136,6 +136,27 @@ export const buildImageGenerationPayload = (messages, inputs) => {
   return payload;
 };
 
+export const buildAudioSpeechPayload = (messages, inputs) => {
+  const lastUserMessage = [...messages]
+    .reverse()
+    .find((message) => message.role === MESSAGE_ROLES.USER);
+
+  const payload = {
+    model: inputs.model,
+    group: inputs.group,
+    input: lastUserMessage ? getTextContent(lastUserMessage).trim() : '',
+    voice: inputs.ttsVoice || 'alloy',
+    response_format: inputs.ttsResponseFormat || 'mp3',
+  };
+
+  const speed = Number(inputs.ttsSpeed);
+  if (Number.isFinite(speed) && speed > 0) {
+    payload.speed = speed;
+  }
+
+  return payload;
+};
+
 export const buildApiPayload = (
   messages,
   systemPrompt,

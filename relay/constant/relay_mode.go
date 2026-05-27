@@ -76,7 +76,7 @@ func Path2RelayMode(path string) int {
 		relayMode = RelayModeResponsesCompact
 	} else if strings.HasPrefix(path, "/v1/responses") {
 		relayMode = RelayModeResponses
-	} else if strings.HasPrefix(path, "/v1/audio/speech") {
+	} else if strings.HasPrefix(path, "/v1/audio/speech") || strings.HasPrefix(path, "/pg/audio/speech") {
 		relayMode = RelayModeAudioSpeech
 	} else if strings.HasPrefix(path, "/v1/audio/transcriptions") {
 		relayMode = RelayModeAudioTranscription

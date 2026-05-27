@@ -18,14 +18,50 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Card, Select, Typography, Button, Switch } from '@douyinfe/semi-ui';
-import { Sparkles, Users, ToggleLeft, X, Settings } from 'lucide-react';
+import {
+  Card,
+  Select,
+  Typography,
+  Button,
+  Switch,
+  InputNumber,
+} from '@douyinfe/semi-ui';
+import {
+  Sparkles,
+  Users,
+  ToggleLeft,
+  X,
+  Settings,
+  Volume2,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { renderGroupOption, selectFilter } from '../../helpers';
 import ParameterControl from './ParameterControl';
 import ImageUrlInput from './ImageUrlInput';
 import ConfigManager from './ConfigManager';
 import CustomRequestEditor from './CustomRequestEditor';
+
+const TTS_VOICE_OPTIONS = [
+  { label: 'alloy', value: 'alloy' },
+  { label: 'ash', value: 'ash' },
+  { label: 'ballad', value: 'ballad' },
+  { label: 'coral', value: 'coral' },
+  { label: 'echo', value: 'echo' },
+  { label: 'fable', value: 'fable' },
+  { label: 'nova', value: 'nova' },
+  { label: 'onyx', value: 'onyx' },
+  { label: 'sage', value: 'sage' },
+  { label: 'shimmer', value: 'shimmer' },
+];
+
+const TTS_FORMAT_OPTIONS = [
+  { label: 'mp3', value: 'mp3' },
+  { label: 'opus', value: 'opus' },
+  { label: 'aac', value: 'aac' },
+  { label: 'flac', value: 'flac' },
+  { label: 'wav', value: 'wav' },
+  { label: 'pcm', value: 'pcm' },
+];
 
 const SettingsPanel = ({
   inputs,
@@ -187,6 +223,81 @@ const SettingsPanel = ({
             }
             disabled={customRequestMode}
           />
+        </div>
+
+        {/* TTS 模式 */}
+        <div className={customRequestMode ? 'opacity-50' : ''}>
+          <div className='flex items-center justify-between mb-3'>
+            <div className='flex items-center gap-2'>
+              <Volume2 size={16} className='text-gray-500' />
+              <Typography.Text strong className='text-sm'>
+                {t('TTS 语音输出')}
+              </Typography.Text>
+              {customRequestMode && (
+                <Typography.Text className='text-xs text-orange-600'>
+                  ({t('已在自定义模式中忽略')})
+                </Typography.Text>
+              )}
+            </div>
+            <Switch
+              checked={!!inputs.ttsEnabled}
+              onChange={(checked) => onInputChange('ttsEnabled', checked)}
+              checkedText={t('开')}
+              uncheckedText={t('关')}
+              size='small'
+              disabled={customRequestMode}
+            />
+          </div>
+          <Typography.Text className='text-xs text-gray-500 block mb-3'>
+            {t('启用后将输入文本转换为可播放语音')}
+          </Typography.Text>
+          {inputs.ttsEnabled && (
+            <div className='space-y-3'>
+              <div>
+                <Typography.Text className='text-xs text-gray-500 block mb-1'>
+                  {t('音色')}
+                </Typography.Text>
+                <Select
+                  value={inputs.ttsVoice || 'alloy'}
+                  onChange={(value) => onInputChange('ttsVoice', value)}
+                  optionList={TTS_VOICE_OPTIONS}
+                  style={{ width: '100%' }}
+                  className='!rounded-lg'
+                  disabled={customRequestMode}
+                />
+              </div>
+              <div>
+                <Typography.Text className='text-xs text-gray-500 block mb-1'>
+                  {t('音频格式')}
+                </Typography.Text>
+                <Select
+                  value={inputs.ttsResponseFormat || 'mp3'}
+                  onChange={(value) =>
+                    onInputChange('ttsResponseFormat', value)
+                  }
+                  optionList={TTS_FORMAT_OPTIONS}
+                  style={{ width: '100%' }}
+                  className='!rounded-lg'
+                  disabled={customRequestMode}
+                />
+              </div>
+              <div>
+                <Typography.Text className='text-xs text-gray-500 block mb-1'>
+                  {t('语速')}
+                </Typography.Text>
+                <InputNumber
+                  value={inputs.ttsSpeed ?? 1}
+                  onNumberChange={(value) => onInputChange('ttsSpeed', value)}
+                  min={0.25}
+                  max={4}
+                  step={0.05}
+                  precision={2}
+                  style={{ width: '100%' }}
+                  disabled={customRequestMode}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 参数控制组件 */}

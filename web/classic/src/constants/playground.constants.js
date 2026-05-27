@@ -77,6 +77,7 @@ export const DEBUG_TABS = {
 export const API_ENDPOINTS = {
   CHAT_COMPLETIONS: '/pg/chat/completions',
   IMAGE_GENERATIONS: '/pg/images/generations',
+  AUDIO_SPEECH: '/pg/audio/speech',
   USER_MODELS: '/api/user/models',
   USER_GROUPS: '/api/user/self/groups',
 };
@@ -95,6 +96,10 @@ export const DEFAULT_CONFIG = {
     stream: true,
     imageEnabled: false,
     imageUrls: [''],
+    ttsEnabled: false,
+    ttsVoice: 'alloy',
+    ttsResponseFormat: 'mp3',
+    ttsSpeed: 1,
   },
   parameterEnabled: {
     temperature: true,

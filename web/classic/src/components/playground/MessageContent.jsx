@@ -307,6 +307,9 @@ const MessageContent = ({
             const imageContents = message.content.filter(
               (item) => item.type === 'image_url',
             );
+            const audioContents = message.content.filter(
+              (item) => item.type === 'audio',
+            );
 
             return (
               <div>
@@ -334,6 +337,40 @@ const MessageContent = ({
                         >
                           图片加载失败: {imgItem.image_url.url}
                         </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {audioContents.length > 0 && (
+                  <div className='mb-3 space-y-2'>
+                    {audioContents.map((audioItem, index) => (
+                      <div
+                        key={index}
+                        className='rounded-lg p-3 shadow-sm border bg-white max-w-sm'
+                      >
+                        <audio
+                          controls
+                          src={audioItem.audio.url}
+                          className='w-full'
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                            e.currentTarget.nextSibling.style.display = 'block';
+                          }}
+                        />
+                        <div
+                          className='text-red-500 text-sm p-2 bg-red-50 rounded-lg border border-red-200'
+                          style={{ display: 'none' }}
+                        >
+                          音频加载失败
+                        </div>
+                        {(audioItem.audio.format ||
+                          audioItem.audio.contentType) && (
+                          <Typography.Text className='text-xs text-gray-500 mt-2 block'>
+                            {audioItem.audio.format ||
+                              audioItem.audio.contentType}
+                          </Typography.Text>
+                        )}
                       </div>
                     ))}
                   </div>
