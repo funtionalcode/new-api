@@ -141,6 +141,18 @@ func InitOptionMap() {
 	common.OptionMap["ModelRequestRateLimitDurationMinutes"] = strconv.Itoa(setting.ModelRequestRateLimitDurationMinutes)
 	common.OptionMap["ModelRequestRateLimitSuccessCount"] = strconv.Itoa(setting.ModelRequestRateLimitSuccessCount)
 	common.OptionMap["ModelRequestRateLimitGroup"] = setting.ModelRequestRateLimitGroup2JSONString()
+	common.OptionMap["GlobalApiRateLimitEnable"] = strconv.FormatBool(common.GlobalApiRateLimitEnable)
+	common.OptionMap["GlobalApiRateLimitNum"] = strconv.Itoa(common.GlobalApiRateLimitNum)
+	common.OptionMap["GlobalApiRateLimitDuration"] = strconv.FormatInt(common.GlobalApiRateLimitDuration, 10)
+	common.OptionMap["GlobalWebRateLimitEnable"] = strconv.FormatBool(common.GlobalWebRateLimitEnable)
+	common.OptionMap["GlobalWebRateLimitNum"] = strconv.Itoa(common.GlobalWebRateLimitNum)
+	common.OptionMap["GlobalWebRateLimitDuration"] = strconv.FormatInt(common.GlobalWebRateLimitDuration, 10)
+	common.OptionMap["CriticalRateLimitEnable"] = strconv.FormatBool(common.CriticalRateLimitEnable)
+	common.OptionMap["CriticalRateLimitNum"] = strconv.Itoa(common.CriticalRateLimitNum)
+	common.OptionMap["CriticalRateLimitDuration"] = strconv.FormatInt(common.CriticalRateLimitDuration, 10)
+	common.OptionMap["SearchRateLimitEnable"] = strconv.FormatBool(common.SearchRateLimitEnable)
+	common.OptionMap["SearchRateLimitNum"] = strconv.Itoa(common.SearchRateLimitNum)
+	common.OptionMap["SearchRateLimitDuration"] = strconv.FormatInt(common.SearchRateLimitDuration, 10)
 	common.OptionMap["ModelRatio"] = ratio_setting.ModelRatio2JSONString()
 	common.OptionMap["ModelPrice"] = ratio_setting.ModelPrice2JSONString()
 	common.OptionMap["CacheRatio"] = ratio_setting.CacheRatio2JSONString()
@@ -249,7 +261,7 @@ func updateOptionMap(key string, value string) (err error) {
 			common.ImageDownloadPermission = intValue
 		}
 	}
-	if strings.HasSuffix(key, "Enabled") || key == "DefaultCollapseSidebar" || key == "DefaultUseAutoGroup" || key == "SMTPForceAuthLogin" {
+	if strings.HasSuffix(key, "Enabled") || strings.HasSuffix(key, "Enable") || key == "DefaultCollapseSidebar" || key == "DefaultUseAutoGroup" || key == "SMTPForceAuthLogin" {
 		boolValue := value == "true"
 		switch key {
 		case "PasswordRegisterEnabled":
@@ -320,6 +332,14 @@ func updateOptionMap(key string, value string) (err error) {
 			setting.CheckSensitiveOnPromptEnabled = boolValue
 		case "ModelRequestRateLimitEnabled":
 			setting.ModelRequestRateLimitEnabled = boolValue
+		case "GlobalApiRateLimitEnable":
+			common.GlobalApiRateLimitEnable = boolValue
+		case "GlobalWebRateLimitEnable":
+			common.GlobalWebRateLimitEnable = boolValue
+		case "CriticalRateLimitEnable":
+			common.CriticalRateLimitEnable = boolValue
+		case "SearchRateLimitEnable":
+			common.SearchRateLimitEnable = boolValue
 		case "StopOnSensitiveEnabled":
 			setting.StopOnSensitiveEnabled = boolValue
 		case "SMTPSSLEnabled":
@@ -496,6 +516,22 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.ModelRequestRateLimitSuccessCount, _ = strconv.Atoi(value)
 	case "ModelRequestRateLimitGroup":
 		err = setting.UpdateModelRequestRateLimitGroupByJSONString(value)
+	case "GlobalApiRateLimitNum":
+		common.GlobalApiRateLimitNum, _ = strconv.Atoi(value)
+	case "GlobalApiRateLimitDuration":
+		common.GlobalApiRateLimitDuration, _ = strconv.ParseInt(value, 10, 64)
+	case "GlobalWebRateLimitNum":
+		common.GlobalWebRateLimitNum, _ = strconv.Atoi(value)
+	case "GlobalWebRateLimitDuration":
+		common.GlobalWebRateLimitDuration, _ = strconv.ParseInt(value, 10, 64)
+	case "CriticalRateLimitNum":
+		common.CriticalRateLimitNum, _ = strconv.Atoi(value)
+	case "CriticalRateLimitDuration":
+		common.CriticalRateLimitDuration, _ = strconv.ParseInt(value, 10, 64)
+	case "SearchRateLimitNum":
+		common.SearchRateLimitNum, _ = strconv.Atoi(value)
+	case "SearchRateLimitDuration":
+		common.SearchRateLimitDuration, _ = strconv.ParseInt(value, 10, 64)
 	case "RetryTimes":
 		common.RetryTimes, _ = strconv.Atoi(value)
 	case "DataExportInterval":

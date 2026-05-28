@@ -42,6 +42,34 @@ func isPositiveOptionValue(value string) bool {
 	return err == nil && floatValue > 0
 }
 
+func isNonNegativeIntegerOptionValue(value string) bool {
+	intValue, err := strconv.Atoi(strings.TrimSpace(value))
+	return err == nil && intValue >= 0
+}
+
+func isPositiveIntegerOptionValue(value string) bool {
+	intValue, err := strconv.Atoi(strings.TrimSpace(value))
+	return err == nil && intValue > 0
+}
+
+func isRateLimitCountOptionKey(key string) bool {
+	switch key {
+	case "GlobalApiRateLimitNum", "GlobalWebRateLimitNum", "CriticalRateLimitNum", "SearchRateLimitNum":
+		return true
+	default:
+		return false
+	}
+}
+
+func isRateLimitDurationOptionKey(key string) bool {
+	switch key {
+	case "GlobalApiRateLimitDuration", "GlobalWebRateLimitDuration", "CriticalRateLimitDuration", "SearchRateLimitDuration":
+		return true
+	default:
+		return false
+	}
+}
+
 func isVisiblePublicKeyOption(key string) bool {
 	switch key {
 	case "WaffoPancakeWebhookPublicKey", "WaffoPancakeWebhookTestKey":
@@ -227,6 +255,21 @@ func UpdateOption(c *gin.Context) {
 		}
 	case "RateLimitErrorMessage":
 		common.RateLimitErrorMessage = option.Value.(string)
+	default:
+		if isRateLimitCountOptionKey(option.Key) && !isNonNegativeIntegerOptionValue(option.Value.(string)) {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "速率限制请求次数必须为不小于 0 的整数",
+			})
+			return
+		}
+		if isRateLimitDurationOptionKey(option.Key) && !isPositiveIntegerOptionValue(option.Value.(string)) {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "速率限制时间窗口必须为大于 0 的整数秒",
+			})
+			return
+		}
 	case "theme.frontend":
 		if option.Value != "default" && option.Value != "classic" {
 			c.JSON(http.StatusOK, gin.H{

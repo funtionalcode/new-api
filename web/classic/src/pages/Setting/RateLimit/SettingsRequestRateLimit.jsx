@@ -39,9 +39,103 @@ export default function RequestRateLimit(props) {
     ModelRequestRateLimitSuccessCount: 1000,
     ModelRequestRateLimitDurationMinutes: 1,
     ModelRequestRateLimitGroup: '',
+    GlobalApiRateLimitEnable: true,
+    GlobalApiRateLimitNum: 180,
+    GlobalApiRateLimitDuration: 180,
+    GlobalWebRateLimitEnable: true,
+    GlobalWebRateLimitNum: 60,
+    GlobalWebRateLimitDuration: 180,
+    CriticalRateLimitEnable: true,
+    CriticalRateLimitNum: 20,
+    CriticalRateLimitDuration: 1200,
+    SearchRateLimitEnable: true,
+    SearchRateLimitNum: 10,
+    SearchRateLimitDuration: 60,
   });
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
+
+  const globalRateLimitConfigs = [
+    {
+      title: '全局 API 速率限制',
+      description: '对 API 路由按客户端 IP 限流，0 代表不限制请求次数',
+      enableField: 'GlobalApiRateLimitEnable',
+      countField: 'GlobalApiRateLimitNum',
+      durationField: 'GlobalApiRateLimitDuration',
+    },
+    {
+      title: '全局 Web 速率限制',
+      description: '对 Web 路由按客户端 IP 限流，0 代表不限制请求次数',
+      enableField: 'GlobalWebRateLimitEnable',
+      countField: 'GlobalWebRateLimitNum',
+      durationField: 'GlobalWebRateLimitDuration',
+    },
+    {
+      title: '关键接口速率限制',
+      description:
+        '对登录、注册等关键接口按客户端 IP 限流，0 代表不限制请求次数',
+      enableField: 'CriticalRateLimitEnable',
+      countField: 'CriticalRateLimitNum',
+      durationField: 'CriticalRateLimitDuration',
+    },
+    {
+      title: '搜索速率限制',
+      description: '对搜索接口按用户 ID 限流，0 代表不限制请求次数',
+      enableField: 'SearchRateLimitEnable',
+      countField: 'SearchRateLimitNum',
+      durationField: 'SearchRateLimitDuration',
+    },
+  ];
+
+  const updateInput = (key, value) => {
+    setInputs((originInputs) => ({
+      ...originInputs,
+      [key]: value,
+    }));
+  };
+
+  const renderGlobalRateLimitConfig = (config) => (
+    <div key={config.enableField} style={{ marginBottom: 16 }}>
+      <Row gutter={16}>
+        <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+          <Form.Switch
+            field={config.enableField}
+            label={t(config.title)}
+            extraText={t(config.description)}
+            size='default'
+            checkedText='｜'
+            uncheckedText='〇'
+            onChange={(value) => updateInput(config.enableField, value)}
+          />
+        </Col>
+      </Row>
+      <Row gutter={16}>
+        <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+          <Form.InputNumber
+            label={t('请求次数')}
+            step={1}
+            min={0}
+            max={100000000}
+            suffix={t('次')}
+            field={config.countField}
+            onChange={(value) => updateInput(config.countField, String(value))}
+          />
+        </Col>
+        <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+          <Form.InputNumber
+            label={t('时间窗口')}
+            step={1}
+            min={1}
+            suffix={t('秒')}
+            field={config.durationField}
+            onChange={(value) =>
+              updateInput(config.durationField, String(value))
+            }
+          />
+        </Col>
+      </Row>
+    </div>
+  );
 
   function onSubmit() {
     const updateArray = compareObjects(inputs, inputsRow);
@@ -232,6 +326,14 @@ export default function RequestRateLimit(props) {
             <Row>
               <Button size='default' onClick={onSubmit}>
                 {t('保存模型速率限制')}
+              </Button>
+            </Row>
+          </Form.Section>
+          <Form.Section text={t('全局速率限制')}>
+            {globalRateLimitConfigs.map(renderGlobalRateLimitConfig)}
+            <Row>
+              <Button size='default' onClick={onSubmit}>
+                {t('保存全局速率限制')}
               </Button>
             </Row>
           </Form.Section>

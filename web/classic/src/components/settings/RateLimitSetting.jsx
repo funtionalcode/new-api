@@ -32,6 +32,18 @@ const RateLimitSetting = () => {
     ModelRequestRateLimitSuccessCount: 1000,
     ModelRequestRateLimitDurationMinutes: 1,
     ModelRequestRateLimitGroup: '',
+    GlobalApiRateLimitEnable: true,
+    GlobalApiRateLimitNum: 180,
+    GlobalApiRateLimitDuration: 180,
+    GlobalWebRateLimitEnable: true,
+    GlobalWebRateLimitNum: 60,
+    GlobalWebRateLimitDuration: 180,
+    CriticalRateLimitEnable: true,
+    CriticalRateLimitNum: 20,
+    CriticalRateLimitDuration: 1200,
+    SearchRateLimitEnable: true,
+    SearchRateLimitNum: 10,
+    SearchRateLimitDuration: 60,
   });
 
   let [loading, setLoading] = useState(false);
