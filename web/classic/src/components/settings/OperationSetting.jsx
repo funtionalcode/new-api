@@ -81,6 +81,9 @@ const OperationSetting = () => {
 
     /* 令牌设置 */
     'token_setting.max_user_tokens': 1000,
+
+    /* 速率限制 */
+    RateLimitErrorMessage: '',
   });
 
   let [loading, setLoading] = useState(false);

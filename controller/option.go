@@ -225,6 +225,8 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "RateLimitErrorMessage":
+		common.RateLimitErrorMessage = option.Value.(string)
 	case "theme.frontend":
 		if option.Value != "default" && option.Value != "classic" {
 			c.JSON(http.StatusOK, gin.H{

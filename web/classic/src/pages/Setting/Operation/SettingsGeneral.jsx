@@ -58,6 +58,7 @@ export default function GeneralSettings(props) {
     DemoSiteEnabled: false,
     SelfUseModeEnabled: false,
     'token_setting.max_user_tokens': 1000,
+    RateLimitErrorMessage: '',
   });
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
@@ -401,6 +402,19 @@ export default function GeneralSettings(props) {
                   extraText={t('每个用户最多可创建的令牌数量，默认 1000，设置过大可能会影响性能')}
                   placeholder={'1000'}
                   onChange={handleFieldChange('token_setting.max_user_tokens')}
+                />
+              </Col>
+            </Row>
+            <Row gutter={16}>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Input
+                  field={'RateLimitErrorMessage'}
+                  label={t('速率限制错误消息')}
+                  initValue={''}
+                  placeholder={t('请求次数过多，请稍后再试！')}
+                  extraText={t('用户触发速率限制（429）时显示的错误消息')}
+                  onChange={handleFieldChange('RateLimitErrorMessage')}
+                  showClear
                 />
               </Col>
             </Row>
