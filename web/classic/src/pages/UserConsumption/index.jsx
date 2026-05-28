@@ -172,7 +172,7 @@ export default function UserConsumption() {
         completion_tokens: 0,
         request_count: 0,
         quota: 0,
-        users: new Set(),
+        users: new Map(),
         last_called_at: 0,
       };
 
@@ -181,7 +181,9 @@ export default function UserConsumption() {
       existing.completion_tokens += Number(row.completion_tokens || 0);
       existing.request_count += Number(row.request_count || 0);
       existing.quota += Number(row.quota || 0);
-      if (row.username) existing.users.add(row.username);
+      if (row.username && !existing.users.has(row.username)) {
+        existing.users.set(row.username, { username: row.username, remark: row.remark || '' });
+      }
       existing.last_called_at = Math.max(existing.last_called_at, row.last_called_at || 0);
 
       tokenMap.set(key, existing);
@@ -297,15 +299,19 @@ export default function UserConsumption() {
     },
     {
       title: t('用户'),
-      render: (_, record) => (
-        <div>
-          <div>{record.users.size}</div>
-          <Text type='tertiary'>
-            {Array.from(record.users).slice(0, 3).join(', ')}
-            {record.users.size > 3 && ` +${record.users.size - 3}`}
-          </Text>
-        </div>
-      ),
+      render: (_, record) => {
+        const userEntries = Array.from(record.users.values());
+        const displayNames = userEntries.slice(0, 3).map((u) => u.remark || u.username);
+        return (
+          <div>
+            <div>{record.users.size}</div>
+            <Text type='tertiary'>
+              {displayNames.join(', ')}
+              {record.users.size > 3 && ` +${record.users.size - 3}`}
+            </Text>
+          </div>
+        );
+      },
     },
     {
       title: t('请求数'),
