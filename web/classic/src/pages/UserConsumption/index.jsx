@@ -19,13 +19,28 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Card, Form, Input, Table, Typography } from '@douyinfe/semi-ui';
+import { Card, Avatar, Table, Typography, Input, Button, Form } from '@douyinfe/semi-ui';
+import {
+  IconTextStroked,
+  IconTypograph,
+  IconSend,
+  IconCoinMoneyStroked,
+} from '@douyinfe/semi-icons';
 import { VChart } from '@visactor/react-vchart';
-import { API, isAdmin, showError } from '../../helpers';
+import { initVChartSemiTheme } from '@visactor/vchart-semi-theme';
+import { API, isAdmin, showError, renderQuota } from '../../helpers';
+import { renderNumber } from '../../helpers/render';
+import { CARD_PROPS, CHART_CONFIG } from '../../constants/dashboard.constants';
+import { createSectionTitle } from '../../helpers/dashboard';
 
 const { Text } = Typography;
 
 const daySeconds = 24 * 60 * 60;
+
+const USER_COLORS = [
+  '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6',
+  '#ec4899', '#06b6d4', '#f97316', '#6366f1', '#14b8a6',
+];
 
 const getDefaultStartTimestamp = () => Math.floor(Date.now() / 1000) - 30 * daySeconds;
 
@@ -48,25 +63,6 @@ const formatTime = (timestamp) => {
   return new Date(timestamp * 1000).toLocaleString();
 };
 
-const formatTokens = (value) => Number(value || 0).toLocaleString();
-
-const formatTokenUnit = (value) => {
-  const num = Number(value || 0);
-  if (num >= 1e10) return `${(num / 1e10).toFixed(2)}${'百亿'}`;
-  if (num >= 1e9) return `${(num / 1e9).toFixed(2)}${'十亿'}`;
-  if (num >= 1e8) return `${(num / 1e8).toFixed(2)}${'亿'}`;
-  if (num >= 1e7) return `${(num / 1e7).toFixed(2)}${'千万'}`;
-  if (num >= 1e6) return `${(num / 1e6).toFixed(2)}${'百万'}`;
-  return num.toLocaleString();
-};
-
-const formatQuota = (value) => {
-  const num = Number(value || 0);
-  if (num >= 1e8) return `${(num / 1e8).toFixed(2)}亿`;
-  if (num >= 1e4) return `${(num / 1e4).toFixed(2)}万`;
-  return num.toLocaleString();
-};
-
 export default function UserConsumption() {
   const { t } = useTranslation();
   const [startInput, setStartInput] = useState(() =>
@@ -81,8 +77,11 @@ export default function UserConsumption() {
   const [authIndex, setAuthIndex] = useState('');
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('trend');
   const isAdminUser = isAdmin();
+
+  useEffect(() => {
+    initVChartSemiTheme({ isWatchingThemeSwitch: true });
+  }, []);
 
   const searchUsers = async (keyword) => {
     if (!keyword) return;
@@ -191,95 +190,100 @@ export default function UserConsumption() {
     return Array.from(tokenMap.values()).sort((a, b) => b.total_tokens - a.total_tokens);
   }, [rows]);
 
-  const chartData = useMemo(() => {
+  const tokenRankSpec = useMemo(() => {
     const topN = 15;
     const topItems = tokenGroupedData.slice(0, topN);
     const otherTokens = tokenGroupedData.slice(topN).reduce((sum, item) => sum + item.total_tokens, 0);
-    return otherTokens > 0
+    const chartItems = otherTokens > 0
       ? [...topItems, { token_name: t('其他'), total_tokens: otherTokens }]
       : topItems;
+
+    return {
+      type: 'bar',
+      data: [{
+        id: 'tokenRankData',
+        values: chartItems.map((item) => ({
+          Token: item.token_name || `Token #${item.token_id}`,
+          Tokens: item.total_tokens,
+        })),
+      }],
+      xField: 'Tokens',
+      yField: 'Token',
+      seriesField: 'Token',
+      direction: 'horizontal',
+      legends: { visible: false },
+      title: {
+        visible: true,
+        text: t('Token 消耗排行'),
+        subtext: '',
+      },
+      bar: {
+        state: { hover: { stroke: '#000', lineWidth: 1 } },
+      },
+      label: {
+        visible: true,
+        position: 'outside',
+        formatMethod: (value, datum) => renderNumber(datum['Tokens'] || 0),
+      },
+      axes: [{
+        orient: 'left',
+        type: 'band',
+        label: { visible: true },
+      }, {
+        orient: 'bottom',
+        type: 'linear',
+        visible: false,
+      }],
+      tooltip: {
+        mark: {
+          content: [{
+            key: (datum) => datum['Token'],
+            value: (datum) => renderNumber(datum['Tokens'] || 0),
+          }],
+        },
+      },
+      color: { type: 'ordinal', range: USER_COLORS },
+    };
   }, [tokenGroupedData, t]);
 
-  const trendSpec = useMemo(() => ({
-    type: 'area',
-    data: [{
-      values: chartData.map((item) => ({
-        x: item.token_name || `Token #${item.token_id}`,
-        y: item.total_tokens,
-      })),
-    }],
-    xField: 'x',
-    yField: 'y',
-    color: ['var(--semi-color-primary)'],
-    area: { visible: true, opacity: 0.3 },
-    line: { visible: true, style: { lineWidth: 2 } },
-    point: { visible: false },
-    axes: [
-      { orient: 'bottom', label: { visible: true, style: { angle: -45, textAlign: 'right' } } },
-      { orient: 'left', label: { visible: true, formatMethod: (val) => formatTokenUnit(val) } },
-    ],
-    tooltip: {
-      mark: {
-        content: [{ key: t('Tokens'), value: (datum) => formatTokenUnit(datum.y) }],
-      },
+  const groupedStatsData = useMemo(() => [
+    {
+      title: createSectionTitle(IconTextStroked, t('Token 统计')),
+      color: 'bg-blue-50',
+      items: [
+        {
+          title: t('总 Tokens'),
+          value: renderNumber(stats.totalTokens),
+          icon: <IconTextStroked />,
+          avatarColor: 'blue',
+        },
+        {
+          title: t('平均 Tokens'),
+          value: renderNumber(stats.avgTokens),
+          icon: <IconTypograph />,
+          avatarColor: 'purple',
+        },
+      ],
     },
-  }), [chartData, t]);
-
-  const proportionSpec = useMemo(() => ({
-    type: 'pie',
-    data: [{
-      values: chartData.map((item) => ({
-        type: item.token_name || `Token #${item.token_id}`,
-        value: item.total_tokens,
-      })),
-    }],
-    valueField: 'value',
-    categoryField: 'type',
-    label: { visible: true, position: 'outside', formatMethod: (val) => formatTokenUnit(val) },
-    tooltip: {
-      mark: {
-        content: [{ key: t('Tokens'), value: (datum) => formatTokenUnit(datum.value) }],
-      },
+    {
+      title: createSectionTitle(IconSend, t('请求统计')),
+      color: 'bg-green-50',
+      items: [
+        {
+          title: t('总请求数'),
+          value: renderNumber(stats.totalCount),
+          icon: <IconSend />,
+          avatarColor: 'green',
+        },
+        {
+          title: t('总配额'),
+          value: renderQuota(stats.totalQuota),
+          icon: <IconCoinMoneyStroked />,
+          avatarColor: 'yellow',
+        },
+      ],
     },
-  }), [chartData, t]);
-
-  const topSpec = useMemo(() => ({
-    type: 'bar',
-    data: [{
-      values: chartData.map((item) => ({
-        x: item.token_name || `Token #${item.token_id}`,
-        y: item.total_tokens,
-      })),
-    }],
-    xField: 'x',
-    yField: 'y',
-    color: ['var(--semi-color-secondary)'],
-    bar: { style: { cornerRadius: [4, 4, 0, 0] } },
-    axes: [
-      { orient: 'bottom', label: { visible: true, style: { angle: -45, textAlign: 'right' } } },
-      { orient: 'left', label: { visible: true, formatMethod: (val) => formatTokenUnit(val) } },
-    ],
-    tooltip: {
-      mark: {
-        content: [{ key: t('Tokens'), value: (datum) => formatTokenUnit(datum.y) }],
-      },
-    },
-  }), [chartData, t]);
-
-  const getChartSpec = () => {
-    switch (activeTab) {
-      case 'proportion': return proportionSpec;
-      case 'top': return topSpec;
-      default: return trendSpec;
-    }
-  };
-
-  const statCards = [
-    { title: t('总 Tokens'), value: formatTokenUnit(stats.totalTokens), desc: t('所有消耗的 Tokens') },
-    { title: t('总请求数'), value: formatTokens(stats.totalCount), desc: t('API 调用次数') },
-    { title: t('平均 Tokens'), value: formatTokenUnit(stats.avgTokens), desc: t('每次请求平均') },
-    { title: t('总配额'), value: formatQuota(stats.totalQuota), desc: t('消耗的配额') },
-  ];
+  ], [stats, t]);
 
   const columns = [
     {
@@ -305,23 +309,23 @@ export default function UserConsumption() {
     },
     {
       title: t('请求数'),
-      render: (_, record) => formatTokens(record.request_count),
+      render: (_, record) => renderNumber(record.request_count),
     },
     {
       title: t('提示 Tokens'),
-      render: (_, record) => formatTokens(record.prompt_tokens),
+      render: (_, record) => renderNumber(record.prompt_tokens),
     },
     {
       title: t('补全 Tokens'),
-      render: (_, record) => formatTokens(record.completion_tokens),
+      render: (_, record) => renderNumber(record.completion_tokens),
     },
     {
       title: t('总 Tokens'),
-      render: (_, record) => formatTokens(record.total_tokens),
+      render: (_, record) => renderNumber(record.total_tokens),
     },
     {
       title: t('配额'),
-      render: (_, record) => formatQuota(record.quota),
+      render: (_, record) => renderQuota(record.quota),
     },
     {
       title: t('最近调用'),
@@ -367,43 +371,46 @@ export default function UserConsumption() {
           </div>
         </Card>
 
-        <div className='grid gap-4 md:grid-cols-4'>
-          {statCards.map((card) => (
-            <Card key={card.title}>
-              <div className='text-xs text-gray-500 mb-1'>{card.title}</div>
-              <div className='text-2xl font-bold'>{card.value}</div>
-              <div className='text-xs text-gray-400 mt-1'>{card.desc}</div>
+        <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+          {groupedStatsData.map((group, idx) => (
+            <Card
+              key={idx}
+              {...CARD_PROPS}
+              className={`${group.color} border-0 !rounded-2xl w-full`}
+              title={group.title}
+            >
+              <div className='space-y-4'>
+                {group.items.map((item, itemIdx) => (
+                  <div
+                    key={itemIdx}
+                    className='flex items-center justify-between'
+                  >
+                    <div className='flex items-center'>
+                      <Avatar
+                        className='mr-3'
+                        size='small'
+                        color={item.avatarColor}
+                      >
+                        {item.icon}
+                      </Avatar>
+                      <div>
+                        <div className='text-xs text-gray-500'>{item.title}</div>
+                        <div className='text-lg font-semibold'>{item.value}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </Card>
           ))}
         </div>
 
-        <Card
-          title={t('Token 消耗')}
-          headerExtraContent={
-            <div className='flex gap-2'>
-              {[
-                { key: 'trend', label: t('趋势') },
-                { key: 'proportion', label: t('分布') },
-                { key: 'top', label: t('排行') },
-              ].map((tab) => (
-                <Button
-                  key={tab.key}
-                  size='small'
-                  type={activeTab === tab.key ? 'primary' : 'tertiary'}
-                  onClick={() => setActiveTab(tab.key)}
-                >
-                  {tab.label}
-                </Button>
-              ))}
-            </div>
-          }
-        >
-          <div className='h-[300px]'>
-            {chartData.length > 0 ? (
+        <Card title={t('Token 消耗排行')}>
+          <div className='h-[400px]'>
+            {tokenGroupedData.length > 0 ? (
               <VChart
-                key={`token-chart-${activeTab}`}
-                spec={getChartSpec()}
-                option={{ theme: { isHorizontal: false } }}
+                spec={tokenRankSpec}
+                option={CHART_CONFIG}
               />
             ) : (
               <div className='flex h-full items-center justify-center text-gray-500'>
