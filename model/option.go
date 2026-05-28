@@ -179,6 +179,7 @@ func InitOptionMap() {
 	common.OptionMap["ExposeRatioEnabled"] = strconv.FormatBool(ratio_setting.IsExposeRatioEnabled())
 	common.OptionMap["CliproxyAPIBaseURL"] = ""
 	common.OptionMap["CliproxyAPIPassword"] = ""
+	common.OptionMap["RateLimitErrorMessage"] = "请求次数过多，请稍后再试！"
 
 	// 自动添加所有注册的模型配置
 	modelConfigs := config.GlobalConfig.ExportAllConfigs()
@@ -525,6 +526,8 @@ func updateOptionMap(key string, value string) (err error) {
 		err = ratio_setting.UpdateAudioCompletionRatioByJSONString(value)
 	case "TopUpLink":
 		common.TopUpLink = value
+	case "RateLimitErrorMessage":
+		common.RateLimitErrorMessage = value
 	//case "ChatLink":
 	//	common.ChatLink = value
 	//case "ChatLink2":

@@ -131,7 +131,8 @@ export function showError(error) {
           window.location.href = '/login?expired=true';
           break;
         case 429:
-          Toast.error('错误：请求次数过多，请稍后再试！');
+          const rateLimitMsg = localStorage.getItem('rateLimitMessage') || '请求次数过多，请稍后再试！';
+          Toast.error(`错误：${rateLimitMsg}`);
           break;
         case 500:
           Toast.error('错误：服务器内部错误，请联系管理员！');

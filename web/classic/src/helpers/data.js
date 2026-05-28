@@ -54,6 +54,9 @@ export function setStatusData(data) {
   } else {
     localStorage.removeItem('docs_link');
   }
+  if (data.rate_limit_message) {
+    localStorage.setItem('rateLimitMessage', data.rate_limit_message);
+  }
 }
 
 export function setUserData(data) {
