@@ -393,6 +393,21 @@ export default function CliproxyAuthFiles() {
       render: (_, record) => record.accountId || record.account_id || '-',
     },
     {
+      title: t('绑定状态'),
+      render: (_, record) => {
+        const authIndex = record.authIndex || record.auth_index || '';
+        const binding = bindings.find((b) => b.auth_index === authIndex);
+        if (binding) {
+          return (
+            <Tag color='green' shape='circle'>
+              {t('已绑定')} {binding.username ? `(${binding.username})` : ''}
+            </Tag>
+          );
+        }
+        return <Tag color='grey' shape='circle'>{t('未绑定')}</Tag>;
+      },
+    },
+    {
       title: t('状态'),
       render: (_, record) => (
         <Tag color={record.enabled === false ? 'red' : 'green'}>
@@ -579,14 +594,55 @@ export default function CliproxyAuthFiles() {
       </div>
 
       <Modal
-        title={bindingForm.id ? t('编辑绑定') : t('新增绑定')}
+        title={bindingForm.id ? t('编辑备注') : t('新增绑定')}
         visible={modalVisible}
         onCancel={() => setModalVisible(false)}
         onOk={saveBinding}
         confirmLoading={loading}
       >
         <Form layout='vertical'>
-          {bindingForm.auth_index && !bindingForm.id ? (
+          {bindingForm.id ? (
+            // 编辑模式：只允许编辑备注，其他字段禁用
+            <>
+              <Form.Input
+                field='auth_index_display'
+                label={t('认证文件索引')}
+                value={bindingForm.auth_index}
+                disabled
+              />
+              <Form.Input
+                field='auth_name_display'
+                label={t('认证名称')}
+                value={bindingForm.auth_name || '-'}
+                disabled
+              />
+              <Form.Input
+                field='account_id_display'
+                label={t('账号')}
+                value={bindingForm.account_id || '-'}
+                disabled
+              />
+              <Form.Input
+                field='username_display'
+                label={t('用户')}
+                value={bindingForm.username || '-'}
+                disabled
+              />
+              <Form.TextArea
+                field='description'
+                label={t('备注')}
+                value={bindingForm.description}
+                onChange={(value) =>
+                  setBindingForm((current) => ({
+                    ...current,
+                    description: value,
+                  }))
+                }
+                placeholder={t('输入备注信息')}
+                maxCount={255}
+              />
+            </>
+          ) : bindingForm.auth_index ? (
             // 从远端认证文件点击"绑定用户"时，认证文件信息只读回显
             <>
               <Form.Input
@@ -607,48 +663,68 @@ export default function CliproxyAuthFiles() {
                 value={bindingForm.account_id || '-'}
                 disabled
               />
+              <Form.Select
+                field='user_id'
+                label={t('用户')}
+                filter
+                remote
+                value={bindingForm.user_id}
+                optionList={userOptions}
+                onSearch={searchUsers}
+                onChange={(value) => {
+                  const user = userOptions.find((option) => option.value === value);
+                  setBindingForm((current) => ({
+                    ...current,
+                    user_id: value,
+                    username: user?.username || current.username,
+                  }));
+                }}
+                placeholder={t('搜索并选择用户')}
+              />
             </>
           ) : (
-            // 新增绑定或编辑时，认证文件可选择
-            <Form.Select
-              field='auth_index'
-              label={t('认证文件')}
-              filter
-              value={bindingForm.auth_index}
-              optionList={remoteFileOptions}
-              onChange={(value) => {
-                const selected = remoteFileOptions.find((option) => option.value === value);
-                const authFile = selected?.authFile;
-                setBindingForm((current) => ({
-                  ...current,
-                  auth_index: value,
-                  auth_name: getAuthName(authFile),
-                  auth_file: getAuthFileContent(authFile),
-                  account_id: getAccountId(authFile),
-                  enabled: authFile?.enabled !== false,
-                }));
-              }}
-              placeholder={t('请选择认证文件')}
-            />
+            // 新增绑定：认证文件可选择
+            <>
+              <Form.Select
+                field='auth_index'
+                label={t('认证文件')}
+                filter
+                value={bindingForm.auth_index}
+                optionList={remoteFileOptions}
+                onChange={(value) => {
+                  const selected = remoteFileOptions.find((option) => option.value === value);
+                  const authFile = selected?.authFile;
+                  setBindingForm((current) => ({
+                    ...current,
+                    auth_index: value,
+                    auth_name: getAuthName(authFile),
+                    auth_file: getAuthFileContent(authFile),
+                    account_id: getAccountId(authFile),
+                    enabled: authFile?.enabled !== false,
+                  }));
+                }}
+                placeholder={t('请选择认证文件')}
+              />
+              <Form.Select
+                field='user_id'
+                label={t('用户')}
+                filter
+                remote
+                value={bindingForm.user_id}
+                optionList={userOptions}
+                onSearch={searchUsers}
+                onChange={(value) => {
+                  const user = userOptions.find((option) => option.value === value);
+                  setBindingForm((current) => ({
+                    ...current,
+                    user_id: value,
+                    username: user?.username || current.username,
+                  }));
+                }}
+                placeholder={t('搜索并选择用户')}
+              />
+            </>
           )}
-          <Form.Select
-            field='user_id'
-            label={t('用户')}
-            filter
-            remote
-            value={bindingForm.user_id}
-            optionList={userOptions}
-            onSearch={searchUsers}
-            onChange={(value) => {
-              const user = userOptions.find((option) => option.value === value);
-              setBindingForm((current) => ({
-                ...current,
-                user_id: value,
-                username: user?.username || current.username,
-              }));
-            }}
-            placeholder={t('搜索并选择用户')}
-          />
         </Form>
       </Modal>
     </div>

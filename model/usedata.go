@@ -19,6 +19,7 @@ type QuotaData struct {
 	TokenUsed int    `json:"token_used" gorm:"default:0"`
 	Count     int    `json:"count" gorm:"default:0"`
 	Quota     int    `json:"quota" gorm:"default:0"`
+	Remark    string `json:"remark" gorm:"-"`
 }
 
 func UpdateQuotaData() {
@@ -117,21 +118,25 @@ func GetQuotaDataByUserId(userId int, startTime int64, endTime int64) (quotaData
 
 func GetQuotaDataGroupByUser(startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
 	var quotaDatas []*QuotaData
-	err = DB.Table("quota_data").
-		Select("username, created_at, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used").
-		Where("created_at >= ? and created_at <= ?", startTime, endTime).
-		Group("username, created_at").
-		Find(&quotaDatas).Error
+	err = DB.Raw(`
+		SELECT q.username, q.created_at, SUM(q.count) AS count, SUM(q.quota) AS quota, SUM(q.token_used) AS token_used, COALESCE(u.remark, '') AS remark
+		FROM quota_data q
+		LEFT JOIN users u ON q.username = u.username
+		WHERE q.created_at >= ? AND q.created_at <= ?
+		GROUP BY q.username, q.created_at, u.remark
+	`, startTime, endTime).Scan(&quotaDatas).Error
 	return quotaDatas, err
 }
 
 func GetQuotaDataGroupByUserId(userId int, startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
 	var quotaDatas []*QuotaData
-	err = DB.Table("quota_data").
-		Select("username, created_at, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used").
-		Where("user_id = ? and created_at >= ? and created_at <= ?", userId, startTime, endTime).
-		Group("username, created_at").
-		Find(&quotaDatas).Error
+	err = DB.Raw(`
+		SELECT q.username, q.created_at, SUM(q.count) AS count, SUM(q.quota) AS quota, SUM(q.token_used) AS token_used, COALESCE(u.remark, '') AS remark
+		FROM quota_data q
+		LEFT JOIN users u ON q.username = u.username
+		WHERE q.user_id = ? AND q.created_at >= ? AND q.created_at <= ?
+		GROUP BY q.username, q.created_at, u.remark
+	`, userId, startTime, endTime).Scan(&quotaDatas).Error
 	return quotaDatas, err
 }
 
