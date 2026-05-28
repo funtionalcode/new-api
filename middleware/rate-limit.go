@@ -74,6 +74,9 @@ func memoryRateLimiter(c *gin.Context, maxRequestNum int, duration int64, mark s
 }
 
 func rateLimitFactory(maxRequestNum int, duration int64, mark string) func(c *gin.Context) {
+	if maxRequestNum <= 0 {
+		return defNext
+	}
 	if common.RedisEnabled {
 		return func(c *gin.Context) {
 			redisRateLimiter(c, maxRequestNum, duration, mark)
@@ -88,24 +91,33 @@ func rateLimitFactory(maxRequestNum int, duration int64, mark string) func(c *gi
 }
 
 func GlobalWebRateLimit() func(c *gin.Context) {
-	if common.GlobalWebRateLimitEnable {
-		return rateLimitFactory(common.GlobalWebRateLimitNum, common.GlobalWebRateLimitDuration, "GW")
+	return func(c *gin.Context) {
+		if common.GlobalWebRateLimitEnable {
+			rateLimitFactory(common.GlobalWebRateLimitNum, common.GlobalWebRateLimitDuration, "GW")(c)
+			return
+		}
+		defNext(c)
 	}
-	return defNext
 }
 
 func GlobalAPIRateLimit() func(c *gin.Context) {
-	if common.GlobalApiRateLimitEnable {
-		return rateLimitFactory(common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration, "GA")
+	return func(c *gin.Context) {
+		if common.GlobalApiRateLimitEnable {
+			rateLimitFactory(common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration, "GA")(c)
+			return
+		}
+		defNext(c)
 	}
-	return defNext
 }
 
 func CriticalRateLimit() func(c *gin.Context) {
-	if common.CriticalRateLimitEnable {
-		return rateLimitFactory(common.CriticalRateLimitNum, common.CriticalRateLimitDuration, "CT")
+	return func(c *gin.Context) {
+		if common.CriticalRateLimitEnable {
+			rateLimitFactory(common.CriticalRateLimitNum, common.CriticalRateLimitDuration, "CT")(c)
+			return
+		}
+		defNext(c)
 	}
-	return defNext
 }
 
 func DownloadRateLimit() func(c *gin.Context) {
@@ -120,6 +132,9 @@ func UploadRateLimit() func(c *gin.Context) {
 // instead of client IP, making it resistant to proxy rotation attacks.
 // Must be used AFTER authentication middleware (UserAuth).
 func userRateLimitFactory(maxRequestNum int, duration int64, mark string) func(c *gin.Context) {
+	if maxRequestNum <= 0 {
+		return defNext
+	}
 	if common.RedisEnabled {
 		return func(c *gin.Context) {
 			userId := c.GetInt("id")
@@ -198,8 +213,11 @@ func userRedisRateLimiter(c *gin.Context, maxRequestNum int, duration int64, key
 // SearchRateLimit returns a per-user rate limiter for search endpoints.
 // Configurable via SEARCH_RATE_LIMIT_ENABLE / SEARCH_RATE_LIMIT / SEARCH_RATE_LIMIT_DURATION.
 func SearchRateLimit() func(c *gin.Context) {
-	if !common.SearchRateLimitEnable {
-		return defNext
+	return func(c *gin.Context) {
+		if !common.SearchRateLimitEnable {
+			defNext(c)
+			return
+		}
+		userRateLimitFactory(common.SearchRateLimitNum, common.SearchRateLimitDuration, "SR")(c)
 	}
-	return userRateLimitFactory(common.SearchRateLimitNum, common.SearchRateLimitDuration, "SR")
 }
