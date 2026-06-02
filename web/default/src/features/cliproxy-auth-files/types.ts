@@ -35,6 +35,7 @@ export interface CliproxyAuthFile {
   name: string
   authFile?: string
   accountId?: string
+  planType?: string
   enabled: boolean
 }
 
@@ -51,6 +52,7 @@ export interface CliproxyAuthFileBinding {
   last_refreshed_at: number
   last_usage_tokens: number
   last_usage_quota: number
+  last_plan_type: string
   last_error: string
   created_at: number
   updated_at: number

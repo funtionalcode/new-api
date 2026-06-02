@@ -153,8 +153,12 @@ func GetCliproxyAuthFileBindings(query CliproxyAuthFileBindingQuery, startIdx in
 	if err := dbQuery.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	err := dbQuery.Order("id desc").Limit(num).Offset(startIdx).Find(&bindings).Error
+	err := dbQuery.Order(cliproxyAuthFileBindingOrderClause()).Limit(num).Offset(startIdx).Find(&bindings).Error
 	return bindings, total, err
+}
+
+func cliproxyAuthFileBindingOrderClause() string {
+	return "CASE lower(replace(replace(replace(last_plan_type, '-', ''), '_', ''), ' ', '')) WHEN 'pro20x' THEN 0 WHEN 'pro5x' THEN 1 WHEN 'plus' THEN 2 WHEN 'free' THEN 3 ELSE 4 END ASC, lower(last_plan_type) ASC, id DESC"
 }
 
 func buildCliproxyAuthFileBindingQuery(query CliproxyAuthFileBindingQuery) *gorm.DB {

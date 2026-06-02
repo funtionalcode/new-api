@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -29,6 +30,7 @@ type CliproxyAuthFile struct {
 	Name      string `json:"name"`
 	AuthFile  string `json:"authFile"`
 	AccountID string `json:"accountId"`
+	PlanType  string `json:"planType"`
 	Enabled   bool   `json:"enabled"`
 }
 
@@ -45,9 +47,18 @@ type cliproxyAuthFileResponse struct {
 	AuthFile       string                `json:"authFile"`
 	AccountID      string                `json:"account_id"`
 	CamelAccountID string                `json:"accountId"`
+	PlanType       string                `json:"plan_type"`
+	CamelPlanType  string                `json:"planType"`
+	AccountType    string                `json:"account_type"`
+	Group          string                `json:"group"`
+	Balance        cliproxyBalance       `json:"balance"`
 	IDToken        cliproxyAuthFileToken `json:"id_token"`
 	Disabled       bool                  `json:"disabled"`
 	Enabled        *bool                 `json:"enabled"`
+}
+
+type cliproxyBalance struct {
+	Group string `json:"group"`
 }
 
 type cliproxyAuthFileToken struct {
@@ -154,10 +165,47 @@ func normalizeCliproxyAuthFiles(result cliproxyAuthFilesResponse) []CliproxyAuth
 			Name:      item.Name,
 			AuthFile:  firstNonEmpty(item.ID, item.AuthFile),
 			AccountID: firstNonEmpty(item.AccountID, item.CamelAccountID, item.IDToken.ChatGPTAccountID),
+			PlanType:  firstNonEmpty(item.Balance.Group, item.Group, item.PlanType, item.CamelPlanType, item.AccountType),
 			Enabled:   item.Enabled == nil && !item.Disabled || item.Enabled != nil && *item.Enabled,
 		})
 	}
+	sort.SliceStable(files, func(i, j int) bool {
+		return compareCliproxyAuthFiles(files[i], files[j]) < 0
+	})
 	return files
+}
+
+func normalizeCliproxyPlan(value string) string {
+	return strings.NewReplacer("-", "", "_", "", " ", "").Replace(strings.ToLower(strings.TrimSpace(value)))
+}
+
+func cliproxyPlanRank(value string) int {
+	switch normalizeCliproxyPlan(value) {
+	case "pro20x":
+		return 0
+	case "pro5x":
+		return 1
+	case "plus":
+		return 2
+	case "free":
+		return 3
+	default:
+		return 4
+	}
+}
+
+func compareCliproxyAuthFiles(left CliproxyAuthFile, right CliproxyAuthFile) int {
+	leftRank := cliproxyPlanRank(left.PlanType)
+	rightRank := cliproxyPlanRank(right.PlanType)
+	if leftRank != rightRank {
+		return leftRank - rightRank
+	}
+	if leftRank == 4 {
+		if planCompare := strings.Compare(strings.ToLower(left.PlanType), strings.ToLower(right.PlanType)); planCompare != 0 {
+			return planCompare
+		}
+	}
+	return strings.Compare(strings.ToLower(left.Name), strings.ToLower(right.Name))
 }
 
 func firstNonEmpty(values ...string) string {

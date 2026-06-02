@@ -130,6 +130,16 @@ func withSelfUseModeDisabled(t *testing.T) {
 	})
 }
 
+func withSelfUseModeEnabled(t *testing.T) {
+	t.Helper()
+
+	original := operation_setting.SelfUseModeEnabled
+	operation_setting.SelfUseModeEnabled = true
+	t.Cleanup(func() {
+		operation_setting.SelfUseModeEnabled = original
+	})
+}
+
 func decodeListModelsResponse(t *testing.T, recorder *httptest.ResponseRecorder) map[string]struct{} {
 	t.Helper()
 
@@ -221,9 +231,25 @@ func TestListModelsTokenLimitIncludesTieredBillingModel(t *testing.T) {
 		"zz-token-tiered-empty-expr-model": "",
 	})
 
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.Create(&model.User{
+		Id:       1002,
+		Username: "token-model-list-user",
+		Password: "password",
+		Group:    "default",
+		Status:   common.UserStatusEnabled,
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Ability{
+		{Group: "default", Model: "zz-token-tiered-visible-model", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "zz-token-tiered-empty-expr-model", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "zz-token-tiered-missing-expr-model", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "zz-token-unpriced-model", ChannelId: 1, Enabled: true},
+	}).Error)
+
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	ctx.Set("id", 1002)
 	common.SetContextKey(ctx, constant.ContextKeyTokenModelLimitEnabled, true)
 	common.SetContextKey(ctx, constant.ContextKeyTokenModelLimit, map[string]bool{
 		"zz-token-tiered-visible-model":      true,
@@ -239,4 +265,118 @@ func TestListModelsTokenLimitIncludesTieredBillingModel(t *testing.T) {
 	require.NotContains(t, ids, "zz-token-tiered-empty-expr-model")
 	require.NotContains(t, ids, "zz-token-tiered-missing-expr-model")
 	require.NotContains(t, ids, "zz-token-unpriced-model")
+}
+
+func TestListModelsAppliesUserModelLimits(t *testing.T) {
+	withSelfUseModeEnabled(t)
+	db := setupModelListControllerTestDB(t)
+	settingBytes, err := common.Marshal(dto.UserSetting{
+		ModelLimitsEnabled: true,
+		ModelLimits:        []string{"zz-user-allowed-model"},
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.Create(&model.User{
+		Id:       2001,
+		Username: "model-limit-user",
+		Password: "password",
+		Group:    "default",
+		Status:   common.UserStatusEnabled,
+		Setting:  string(settingBytes),
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Ability{
+		{Group: "default", Model: "zz-user-allowed-model", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "zz-user-denied-model", ChannelId: 1, Enabled: true},
+	}).Error)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	ctx.Set("id", 2001)
+
+	ListModels(ctx, constant.ChannelTypeOpenAI)
+
+	ids := decodeListModelsResponse(t, recorder)
+	require.Contains(t, ids, "zz-user-allowed-model")
+	require.NotContains(t, ids, "zz-user-denied-model")
+}
+
+func TestListModelsAppliesUserAndTokenModelLimitIntersection(t *testing.T) {
+	withSelfUseModeEnabled(t)
+	db := setupModelListControllerTestDB(t)
+	settingBytes, err := common.Marshal(dto.UserSetting{
+		ModelLimitsEnabled: true,
+		ModelLimits:        []string{"zz-user-token-overlap-model", "zz-user-only-model", "zz-not-enabled-model"},
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.Create(&model.User{
+		Id:       2002,
+		Username: "model-token-limit-user",
+		Password: "password",
+		Group:    "default",
+		Status:   common.UserStatusEnabled,
+		Setting:  string(settingBytes),
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Ability{
+		{Group: "default", Model: "zz-user-token-overlap-model", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "zz-user-only-model", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "zz-token-only-model", ChannelId: 1, Enabled: true},
+	}).Error)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	ctx.Set("id", 2002)
+	common.SetContextKey(ctx, constant.ContextKeyTokenModelLimitEnabled, true)
+	common.SetContextKey(ctx, constant.ContextKeyTokenModelLimit, map[string]bool{
+		"zz-user-token-overlap-model": true,
+		"zz-token-only-model":         true,
+		"zz-not-enabled-model":        true,
+	})
+
+	ListModels(ctx, constant.ChannelTypeOpenAI)
+
+	ids := decodeListModelsResponse(t, recorder)
+	require.Contains(t, ids, "zz-user-token-overlap-model")
+	require.NotContains(t, ids, "zz-user-only-model")
+	require.NotContains(t, ids, "zz-token-only-model")
+	require.NotContains(t, ids, "zz-not-enabled-model")
+}
+
+func TestListModelsAnthropicAllowsEmptyUserModelIntersection(t *testing.T) {
+	withSelfUseModeEnabled(t)
+	db := setupModelListControllerTestDB(t)
+	settingBytes, err := common.Marshal(dto.UserSetting{
+		ModelLimitsEnabled: true,
+		ModelLimits:        []string{"zz-not-enabled-for-group"},
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.Create(&model.User{
+		Id:       2003,
+		Username: "empty-anthropic-user",
+		Password: "password",
+		Group:    "default",
+		Status:   common.UserStatusEnabled,
+		Setting:  string(settingBytes),
+	}).Error)
+	require.NoError(t, db.Create(&model.Ability{Group: "default", Model: "zz-other-model", ChannelId: 1, Enabled: true}).Error)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	ctx.Set("id", 2003)
+
+	ListModels(ctx, constant.ChannelTypeAnthropic)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var payload struct {
+		Data    []dto.AnthropicModel `json:"data"`
+		FirstID string               `json:"first_id"`
+		LastID  string               `json:"last_id"`
+		HasMore bool                 `json:"has_more"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &payload))
+	require.Empty(t, payload.Data)
+	require.Empty(t, payload.FirstID)
+	require.Empty(t, payload.LastID)
+	require.False(t, payload.HasMore)
 }

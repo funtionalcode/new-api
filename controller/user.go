@@ -551,9 +551,16 @@ func GetUserModels(c *gin.Context) {
 	return
 }
 
+type updateUserRequest struct {
+	model.User
+	ModelLimitsEnabled *bool    `json:"model_limits_enabled,omitempty"`
+	ModelLimits        []string `json:"model_limits,omitempty"`
+}
+
 func UpdateUser(c *gin.Context) {
-	var updatedUser model.User
-	err := json.NewDecoder(c.Request.Body).Decode(&updatedUser)
+	var req updateUserRequest
+	err := common.DecodeJson(c.Request.Body, &req)
+	updatedUser := req.User
 	if err != nil || updatedUser.Id == 0 {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
@@ -579,6 +586,33 @@ func UpdateUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserCannotCreateHigherLevel)
 		return
 	}
+	updatedUser.Setting = originUser.Setting
+	if req.ModelLimitsEnabled != nil || req.ModelLimits != nil {
+		setting := originUser.GetSetting()
+		modelLimitsEnabled := setting.ModelLimitsEnabled
+		if req.ModelLimitsEnabled != nil {
+			modelLimitsEnabled = *req.ModelLimitsEnabled
+		}
+		modelLimits := model.NormalizeUserModelLimits(setting.ModelLimits)
+		if req.ModelLimits != nil {
+			modelLimits = model.NormalizeUserModelLimits(req.ModelLimits)
+		}
+		if modelLimitsEnabled && len(modelLimits) == 0 {
+			common.ApiError(c, fmt.Errorf("启用模型限制时至少需要选择一个模型"))
+			return
+		}
+		if err := validateUserModelLimits(modelLimits); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		setting.ModelLimitsEnabled = modelLimitsEnabled
+		if modelLimitsEnabled {
+			setting.ModelLimits = modelLimits
+		} else {
+			setting.ModelLimits = []string{}
+		}
+		updatedUser.SetSetting(setting)
+	}
 	if updatedUser.Password == "$I_LOVE_U" {
 		updatedUser.Password = "" // rollback to what it should be
 	}
@@ -592,6 +626,20 @@ func UpdateUser(c *gin.Context) {
 		"message": "",
 	})
 	return
+}
+
+func validateUserModelLimits(modelLimits []string) error {
+	enabledModels := model.GetEnabledModels()
+	enabledModelMap := make(map[string]bool, len(enabledModels))
+	for _, enabledModel := range enabledModels {
+		enabledModelMap[enabledModel] = true
+	}
+	for _, modelName := range modelLimits {
+		if !enabledModelMap[modelName] {
+			return fmt.Errorf("模型 %s 不在当前渠道开放模型列表中", modelName)
+		}
+	}
+	return nil
 }
 
 func AdminClearUserBinding(c *gin.Context) {
