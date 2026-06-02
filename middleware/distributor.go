@@ -79,6 +79,10 @@ func Distribute() func(c *gin.Context) {
 					abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorModelNameRequired))
 					return
 				}
+				if !isModelAllowedByUser(c, modelRequest.Model) {
+					abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorUserModelForbidden, map[string]any{"Model": modelRequest.Model}))
+					return
+				}
 				var selectGroup string
 				usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 				// check path is /pg/chat/completions
@@ -176,6 +180,19 @@ func getModelFromRequest(c *gin.Context) (*ModelRequest, error) {
 		return nil, errors.New(i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 	}
 	return &modelRequest, nil
+}
+
+func isModelAllowedByUser(c *gin.Context, modelName string) bool {
+	userId := c.GetInt("id")
+	if userId <= 0 {
+		return true
+	}
+	userSetting, err := model.GetUserSetting(userId, false)
+	if err != nil || !userSetting.ModelLimitsEnabled {
+		return true
+	}
+	userModelLimit := model.BuildUserModelLimitMap(model.NormalizeUserModelLimits(userSetting.ModelLimits))
+	return model.IsModelAllowedByUserLimit(modelName, userModelLimit)
 }
 
 func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {

@@ -44,6 +44,18 @@ func (user *UserBase) GetSetting() dto.UserSetting {
 	return setting
 }
 
+func (user *UserBase) IsModelLimitsEnabled() bool {
+	return user.GetSetting().ModelLimitsEnabled
+}
+
+func (user *UserBase) GetModelLimits() []string {
+	return NormalizeUserModelLimits(user.GetSetting().ModelLimits)
+}
+
+func (user *UserBase) GetModelLimitsMap() map[string]bool {
+	return BuildUserModelLimitMap(user.GetModelLimits())
+}
+
 // getUserCacheKey returns the key for user cache
 func getUserCacheKey(userId int) string {
 	return fmt.Sprintf("user:%d", userId)

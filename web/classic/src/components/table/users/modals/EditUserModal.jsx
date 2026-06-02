@@ -71,6 +71,7 @@ const EditUserModal = (props) => {
   const [adjustLoading, setAdjustLoading] = useState(false);
   const isMobile = useIsMobile();
   const [groupOptions, setGroupOptions] = useState([]);
+  const [modelOptions, setModelOptions] = useState([]);
   const [bindingModalVisible, setBindingModalVisible] = useState(false);
   const formApiRef = useRef(null);
   const [showAdjustQuotaRaw, setShowAdjustQuotaRaw] = useState(false);
@@ -94,6 +95,8 @@ const EditUserModal = (props) => {
     quota_amount: 0,
     group: 'default',
     remark: '',
+    model_limits_enabled: false,
+    model_limits: [],
   });
 
   const fetchGroups = async () => {
@@ -102,6 +105,33 @@ const EditUserModal = (props) => {
       setGroupOptions(res.data.data.map((g) => ({ label: g, value: g })));
     } catch (e) {
       showError(e.message);
+    }
+  };
+
+  const fetchEnabledModels = async () => {
+    try {
+      const res = await API.get('/api/channel/models_enabled');
+      if (res.data.success) {
+        setModelOptions(
+          (res.data.data || []).map((model) => ({ label: model, value: model })),
+        );
+      } else {
+        showError(res.data.message);
+      }
+    } catch (e) {
+      showError(e.message);
+    }
+  };
+
+  const parseModelLimitSetting = (setting) => {
+    try {
+      const parsed = typeof setting === 'string' && setting !== '' ? JSON.parse(setting) : {};
+      return {
+        model_limits_enabled: Boolean(parsed.model_limits_enabled),
+        model_limits: Array.isArray(parsed.model_limits) ? parsed.model_limits : [],
+      };
+    } catch (e) {
+      return { model_limits_enabled: false, model_limits: [] };
     }
   };
 
@@ -117,7 +147,8 @@ const EditUserModal = (props) => {
       data.quota_amount = Number(
         quotaToDisplayAmount(data.quota || 0).toFixed(6),
       );
-      setInputs({ ...getInitValues(), ...data });
+      const modelLimitSetting = parseModelLimitSetting(data.setting);
+      setInputs({ ...getInitValues(), ...data, ...modelLimitSetting });
     } else {
       showError(message);
     }
@@ -132,7 +163,10 @@ const EditUserModal = (props) => {
 
   useEffect(() => {
     loadUser();
-    if (userId) fetchGroups();
+    if (userId) {
+      fetchGroups();
+      fetchEnabledModels();
+    }
     setBindingModalVisible(false);
   }, [props.editingUser.id]);
 
@@ -150,20 +184,38 @@ const EditUserModal = (props) => {
     let payload = { ...values };
     delete payload.quota;
     delete payload.quota_amount;
+    delete payload.setting;
+    if (payload.model_limits_enabled && (!payload.model_limits || payload.model_limits.length === 0)) {
+      showError(t('启用模型限制时至少需要选择一个模型'));
+      setLoading(false);
+      return;
+    }
+    if (!payload.model_limits_enabled) {
+      payload.model_limits = [];
+    }
+    if (!userId) {
+      delete payload.model_limits_enabled;
+      delete payload.model_limits;
+    }
     if (userId) {
       payload.id = parseInt(userId);
     }
     const url = userId ? `/api/user/` : `/api/user/self`;
-    const res = await API.put(url, payload);
-    const { success, message } = res.data;
-    if (success) {
-      showSuccess(t('用户信息更新成功！'));
-      props.refresh();
-      props.handleClose();
-    } else {
-      showError(message);
+    try {
+      const res = await API.put(url, payload);
+      const { success, message } = res.data;
+      if (success) {
+        showSuccess(t('用户信息更新成功！'));
+        props.refresh();
+        props.handleClose();
+      } else {
+        showError(message);
+      }
+    } catch (e) {
+      showError(e.message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   /* --------------------- atomic quota adjust -------------------- */
@@ -192,7 +244,7 @@ const EditUserModal = (props) => {
           data.quota_amount = Number(
             quotaToDisplayAmount(data.quota || 0).toFixed(6),
           );
-          setInputs({ ...getInitValues(), ...data });
+          setInputs({ ...getInitValues(), ...data, ...parseModelLimitSetting(data.setting) });
         }
         props.refresh();
       } else {
@@ -367,6 +419,30 @@ const EditUserModal = (props) => {
                           rules={[{ required: true, message: t('请选择分组') }]}
                         />
                       </Col>
+
+                      <Col span={24}>
+                        <Form.Switch
+                          field='model_limits_enabled'
+                          label={t('启用模型限制')}
+                          checkedText={t('开')}
+                          uncheckedText={t('关')}
+                          extraText={t('启用后，该用户只能使用下方选择的模型；历史令牌也会受到限制')}
+                        />
+                      </Col>
+
+                      {values.model_limits_enabled && (
+                        <Col span={24}>
+                          <Form.Select
+                            field='model_limits'
+                            label={t('允许使用的模型')}
+                            placeholder={t('请选择允许该用户使用的模型')}
+                            optionList={modelOptions}
+                            multiple
+                            search
+                            rules={[{ required: true, message: t('请选择至少一个模型') }]}
+                          />
+                        </Col>
+                      )}
 
                       <Col span={10}>
                         <Form.InputNumber
