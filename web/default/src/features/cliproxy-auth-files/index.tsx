@@ -435,6 +435,7 @@ function RemoteAuthFilesTable({
               <TableHead>{t('Auth Index')}</TableHead>
               <TableHead>{t('Auth Name')}</TableHead>
               <TableHead>{t('Account ID')}</TableHead>
+              <TableHead>{t('Plan')}</TableHead>
               <TableHead>{t('Status')}</TableHead>
               <TableHead className='text-right'>{t('Actions')}</TableHead>
             </TableRow>
@@ -446,6 +447,7 @@ function RemoteAuthFilesTable({
                   <TableCell className='font-mono text-xs'>{authFile.authIndex}</TableCell>
                   <TableCell>{authFile.name || '-'}</TableCell>
                   <TableCell className='font-mono text-xs'>{authFile.accountId || '-'}</TableCell>
+                  <TableCell>{authFile.planType || '-'}</TableCell>
                   <TableCell>
                     <Badge variant={authFile.enabled ? 'default' : 'secondary'}>
                       {authFile.enabled ? t('Enabled') : t('Disabled')}
@@ -461,7 +463,7 @@ function RemoteAuthFilesTable({
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={5} className='text-muted-foreground py-8 text-center'>
+                <TableCell colSpan={6} className='text-muted-foreground py-8 text-center'>
                   {query.isLoading ? t('Loading...') : t('No auth files found')}
                 </TableCell>
               </TableRow>
@@ -591,6 +593,7 @@ function BindingTable({
                   </TableCell>
                   <TableCell>
                     <div>{formatTokens(binding.last_usage_tokens)}</div>
+                    <div className='text-muted-foreground text-xs'>Plan: {binding.last_plan_type || '-'}</div>
                     <div className='text-muted-foreground text-xs'>Quota: {binding.last_usage_quota || '-'}</div>
                     {binding.last_error ? (
                       <div className='text-destructive max-w-56 truncate text-xs'>{binding.last_error}</div>
