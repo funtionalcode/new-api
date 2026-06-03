@@ -123,24 +123,6 @@ const EditUserModal = (props) => {
     }
   };
 
-  const parseModelLimitSetting = (data) => {
-    if (data?.model_limits_enabled !== undefined || Array.isArray(data?.model_limits)) {
-      return {
-        model_limits_enabled: Boolean(data.model_limits_enabled),
-        model_limits: Array.isArray(data.model_limits) ? data.model_limits : [],
-      };
-    }
-    try {
-      const parsed = typeof data?.setting === 'string' && data.setting !== '' ? JSON.parse(data.setting) : {};
-      return {
-        model_limits_enabled: Boolean(parsed.model_limits_enabled),
-        model_limits: Array.isArray(parsed.model_limits) ? parsed.model_limits : [],
-      };
-    } catch (e) {
-      return { model_limits_enabled: false, model_limits: [] };
-    }
-  };
-
   const handleCancel = () => props.handleClose();
 
   const loadUser = async () => {
@@ -153,8 +135,7 @@ const EditUserModal = (props) => {
       data.quota_amount = Number(
         quotaToDisplayAmount(data.quota || 0).toFixed(6),
       );
-      const modelLimitSetting = parseModelLimitSetting(data);
-      setInputs({ ...getInitValues(), ...data, ...modelLimitSetting });
+      setInputs({ ...getInitValues(), ...data });
     } else {
       showError(message);
     }
@@ -168,13 +149,16 @@ const EditUserModal = (props) => {
   }, [inputs]);
 
   useEffect(() => {
+    if (!props.visible) {
+      return;
+    }
     loadUser();
     if (userId) {
       fetchGroups();
       fetchEnabledModels();
     }
     setBindingModalVisible(false);
-  }, [props.editingUser.id]);
+  }, [props.visible, userId]);
 
   const openBindingModal = () => {
     setBindingModalVisible(true);
@@ -250,7 +234,7 @@ const EditUserModal = (props) => {
           data.quota_amount = Number(
             quotaToDisplayAmount(data.quota || 0).toFixed(6),
           );
-          setInputs({ ...getInitValues(), ...data, ...parseModelLimitSetting(data) });
+          setInputs({ ...getInitValues(), ...data });
         }
         props.refresh();
       } else {
