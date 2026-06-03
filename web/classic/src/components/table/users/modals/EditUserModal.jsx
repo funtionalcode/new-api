@@ -420,19 +420,33 @@ const EditUserModal = (props) => {
                         />
                       </Col>
 
-                      {values.model_limits_enabled && (
-                        <Col span={24}>
-                          <Form.Select
-                            field='model_limits'
-                            label={t('允许使用的模型')}
-                            placeholder={t('请选择允许该用户使用的模型')}
-                            optionList={modelOptions}
-                            multiple
-                            search
-                            rules={[{ required: true, message: t('请选择至少一个模型') }]}
-                          />
-                        </Col>
-                      )}
+                      <Col
+                        span={24}
+                        style={{
+                          display: values.model_limits_enabled
+                            ? 'block'
+                            : 'none',
+                        }}
+                      >
+                        <Form.Select
+                          field='model_limits'
+                          label={t('允许使用的模型')}
+                          placeholder={t('请选择允许该用户使用的模型')}
+                          optionList={modelOptions}
+                          multiple
+                          search
+                          rules={
+                            values.model_limits_enabled
+                              ? [
+                                  {
+                                    required: true,
+                                    message: t('请选择至少一个模型'),
+                                  },
+                                ]
+                              : []
+                          }
+                        />
+                      </Col>
 
                       <Col span={10}>
                         <Form.InputNumber
