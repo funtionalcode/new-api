@@ -284,10 +284,39 @@ func GetUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
 		return
 	}
+	userSetting := user.GetSetting()
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    user,
+		"data": gin.H{
+			"id":                   user.Id,
+			"username":             user.Username,
+			"display_name":         user.DisplayName,
+			"role":                 user.Role,
+			"status":               user.Status,
+			"email":                user.Email,
+			"github_id":            user.GitHubId,
+			"discord_id":           user.DiscordId,
+			"oidc_id":              user.OidcId,
+			"wechat_id":            user.WeChatId,
+			"telegram_id":          user.TelegramId,
+			"linux_do_id":          user.LinuxDOId,
+			"quota":                user.Quota,
+			"used_quota":           user.UsedQuota,
+			"request_count":        user.RequestCount,
+			"group":                user.Group,
+			"aff_code":             user.AffCode,
+			"aff_count":            user.AffCount,
+			"aff_quota":            user.AffQuota,
+			"aff_history_quota":    user.AffHistoryQuota,
+			"inviter_id":           user.InviterId,
+			"setting":              user.Setting,
+			"remark":               user.Remark,
+			"created_at":           user.CreatedAt,
+			"last_login_at":        user.LastLoginAt,
+			"model_limits_enabled": userSetting.ModelLimitsEnabled,
+			"model_limits":         model.NormalizeUserModelLimits(userSetting.ModelLimits),
+		},
 	})
 	return
 }

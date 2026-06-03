@@ -123,9 +123,15 @@ const EditUserModal = (props) => {
     }
   };
 
-  const parseModelLimitSetting = (setting) => {
+  const parseModelLimitSetting = (data) => {
+    if (data?.model_limits_enabled !== undefined || Array.isArray(data?.model_limits)) {
+      return {
+        model_limits_enabled: Boolean(data.model_limits_enabled),
+        model_limits: Array.isArray(data.model_limits) ? data.model_limits : [],
+      };
+    }
     try {
-      const parsed = typeof setting === 'string' && setting !== '' ? JSON.parse(setting) : {};
+      const parsed = typeof data?.setting === 'string' && data.setting !== '' ? JSON.parse(data.setting) : {};
       return {
         model_limits_enabled: Boolean(parsed.model_limits_enabled),
         model_limits: Array.isArray(parsed.model_limits) ? parsed.model_limits : [],
@@ -147,7 +153,7 @@ const EditUserModal = (props) => {
       data.quota_amount = Number(
         quotaToDisplayAmount(data.quota || 0).toFixed(6),
       );
-      const modelLimitSetting = parseModelLimitSetting(data.setting);
+      const modelLimitSetting = parseModelLimitSetting(data);
       setInputs({ ...getInitValues(), ...data, ...modelLimitSetting });
     } else {
       showError(message);
@@ -244,7 +250,7 @@ const EditUserModal = (props) => {
           data.quota_amount = Number(
             quotaToDisplayAmount(data.quota || 0).toFixed(6),
           );
-          setInputs({ ...getInitValues(), ...data, ...parseModelLimitSetting(data.setting) });
+          setInputs({ ...getInitValues(), ...data, ...parseModelLimitSetting(data) });
         }
         props.refresh();
       } else {
