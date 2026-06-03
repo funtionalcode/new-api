@@ -15,7 +15,7 @@ func TestCliproxyAPIClientListAuthFiles(t *testing.T) {
 		require.Equal(t, "/v0/management/auth-files", r.URL.Path)
 		require.Equal(t, "Bearer cliproxyapi", r.Header.Get("Authorization"))
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"files":[{"auth_index":"f2ca5514ba44085e","name":"codex-duboislee1988@gmail.com-prolite.json","id":"codex-duboislee1988@gmail.com-prolite.json","disabled":false,"id_token":{"chatgpt_account_id":"20ef4492-656e-40a0-8412-af905e51c9f9"}}]}`))
+		_, _ = w.Write([]byte(`{"files":[{"auth_index":"f2ca5514ba44085e","name":"codex-duboislee1988@gmail.com-prolite.json","id":"codex-duboislee1988@gmail.com-prolite.json","account_type":"oauth","disabled":false,"id_token":{"chatgpt_account_id":"20ef4492-656e-40a0-8412-af905e51c9f9","plan_type":"prolite"}}]}`))
 	}))
 	defer server.Close()
 
@@ -29,7 +29,48 @@ func TestCliproxyAPIClientListAuthFiles(t *testing.T) {
 	require.Equal(t, "codex-duboislee1988@gmail.com-prolite.json", files[0].Name)
 	require.Equal(t, "codex-duboislee1988@gmail.com-prolite.json", files[0].AuthFile)
 	require.Equal(t, "20ef4492-656e-40a0-8412-af905e51c9f9", files[0].AccountID)
+	require.Equal(t, "prolite", files[0].PlanType)
 	require.True(t, files[0].Enabled)
+}
+
+func TestNormalizeCliproxyAuthFilesSortsCodexPlans(t *testing.T) {
+	files := normalizeCliproxyAuthFiles(cliproxyAuthFilesResponse{
+		Files: []cliproxyAuthFileResponse{
+			{
+				Name:        "free.json",
+				AccountType: "oauth",
+				IDToken:     cliproxyAuthFileToken{PlanType: "free"},
+			},
+			{
+				Name:        "plus.json",
+				AccountType: "oauth",
+				IDToken:     cliproxyAuthFileToken{PlanType: "plus"},
+			},
+			{
+				Name:        "prolite.json",
+				AccountType: "oauth",
+				IDToken:     cliproxyAuthFileToken{PlanType: "prolite"},
+			},
+			{
+				Name:        "pro.json",
+				AccountType: "oauth",
+				IDToken:     cliproxyAuthFileToken{PlanType: "pro"},
+			},
+		},
+	})
+
+	require.Equal(t, []string{"pro.json", "prolite.json", "plus.json", "free.json"}, []string{
+		files[0].Name,
+		files[1].Name,
+		files[2].Name,
+		files[3].Name,
+	})
+	require.Equal(t, []string{"pro", "prolite", "plus", "free"}, []string{
+		files[0].PlanType,
+		files[1].PlanType,
+		files[2].PlanType,
+		files[3].PlanType,
+	})
 }
 
 func TestCliproxyAPIClientListAuthFilesSupportsDataField(t *testing.T) {

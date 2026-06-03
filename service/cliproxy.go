@@ -63,6 +63,7 @@ type cliproxyBalance struct {
 
 type cliproxyAuthFileToken struct {
 	ChatGPTAccountID string `json:"chatgpt_account_id"`
+	PlanType         string `json:"plan_type"`
 }
 
 type CliproxyAPICallRequest struct {
@@ -165,7 +166,7 @@ func normalizeCliproxyAuthFiles(result cliproxyAuthFilesResponse) []CliproxyAuth
 			Name:      item.Name,
 			AuthFile:  firstNonEmpty(item.ID, item.AuthFile),
 			AccountID: firstNonEmpty(item.AccountID, item.CamelAccountID, item.IDToken.ChatGPTAccountID),
-			PlanType:  firstNonEmpty(item.Balance.Group, item.Group, item.PlanType, item.CamelPlanType, item.AccountType),
+			PlanType:  firstNonEmpty(item.Balance.Group, item.Group, item.IDToken.PlanType, item.PlanType, item.CamelPlanType, item.AccountType),
 			Enabled:   item.Enabled == nil && !item.Disabled || item.Enabled != nil && *item.Enabled,
 		})
 	}
@@ -181,16 +182,18 @@ func normalizeCliproxyPlan(value string) string {
 
 func cliproxyPlanRank(value string) int {
 	switch normalizeCliproxyPlan(value) {
-	case "pro20x":
+	case "pro", "pro20x":
 		return 0
-	case "pro5x":
+	case "prolite", "pro5x":
 		return 1
-	case "plus":
+	case "team":
 		return 2
-	case "free":
+	case "plus":
 		return 3
-	default:
+	case "free":
 		return 4
+	default:
+		return 5
 	}
 }
 
@@ -200,7 +203,7 @@ func compareCliproxyAuthFiles(left CliproxyAuthFile, right CliproxyAuthFile) int
 	if leftRank != rightRank {
 		return leftRank - rightRank
 	}
-	if leftRank == 4 {
+	if leftRank == 5 {
 		if planCompare := strings.Compare(strings.ToLower(left.PlanType), strings.ToLower(right.PlanType)); planCompare != 0 {
 			return planCompare
 		}
