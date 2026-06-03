@@ -19,15 +19,62 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Card, Form, Modal, Progress, Table, Tag, Tooltip, Typography } from '@douyinfe/semi-ui';
+import {
+  Button,
+  Card,
+  Form,
+  Modal,
+  Progress,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+} from '@douyinfe/semi-ui';
 import { API, isAdmin, isRoot, showError, showSuccess } from '../../helpers';
 
 const { Text } = Typography;
 
-const getAuthIndex = (authFile) => authFile?.authIndex || authFile?.auth_index || '';
-const getAuthName = (authFile) => authFile?.name || authFile?.authName || authFile?.auth_name || '';
-const getAuthFileContent = (authFile) => authFile?.authFile || authFile?.auth_file || '';
-const getAccountId = (authFile) => authFile?.accountId || authFile?.account_id || '';
+const getAuthIndex = (authFile) =>
+  authFile?.authIndex || authFile?.auth_index || '';
+const getAuthName = (authFile) =>
+  authFile?.name || authFile?.authName || authFile?.auth_name || '';
+const getAuthFileContent = (authFile) =>
+  authFile?.authFile || authFile?.auth_file || '';
+const getAccountId = (authFile) =>
+  authFile?.accountId || authFile?.account_id || '';
+const getPlanType = (authFile) =>
+  authFile?.planType || authFile?.plan_type || authFile?.last_plan_type || '';
+
+const normalizePlanKey = (value) => {
+  if (typeof value !== 'string') return '';
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[-_\s]/g, '');
+};
+
+const getPlanTagConfig = (value) => {
+  const key = normalizePlanKey(value);
+  if (!key) return null;
+  if (key === 'pro' || key === 'pro20x')
+    return { label: 'Pro 20x', color: 'orange' };
+  if (key === 'prolite' || key === 'pro5x')
+    return { label: 'Pro 5x', color: 'cyan' };
+  if (key === 'team') return { label: 'Team', color: 'green' };
+  if (key === 'plus') return { label: 'Plus', color: 'purple' };
+  if (key === 'free') return { label: 'Free', color: 'grey' };
+  return { label: value, color: 'white' };
+};
+
+const renderPlanTag = (value) => {
+  const config = getPlanTagConfig(value);
+  if (!config) return '-';
+  return (
+    <Tag color={config.color} shape='circle'>
+      {config.label}
+    </Tag>
+  );
+};
 
 const normalizeUsagePercent = (value) => {
   const percent = Number(value || 0);
@@ -59,7 +106,6 @@ const renderUsageLimit = (percent, resetAt) => {
   );
 };
 
-
 const emptyBindingForm = {
   id: undefined,
   user_id: undefined,
@@ -69,6 +115,7 @@ const emptyBindingForm = {
   auth_file: '',
   description: '',
   account_id: '',
+  last_plan_type: '',
   enabled: true,
 };
 
@@ -81,6 +128,7 @@ const buildBindingForm = (binding = emptyBindingForm) => ({
   auth_file: binding.auth_file || '',
   description: binding.description || '',
   account_id: binding.account_id || '',
+  last_plan_type: binding.last_plan_type || '',
   enabled: binding.enabled !== false,
 });
 
@@ -242,6 +290,7 @@ export default function CliproxyAuthFiles() {
         auth_name: getAuthName(remoteFile),
         auth_file: getAuthFileContent(remoteFile),
         account_id: getAccountId(remoteFile),
+        last_plan_type: getPlanType(remoteFile),
         enabled: remoteFile?.enabled !== false,
       }),
     );
@@ -277,6 +326,7 @@ export default function CliproxyAuthFiles() {
         auth_file: bindingForm.auth_file.trim(),
         description: bindingForm.description.trim(),
         account_id: bindingForm.account_id.trim(),
+        last_plan_type: bindingForm.last_plan_type.trim(),
         enabled: bindingForm.enabled,
       };
       const res = bindingForm.id
@@ -352,7 +402,9 @@ export default function CliproxyAuthFiles() {
     try {
       const results = await Promise.allSettled(
         bindings.map((binding) =>
-          API.post(`/api/cliproxy/auth-files/bindings/${binding.id}/refresh-usage`),
+          API.post(
+            `/api/cliproxy/auth-files/bindings/${binding.id}/refresh-usage`,
+          ),
         ),
       );
       results.forEach((result) => {
@@ -363,9 +415,16 @@ export default function CliproxyAuthFiles() {
         }
       });
       if (failCount === 0) {
-        showSuccess(t('全部刷新成功，共 {{count}} 条', { count: successCount }));
+        showSuccess(
+          t('全部刷新成功，共 {{count}} 条', { count: successCount }),
+        );
       } else {
-        showError(t('刷新完成：成功 {{success}} 条，失败 {{fail}} 条', { success: successCount, fail: failCount }));
+        showError(
+          t('刷新完成：成功 {{success}} 条，失败 {{fail}} 条', {
+            success: successCount,
+            fail: failCount,
+          }),
+        );
       }
       await loadBindings();
     } catch (error) {
@@ -393,6 +452,10 @@ export default function CliproxyAuthFiles() {
       render: (_, record) => record.accountId || record.account_id || '-',
     },
     {
+      title: t('套餐'),
+      render: (_, record) => renderPlanTag(getPlanType(record)),
+    },
+    {
       title: t('绑定状态'),
       render: (_, record) => {
         const authIndex = record.authIndex || record.auth_index || '';
@@ -404,7 +467,11 @@ export default function CliproxyAuthFiles() {
             </Tag>
           );
         }
-        return <Tag color='grey' shape='circle'>{t('未绑定')}</Tag>;
+        return (
+          <Tag color='grey' shape='circle'>
+            {t('未绑定')}
+          </Tag>
+        );
       },
     },
     {
@@ -442,17 +509,23 @@ export default function CliproxyAuthFiles() {
     { title: t('认证文件'), dataIndex: 'auth_name' },
     {
       title: t('套餐'),
-      render: (_, record) => record.last_plan_type || '-',
+      render: (_, record) => renderPlanTag(record.last_plan_type),
     },
     {
       title: t('5小时限额'),
       render: (_, record) =>
-        renderUsageLimit(record.last_five_hour_percent, record.last_five_hour_reset_at),
+        renderUsageLimit(
+          record.last_five_hour_percent,
+          record.last_five_hour_reset_at,
+        ),
     },
     {
       title: t('周限额'),
       render: (_, record) =>
-        renderUsageLimit(record.last_weekly_percent, record.last_weekly_reset_at),
+        renderUsageLimit(
+          record.last_weekly_percent,
+          record.last_weekly_reset_at,
+        ),
     },
     {
       title: t('Codex 5小时限额'),
@@ -500,7 +573,11 @@ export default function CliproxyAuthFiles() {
             </Button>
           )}
           {adminUser && (
-            <Button size='small' type='danger' onClick={() => deleteBinding(record)}>
+            <Button
+              size='small'
+              type='danger'
+              onClick={() => deleteBinding(record)}
+            >
               {t('删除')}
             </Button>
           )}
@@ -540,7 +617,11 @@ export default function CliproxyAuthFiles() {
                 }
                 placeholder={t('留空则不修改')}
               />
-              <Button type='primary' loading={savingConfig} onClick={saveConfig}>
+              <Button
+                type='primary'
+                loading={savingConfig}
+                onClick={saveConfig}
+              >
                 {t('保存配置')}
               </Button>
             </Form>
@@ -672,7 +753,9 @@ export default function CliproxyAuthFiles() {
                 optionList={userOptions}
                 onSearch={searchUsers}
                 onChange={(value) => {
-                  const user = userOptions.find((option) => option.value === value);
+                  const user = userOptions.find(
+                    (option) => option.value === value,
+                  );
                   setBindingForm((current) => ({
                     ...current,
                     user_id: value,
@@ -692,7 +775,9 @@ export default function CliproxyAuthFiles() {
                 value={bindingForm.auth_index}
                 optionList={remoteFileOptions}
                 onChange={(value) => {
-                  const selected = remoteFileOptions.find((option) => option.value === value);
+                  const selected = remoteFileOptions.find(
+                    (option) => option.value === value,
+                  );
                   const authFile = selected?.authFile;
                   setBindingForm((current) => ({
                     ...current,
@@ -714,7 +799,9 @@ export default function CliproxyAuthFiles() {
                 optionList={userOptions}
                 onSearch={searchUsers}
                 onChange={(value) => {
-                  const user = userOptions.find((option) => option.value === value);
+                  const user = userOptions.find(
+                    (option) => option.value === value,
+                  );
                   setBindingForm((current) => ({
                     ...current,
                     user_id: value,

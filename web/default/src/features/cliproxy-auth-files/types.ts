@@ -70,9 +70,7 @@ export type GetCliproxyAuthFileBindingsResponse = ApiResponse<
   PageResponse<CliproxyAuthFileBinding>
 >
 
-export type GetCliproxyRemoteAuthFilesResponse = ApiResponse<
-  CliproxyAuthFile[]
->
+export type GetCliproxyRemoteAuthFilesResponse = ApiResponse<CliproxyAuthFile[]>
 
 export interface CliproxyAuthFileBindingFormData {
   user_id: number
@@ -81,5 +79,6 @@ export interface CliproxyAuthFileBindingFormData {
   auth_file: string
   description: string
   account_id: string
+  last_plan_type: string
   enabled: boolean
 }

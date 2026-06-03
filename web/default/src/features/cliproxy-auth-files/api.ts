@@ -81,6 +81,7 @@ export function toBindingFormData(
     auth_file: authFile.authFile || '',
     description: '',
     account_id: authFile.accountId || '',
+    last_plan_type: authFile.planType || '',
     enabled: authFile.enabled,
   }
 }

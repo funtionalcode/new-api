@@ -18,10 +18,19 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Edit, Loader2, Plus, RefreshCw, Search, Trash2 } from 'lucide-react'
+import {
+  Check,
+  Edit,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { SectionPageLayout } from '@/components/layout'
+import { formatTimestampToDate, formatTokens } from '@/lib/format'
+import { cn } from '@/lib/utils'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
@@ -62,11 +71,11 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
-import { formatTimestampToDate, formatTokens } from '@/lib/format'
-import { searchUsers } from '@/features/users/api'
-import type { User } from '@/features/users/types'
+import { SectionPageLayout } from '@/components/layout'
 import { useSystemOptions } from '@/features/system-settings/hooks/use-system-options'
 import { useUpdateOption } from '@/features/system-settings/hooks/use-update-option'
+import { searchUsers } from '@/features/users/api'
+import type { User } from '@/features/users/types'
 import {
   createCliproxyAuthFileBinding,
   deleteCliproxyAuthFileBinding,
@@ -84,8 +93,18 @@ import type {
 
 type BindingDialogState =
   | { open: false; mode: 'create'; authFile?: undefined; binding?: undefined }
-  | { open: true; mode: 'create'; authFile: CliproxyAuthFile; binding?: undefined }
-  | { open: true; mode: 'edit'; authFile?: undefined; binding: CliproxyAuthFileBinding }
+  | {
+      open: true
+      mode: 'create'
+      authFile: CliproxyAuthFile
+      binding?: undefined
+    }
+  | {
+      open: true
+      mode: 'edit'
+      authFile?: undefined
+      binding: CliproxyAuthFileBinding
+    }
 
 type BindingFormState = CliproxyAuthFileBindingFormData & {
   username: string
@@ -99,7 +118,97 @@ const emptyBindingForm: BindingFormState = {
   auth_file: '',
   description: '',
   account_id: '',
+  last_plan_type: '',
   enabled: true,
+}
+
+type PlanLabelConfig = {
+  label: string
+  multiplier?: string
+  className: string
+}
+
+const normalizePlanKey = (value: unknown): string => {
+  if (typeof value !== 'string') return ''
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[-_\s]/g, '')
+}
+
+const getPlanLabelConfig = (value: unknown): PlanLabelConfig | null => {
+  const key = normalizePlanKey(value)
+  if (!key) return null
+
+  if (key === 'pro' || key === 'pro20x') {
+    return {
+      label: 'Pro',
+      multiplier: '20x',
+      className:
+        'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-950/35 dark:text-amber-200',
+    }
+  }
+
+  if (key === 'prolite' || key === 'pro5x') {
+    return {
+      label: 'Pro',
+      multiplier: '5x',
+      className:
+        'border-sky-300 bg-sky-50 text-sky-800 dark:border-sky-700 dark:bg-sky-950/35 dark:text-sky-200',
+    }
+  }
+
+  if (key === 'team') {
+    return {
+      label: 'Team',
+      className:
+        'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-200',
+    }
+  }
+
+  if (key === 'plus') {
+    return {
+      label: 'Plus',
+      className:
+        'border-indigo-300 bg-indigo-50 text-indigo-800 dark:border-indigo-700 dark:bg-indigo-950/35 dark:text-indigo-200',
+    }
+  }
+
+  if (key === 'free') {
+    return {
+      label: 'Free',
+      className: 'border-border bg-muted text-muted-foreground',
+    }
+  }
+
+  return {
+    label: String(value),
+    className: 'border-border bg-background text-muted-foreground',
+  }
+}
+
+function PlanLabel(props: { value?: string | null }) {
+  const config = getPlanLabelConfig(props.value)
+  if (!config) {
+    return <span className='text-muted-foreground'>-</span>
+  }
+
+  return (
+    <Badge
+      variant='outline'
+      className={cn(
+        'inline-flex h-6 items-center gap-1 rounded-md px-2 font-mono text-[11px] font-semibold tracking-normal',
+        config.className
+      )}
+    >
+      <span>{config.label}</span>
+      {config.multiplier ? (
+        <span className='rounded-[3px] bg-current/10 px-1 text-[10px] leading-4'>
+          {config.multiplier}
+        </span>
+      ) : null}
+    </Badge>
+  )
 }
 
 const cliproxyOptionDefaults = {
@@ -119,6 +228,7 @@ function buildFormFromDialog(state: BindingDialogState): BindingFormState {
       auth_file: binding.auth_file,
       description: binding.description,
       account_id: binding.account_id,
+      last_plan_type: binding.last_plan_type,
       enabled: binding.enabled,
     }
   }
@@ -129,7 +239,10 @@ function buildFormFromDialog(state: BindingDialogState): BindingFormState {
   }
 }
 
-function getApiErrorMessage(data: { success: boolean; message?: string }, fallback: string) {
+function getApiErrorMessage(
+  data: { success: boolean; message?: string },
+  fallback: string
+) {
   return data.success ? '' : data.message || fallback
 }
 
@@ -181,13 +294,17 @@ function ConfigCard() {
       <CardHeader>
         <CardTitle>{t('Cliproxy API Configuration')}</CardTitle>
         <CardDescription>
-          {t('Configure the Cliproxy API address and login password for management requests.')}
+          {t(
+            'Configure the Cliproxy API address and login password for management requests.'
+          )}
         </CardDescription>
       </CardHeader>
       <CardContent>
         <div className='grid gap-4 lg:grid-cols-[1fr_1fr_auto] lg:items-end'>
           <div className='space-y-2'>
-            <Label htmlFor='cliproxy-api-base-url'>{t('Cliproxy API Base URL')}</Label>
+            <Label htmlFor='cliproxy-api-base-url'>
+              {t('Cliproxy API Base URL')}
+            </Label>
             <Input
               id='cliproxy-api-base-url'
               value={baseURL}
@@ -196,7 +313,9 @@ function ConfigCard() {
             />
           </div>
           <div className='space-y-2'>
-            <Label htmlFor='cliproxy-api-password'>{t('Cliproxy API Login Password')}</Label>
+            <Label htmlFor='cliproxy-api-password'>
+              {t('Cliproxy API Login Password')}
+            </Label>
             <Input
               id='cliproxy-api-password'
               type='password'
@@ -210,7 +329,9 @@ function ConfigCard() {
             onClick={saveConfig}
             disabled={updateOption.isPending || optionsQuery.isLoading}
           >
-            {updateOption.isPending ? <Loader2 className='animate-spin' /> : null}
+            {updateOption.isPending ? (
+              <Loader2 className='animate-spin' />
+            ) : null}
             {t('Save')}
           </Button>
         </div>
@@ -256,7 +377,9 @@ function BindingDialog({
         return
       }
       toast.success(t('Binding saved successfully'))
-      queryClient.invalidateQueries({ queryKey: ['cliproxy-auth-file-bindings'] })
+      queryClient.invalidateQueries({
+        queryKey: ['cliproxy-auth-file-bindings'],
+      })
       onOpenChange(false)
     },
     onError: (error: Error) => {
@@ -291,6 +414,7 @@ function BindingDialog({
       auth_file: form.auth_file,
       description: form.description,
       account_id: form.account_id.trim(),
+      last_plan_type: form.last_plan_type.trim(),
       enabled: form.enabled,
     })
   }
@@ -300,7 +424,9 @@ function BindingDialog({
       <DialogContent className='sm:max-w-2xl'>
         <DialogHeader>
           <DialogTitle>
-            {state.open && state.mode === 'edit' ? t('Edit Binding') : t('Create Binding')}
+            {state.open && state.mode === 'edit'
+              ? t('Edit Binding')
+              : t('Create Binding')}
           </DialogTitle>
           <DialogDescription>
             {t('Bind a Cliproxy auth file to a new-api user.')}
@@ -313,14 +439,18 @@ function BindingDialog({
               <Label>{t('Auth Index')}</Label>
               <Input
                 value={form.auth_index}
-                onChange={(event) => updateForm({ auth_index: event.target.value })}
+                onChange={(event) =>
+                  updateForm({ auth_index: event.target.value })
+                }
               />
             </div>
             <div className='space-y-2'>
               <Label>{t('Auth Name')}</Label>
               <Input
                 value={form.auth_name}
-                onChange={(event) => updateForm({ auth_name: event.target.value })}
+                onChange={(event) =>
+                  updateForm({ auth_name: event.target.value })
+                }
               />
             </div>
           </div>
@@ -330,7 +460,9 @@ function BindingDialog({
               <Label>{t('Account ID')}</Label>
               <Input
                 value={form.account_id}
-                onChange={(event) => updateForm({ account_id: event.target.value })}
+                onChange={(event) =>
+                  updateForm({ account_id: event.target.value })
+                }
               />
             </div>
             <div className='space-y-2'>
@@ -360,7 +492,9 @@ function BindingDialog({
                     onClick={() => selectUser(user)}
                   >
                     <span>{user.username}</span>
-                    {form.user_id === user.id ? <Check className='size-4' /> : null}
+                    {form.user_id === user.id ? (
+                      <Check className='size-4' />
+                    ) : null}
                   </button>
                 ))
               ) : (
@@ -375,7 +509,9 @@ function BindingDialog({
             <Label>{t('Description')}</Label>
             <Textarea
               value={form.description}
-              onChange={(event) => updateForm({ description: event.target.value })}
+              onChange={(event) =>
+                updateForm({ description: event.target.value })
+              }
             />
           </div>
 
@@ -389,11 +525,21 @@ function BindingDialog({
         </div>
 
         <DialogFooter>
-          <Button variant='outline' type='button' onClick={() => onOpenChange(false)}>
+          <Button
+            variant='outline'
+            type='button'
+            onClick={() => onOpenChange(false)}
+          >
             {t('Cancel')}
           </Button>
-          <Button type='button' onClick={submit} disabled={saveMutation.isPending}>
-            {saveMutation.isPending ? <Loader2 className='animate-spin' /> : null}
+          <Button
+            type='button'
+            onClick={submit}
+            disabled={saveMutation.isPending}
+          >
+            {saveMutation.isPending ? (
+              <Loader2 className='animate-spin' />
+            ) : null}
             {t('Save')}
           </Button>
         </DialogFooter>
@@ -426,7 +572,9 @@ function RemoteAuthFilesTable({
       <CardContent>
         {query.data && !query.data.success ? (
           <Alert variant='destructive' className='mb-4'>
-            <AlertDescription>{query.data.message || t('Failed to fetch remote auth files')}</AlertDescription>
+            <AlertDescription>
+              {query.data.message || t('Failed to fetch remote auth files')}
+            </AlertDescription>
           </Alert>
         ) : null}
         <Table>
@@ -444,17 +592,27 @@ function RemoteAuthFilesTable({
             {authFiles.length > 0 ? (
               authFiles.map((authFile) => (
                 <TableRow key={authFile.authIndex}>
-                  <TableCell className='font-mono text-xs'>{authFile.authIndex}</TableCell>
+                  <TableCell className='font-mono text-xs'>
+                    {authFile.authIndex}
+                  </TableCell>
                   <TableCell>{authFile.name || '-'}</TableCell>
-                  <TableCell className='font-mono text-xs'>{authFile.accountId || '-'}</TableCell>
-                  <TableCell>{authFile.planType || '-'}</TableCell>
+                  <TableCell className='font-mono text-xs'>
+                    {authFile.accountId || '-'}
+                  </TableCell>
+                  <TableCell>
+                    <PlanLabel value={authFile.planType} />
+                  </TableCell>
                   <TableCell>
                     <Badge variant={authFile.enabled ? 'default' : 'secondary'}>
                       {authFile.enabled ? t('Enabled') : t('Disabled')}
                     </Badge>
                   </TableCell>
                   <TableCell className='text-right'>
-                    <Button size='sm' variant='outline' onClick={() => onCreate(authFile)}>
+                    <Button
+                      size='sm'
+                      variant='outline'
+                      onClick={() => onCreate(authFile)}
+                    >
                       <Plus />
                       {t('Bind User')}
                     </Button>
@@ -463,7 +621,10 @@ function RemoteAuthFilesTable({
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={6} className='text-muted-foreground py-8 text-center'>
+                <TableCell
+                  colSpan={6}
+                  className='text-muted-foreground py-8 text-center'
+                >
                   {query.isLoading ? t('Loading...') : t('No auth files found')}
                 </TableCell>
               </TableRow>
@@ -484,7 +645,8 @@ function BindingTable({
   const queryClient = useQueryClient()
   const [username, setUsername] = useState('')
   const [authIndex, setAuthIndex] = useState('')
-  const [deleteTarget, setDeleteTarget] = useState<CliproxyAuthFileBinding | null>(null)
+  const [deleteTarget, setDeleteTarget] =
+    useState<CliproxyAuthFileBinding | null>(null)
 
   const query = useQuery({
     queryKey: ['cliproxy-auth-file-bindings', username, authIndex],
@@ -500,7 +662,10 @@ function BindingTable({
   const refreshMutation = useMutation({
     mutationFn: refreshCliproxyAuthFileBindingUsage,
     onSuccess: (data) => {
-      const errorMessage = getApiErrorMessage(data, t('Failed to refresh usage'))
+      const errorMessage = getApiErrorMessage(
+        data,
+        t('Failed to refresh usage')
+      )
       if (errorMessage) {
         toast.error(errorMessage)
         return
@@ -510,7 +675,9 @@ function BindingTable({
       } else {
         toast.success(t('Usage refreshed successfully'))
       }
-      queryClient.invalidateQueries({ queryKey: ['cliproxy-auth-file-bindings'] })
+      queryClient.invalidateQueries({
+        queryKey: ['cliproxy-auth-file-bindings'],
+      })
     },
     onError: (error: Error) => {
       toast.error(error.message || t('Failed to refresh usage'))
@@ -520,13 +687,18 @@ function BindingTable({
   const deleteMutation = useMutation({
     mutationFn: deleteCliproxyAuthFileBinding,
     onSuccess: (data) => {
-      const errorMessage = getApiErrorMessage(data, t('Failed to delete binding'))
+      const errorMessage = getApiErrorMessage(
+        data,
+        t('Failed to delete binding')
+      )
       if (errorMessage) {
         toast.error(errorMessage)
         return
       }
       toast.success(t('Binding deleted successfully'))
-      queryClient.invalidateQueries({ queryKey: ['cliproxy-auth-file-bindings'] })
+      queryClient.invalidateQueries({
+        queryKey: ['cliproxy-auth-file-bindings'],
+      })
       setDeleteTarget(null)
     },
     onError: (error: Error) => {
@@ -541,7 +713,9 @@ function BindingTable({
       <CardHeader>
         <CardTitle>{t('Auth File Bindings')}</CardTitle>
         <CardDescription>
-          {t('Manage the relationship between Cliproxy auth files and new-api users.')}
+          {t(
+            'Manage the relationship between Cliproxy auth files and new-api users.'
+          )}
         </CardDescription>
       </CardHeader>
       <CardContent className='space-y-4'>
@@ -557,14 +731,18 @@ function BindingTable({
             onChange={(event) => setAuthIndex(event.target.value)}
           />
           <Button variant='outline' onClick={() => query.refetch()}>
-            <RefreshCw className={query.isFetching ? 'animate-spin' : undefined} />
+            <RefreshCw
+              className={query.isFetching ? 'animate-spin' : undefined}
+            />
             {t('Refresh')}
           </Button>
         </div>
 
         {query.data && !query.data.success ? (
           <Alert variant='destructive'>
-            <AlertDescription>{query.data.message || t('Failed to fetch bindings')}</AlertDescription>
+            <AlertDescription>
+              {query.data.message || t('Failed to fetch bindings')}
+            </AlertDescription>
           </Alert>
         ) : null}
 
@@ -585,21 +763,33 @@ function BindingTable({
                 <TableRow key={binding.id}>
                   <TableCell>
                     <div className='font-medium'>{binding.username || '-'}</div>
-                    <div className='text-muted-foreground text-xs'>ID: {binding.user_id}</div>
+                    <div className='text-muted-foreground text-xs'>
+                      ID: {binding.user_id}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div>{binding.auth_name || '-'}</div>
-                    <div className='text-muted-foreground font-mono text-xs'>{binding.auth_index}</div>
+                    <div className='text-muted-foreground font-mono text-xs'>
+                      {binding.auth_index}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div>{formatTokens(binding.last_usage_tokens)}</div>
-                    <div className='text-muted-foreground text-xs'>Plan: {binding.last_plan_type || '-'}</div>
-                    <div className='text-muted-foreground text-xs'>Quota: {binding.last_usage_quota || '-'}</div>
+                    <div className='mt-1'>
+                      <PlanLabel value={binding.last_plan_type} />
+                    </div>
+                    <div className='text-muted-foreground text-xs'>
+                      Quota: {binding.last_usage_quota || '-'}
+                    </div>
                     {binding.last_error ? (
-                      <div className='text-destructive max-w-56 truncate text-xs'>{binding.last_error}</div>
+                      <div className='text-destructive max-w-56 truncate text-xs'>
+                        {binding.last_error}
+                      </div>
                     ) : null}
                   </TableCell>
-                  <TableCell>{formatTimestampToDate(binding.last_refreshed_at)}</TableCell>
+                  <TableCell>
+                    {formatTimestampToDate(binding.last_refreshed_at)}
+                  </TableCell>
                   <TableCell>
                     <Badge variant={binding.enabled ? 'default' : 'secondary'}>
                       {binding.enabled ? t('Enabled') : t('Disabled')}
@@ -613,9 +803,19 @@ function BindingTable({
                         onClick={() => refreshMutation.mutate(binding.id)}
                         disabled={refreshMutation.isPending}
                       >
-                        <RefreshCw className={refreshMutation.isPending ? 'animate-spin' : undefined} />
+                        <RefreshCw
+                          className={
+                            refreshMutation.isPending
+                              ? 'animate-spin'
+                              : undefined
+                          }
+                        />
                       </Button>
-                      <Button size='icon-sm' variant='outline' onClick={() => onEdit(binding)}>
+                      <Button
+                        size='icon-sm'
+                        variant='outline'
+                        onClick={() => onEdit(binding)}
+                      >
                         <Edit />
                       </Button>
                       <Button
@@ -631,7 +831,10 @@ function BindingTable({
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={6} className='text-muted-foreground py-8 text-center'>
+                <TableCell
+                  colSpan={6}
+                  className='text-muted-foreground py-8 text-center'
+                >
                   {query.isLoading ? t('Loading...') : t('No bindings found')}
                 </TableCell>
               </TableRow>
@@ -640,19 +843,26 @@ function BindingTable({
         </Table>
       </CardContent>
 
-      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('Delete Binding')}</AlertDialogTitle>
             <AlertDialogDescription>
-              {t('Are you sure you want to delete this auth file binding? This action cannot be undone.')}
+              {t(
+                'Are you sure you want to delete this auth file binding? This action cannot be undone.'
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
             <AlertDialogAction
               variant='destructive'
-              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+              onClick={() =>
+                deleteTarget && deleteMutation.mutate(deleteTarget.id)
+              }
               disabled={deleteMutation.isPending}
             >
               {t('Delete')}

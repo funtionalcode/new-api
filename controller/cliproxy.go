@@ -17,13 +17,14 @@ import (
 const cliproxyWhamUsageURL = "https://chatgpt.com/backend-api/wham/usage"
 
 type cliproxyAuthFileBindingRequest struct {
-	UserId      int    `json:"user_id"`
-	AuthIndex   string `json:"auth_index"`
-	AuthName    string `json:"auth_name"`
-	AuthFile    string `json:"auth_file"`
-	Description string `json:"description"`
-	AccountId   string `json:"account_id"`
-	Enabled     bool   `json:"enabled"`
+	UserId       int    `json:"user_id"`
+	AuthIndex    string `json:"auth_index"`
+	AuthName     string `json:"auth_name"`
+	AuthFile     string `json:"auth_file"`
+	Description  string `json:"description"`
+	AccountId    string `json:"account_id"`
+	LastPlanType string `json:"last_plan_type"`
+	Enabled      bool   `json:"enabled"`
 }
 
 type cliproxyUsageRefreshBody struct {
@@ -82,14 +83,15 @@ func CreateCliproxyAuthFileBinding(c *gin.Context) {
 		return
 	}
 	binding := &model.CliproxyAuthFileBinding{
-		UserId:      update.UserId,
-		Username:    update.Username,
-		AuthIndex:   update.AuthIndex,
-		AuthName:    update.AuthName,
-		AuthFile:    update.AuthFile,
-		Description: update.Description,
-		AccountId:   update.AccountId,
-		Enabled:     update.Enabled,
+		UserId:       update.UserId,
+		Username:     update.Username,
+		AuthIndex:    update.AuthIndex,
+		AuthName:     update.AuthName,
+		AuthFile:     update.AuthFile,
+		Description:  update.Description,
+		AccountId:    update.AccountId,
+		LastPlanType: update.LastPlanType,
+		Enabled:      update.Enabled,
 	}
 	if err := model.CreateCliproxyAuthFileBinding(binding); err != nil {
 		common.ApiError(c, err)
@@ -245,14 +247,15 @@ func decodeCliproxyAuthFileBindingRequest(c *gin.Context) (model.CliproxyAuthFil
 		return model.CliproxyAuthFileBindingUpdate{}, err
 	}
 	update := model.CliproxyAuthFileBindingUpdate{
-		UserId:      user.Id,
-		Username:    user.Username,
-		AuthIndex:   strings.TrimSpace(request.AuthIndex),
-		AuthName:    strings.TrimSpace(request.AuthName),
-		AuthFile:    request.AuthFile,
-		Description: request.Description,
-		AccountId:   strings.TrimSpace(request.AccountId),
-		Enabled:     request.Enabled,
+		UserId:       user.Id,
+		Username:     user.Username,
+		AuthIndex:    strings.TrimSpace(request.AuthIndex),
+		AuthName:     strings.TrimSpace(request.AuthName),
+		AuthFile:     request.AuthFile,
+		Description:  request.Description,
+		AccountId:    strings.TrimSpace(request.AccountId),
+		LastPlanType: strings.TrimSpace(request.LastPlanType),
+		Enabled:      request.Enabled,
 	}
 	if err := model.ValidateCliproxyAuthFileBindingUpdate(update); err != nil {
 		return model.CliproxyAuthFileBindingUpdate{}, err
