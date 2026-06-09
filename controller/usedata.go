@@ -28,24 +28,55 @@ func GetAllQuotaDates(c *gin.Context) {
 }
 
 func GetQuotaDatesByUser(c *gin.Context) {
-	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
-	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
-	var dates []*model.QuotaData
-	var err error
-	if c.GetInt("role") < common.RoleAdminUser {
-		dates, err = model.GetQuotaDataGroupByUserId(c.GetInt("id"), startTimestamp, endTimestamp)
-	} else {
-		dates, err = model.GetQuotaDataGroupByUser(startTimestamp, endTimestamp)
+	startTimestamp, err := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "开始时间格式错误",
+		})
+		return
 	}
+	endTimestamp, err := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "结束时间格式错误",
+		})
+		return
+	}
+	if c.GetInt("role") < common.RoleAdminUser && endTimestamp-startTimestamp > 2592000 {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "时间跨度不能超过 1 个月",
+		})
+		return
+	}
+	dates, err := model.GetQuotaDataGroupByUser(startTimestamp, endTimestamp)
 	if err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	if c.GetInt("role") < common.RoleAdminUser {
+		dates = hideQuotaDataRemarks(dates)
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
 		"data":    dates,
 	})
+}
+
+func hideQuotaDataRemarks(dates []*model.QuotaData) []*model.QuotaData {
+	result := make([]*model.QuotaData, 0, len(dates))
+	for _, date := range dates {
+		if date == nil {
+			continue
+		}
+		publicDate := *date
+		publicDate.Remark = ""
+		result = append(result, &publicDate)
+	}
+	return result
 }
 
 func GetUserQuotaDates(c *gin.Context) {

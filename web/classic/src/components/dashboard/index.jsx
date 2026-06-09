@@ -124,7 +124,7 @@ const Dashboard = () => {
   // ========== 时间粒度变化处理 ==========
   const handleTimeGranularityChange = async (value) => {
     dashboardData.handleInputChange(value, 'data_export_default_time');
-    const data = await dashboardData.loadQuotaData();
+    const data = await dashboardData.loadQuotaData(value);
     if (data && data.length > 0) {
       dashboardCharts.updateChartData(data, value);
     }

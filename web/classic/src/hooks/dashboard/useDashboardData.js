@@ -156,42 +156,48 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   }, []);
 
   // ========== API 调用函数 ==========
-  const loadQuotaData = useCallback(async () => {
-    setLoading(true);
-    try {
-      let url = '';
-      const { start_timestamp, end_timestamp, username } = inputs;
-      let localStartTimestamp = Date.parse(start_timestamp) / 1000;
-      let localEndTimestamp = Date.parse(end_timestamp) / 1000;
+  const loadQuotaData = useCallback(
+    async (timeGranularity = dataExportDefaultTime) => {
+      setLoading(true);
+      try {
+        let url = '';
+        const { start_timestamp, end_timestamp, username } = inputs;
+        const localStartTimestamp = Date.parse(start_timestamp) / 1000;
+        const localEndTimestamp = Date.parse(end_timestamp) / 1000;
 
-      if (isAdminUser) {
-        url = `/api/data/?username=${username}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&default_time=${dataExportDefaultTime}`;
-      } else {
-        url = `/api/data/self/?start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&default_time=${dataExportDefaultTime}`;
-      }
-
-      const res = await API.get(url);
-      const { success, message, data } = res.data;
-      if (success) {
-        setQuotaData(data);
-        if (data.length === 0) {
-          data.push({
-            count: 0,
-            model_name: '无数据',
-            quota: 0,
-            created_at: now.getTime() / 1000,
-          });
+        if (isAdminUser) {
+          url = `/api/data/?username=${username}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&default_time=${timeGranularity}`;
+        } else {
+          url = `/api/data/self/?start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&default_time=${timeGranularity}`;
         }
-        data.sort((a, b) => a.created_at - b.created_at);
-        return data;
-      } else {
-        showError(message);
-        return [];
+
+        const res = await API.get(url);
+        const { success, message, data } = res.data;
+        if (success) {
+          const quotaItems = data || [];
+          const nextData = quotaItems.length
+            ? [...quotaItems]
+            : [
+                {
+                  count: 0,
+                  model_name: '无数据',
+                  quota: 0,
+                  created_at: Date.now() / 1000,
+                },
+              ];
+          nextData.sort((a, b) => a.created_at - b.created_at);
+          setQuotaData(nextData);
+          return nextData;
+        } else {
+          showError(message);
+          return [];
+        }
+      } finally {
+        setLoading(false);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, [inputs, dataExportDefaultTime, isAdminUser, now]);
+    },
+    [inputs, dataExportDefaultTime, isAdminUser],
+  );
 
   const loadUptimeData = useCallback(async () => {
     setUptimeLoading(true);
