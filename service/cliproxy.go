@@ -199,13 +199,13 @@ func normalizeCliproxyPlan(value string) string {
 
 func cliproxyPlanRank(value string) int {
 	switch normalizeCliproxyPlan(value) {
-	case "pro", "pro20x", "planmax", "claudemax", "planpro", "claudepro":
+	case "pro", "pro20x", "planmax", "claudemax":
 		return 0
 	case "prolite", "pro5x":
 		return 1
 	case "team", "planteam", "claudeteam":
 		return 2
-	case "plus":
+	case "plus", "planpro", "claudepro":
 		return 3
 	case "free", "planfree", "claudefree":
 		return 4

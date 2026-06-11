@@ -50,6 +50,9 @@ func TestResolveCliproxyClaudeProfilePlan(t *testing.T) {
 	require.Equal(t, "plan_max", resolveCliproxyClaudeProfilePlan(map[string]any{
 		"account": map[string]any{"has_claude_max": true},
 	}))
+	require.Equal(t, "plus", resolveCliproxyClaudeProfilePlan(map[string]any{
+		"account": map[string]any{"has_claude_pro": true},
+	}))
 	require.Equal(t, "plan_team", resolveCliproxyClaudeProfilePlan(map[string]any{
 		"account":      map[string]any{"has_claude_max": false, "has_claude_pro": false},
 		"organization": map[string]any{"organization_type": "claude_team", "subscription_status": "active"},

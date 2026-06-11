@@ -61,7 +61,7 @@ const getPlanTagConfig = (value) => {
   if (key === 'planmax' || key === 'claudemax')
     return { label: 'Claude Max', color: 'orange' };
   if (key === 'planpro' || key === 'claudepro')
-    return { label: 'Claude Pro', color: 'orange' };
+    return { label: 'Claude Plus', color: 'purple' };
   if (key === 'prolite' || key === 'pro5x')
     return { label: 'Pro 5x', color: 'cyan' };
   if (key === 'team') return { label: 'Team', color: 'green' };

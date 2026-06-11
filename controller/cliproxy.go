@@ -484,7 +484,7 @@ func resolveCliproxyClaudeProfilePlan(profile map[string]any) string {
 		return "plan_max"
 	}
 	if value, ok := boolFromMap(account, "has_claude_pro"); ok && value {
-		return "plan_pro"
+		return "plus"
 	}
 	organization := mapFromMap(profile, "organization")
 	organizationType := strings.ToLower(stringFromMap(organization, "organization_type"))

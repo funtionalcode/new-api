@@ -98,6 +98,12 @@ func TestNormalizeCliproxyAuthFilesSupportsClaudeMetadata(t *testing.T) {
 	require.Equal(t, "claude", files[0].Type)
 }
 
+func TestCliproxyPlanRankTreatsClaudeProAsPlusTier(t *testing.T) {
+	require.Equal(t, cliproxyPlanRank("plus"), cliproxyPlanRank("plan_pro"))
+	require.Equal(t, cliproxyPlanRank("plus"), cliproxyPlanRank("claude_pro"))
+	require.Less(t, cliproxyPlanRank("plan_max"), cliproxyPlanRank("plan_pro"))
+}
+
 func TestCliproxyAPIClientListAuthFilesSupportsDataField(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

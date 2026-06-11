@@ -149,24 +149,6 @@ const getPlanLabelConfig = (value: unknown): PlanLabelConfig | null => {
     }
   }
 
-  if (key === 'planmax' || key === 'claudemax') {
-    return {
-      label: 'Claude',
-      multiplier: 'Max',
-      className:
-        'border-orange-300 bg-orange-50 text-orange-800 dark:border-orange-700 dark:bg-orange-950/35 dark:text-orange-200',
-    }
-  }
-
-  if (key === 'planpro' || key === 'claudepro') {
-    return {
-      label: 'Claude',
-      multiplier: 'Pro',
-      className:
-        'border-orange-300 bg-orange-50 text-orange-800 dark:border-orange-700 dark:bg-orange-950/35 dark:text-orange-200',
-    }
-  }
-
   if (key === 'prolite' || key === 'pro5x') {
     return {
       label: 'Pro',
@@ -176,10 +158,9 @@ const getPlanLabelConfig = (value: unknown): PlanLabelConfig | null => {
     }
   }
 
-  if (key === 'team' || key === 'planteam' || key === 'claudeteam') {
+  if (key === 'team') {
     return {
-      label: key === 'team' ? 'Team' : 'Claude',
-      multiplier: key === 'team' ? undefined : 'Team',
+      label: 'Team',
       className:
         'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-200',
     }
@@ -193,19 +174,10 @@ const getPlanLabelConfig = (value: unknown): PlanLabelConfig | null => {
     }
   }
 
-  if (key === 'free' || key === 'planfree' || key === 'claudefree') {
+  if (key === 'free') {
     return {
-      label: key === 'free' ? 'Free' : 'Claude',
-      multiplier: key === 'free' ? undefined : 'Free',
+      label: 'Free',
       className: 'border-border bg-muted text-muted-foreground',
-    }
-  }
-
-  if (key === 'claude') {
-    return {
-      label: 'Claude',
-      className:
-        'border-orange-300 bg-orange-50 text-orange-800 dark:border-orange-700 dark:bg-orange-950/35 dark:text-orange-200',
     }
   }
 
