@@ -159,7 +159,7 @@ func GetCliproxyAuthFileBindings(query CliproxyAuthFileBindingQuery, startIdx in
 }
 
 func cliproxyAuthFileBindingOrderClause() string {
-	return "CASE lower(replace(replace(replace(last_plan_type, '-', ''), '_', ''), ' ', '')) WHEN 'pro' THEN 0 WHEN 'pro20x' THEN 0 WHEN 'prolite' THEN 1 WHEN 'pro5x' THEN 1 WHEN 'team' THEN 2 WHEN 'plus' THEN 3 WHEN 'free' THEN 4 WHEN '' THEN 6 ELSE 5 END ASC, lower(last_plan_type) ASC, id DESC"
+	return "CASE lower(replace(replace(replace(last_plan_type, '-', ''), '_', ''), ' ', '')) WHEN 'pro' THEN 0 WHEN 'pro20x' THEN 0 WHEN 'planmax' THEN 0 WHEN 'claudemax' THEN 0 WHEN 'planpro' THEN 0 WHEN 'claudepro' THEN 0 WHEN 'prolite' THEN 1 WHEN 'pro5x' THEN 1 WHEN 'team' THEN 2 WHEN 'planteam' THEN 2 WHEN 'claudeteam' THEN 2 WHEN 'plus' THEN 3 WHEN 'free' THEN 4 WHEN 'planfree' THEN 4 WHEN 'claudefree' THEN 4 WHEN '' THEN 6 ELSE 5 END ASC, lower(last_plan_type) ASC, id DESC"
 }
 
 func firstNonEmpty(values ...string) string {

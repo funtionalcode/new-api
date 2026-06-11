@@ -58,11 +58,20 @@ const getPlanTagConfig = (value) => {
   if (!key) return null;
   if (key === 'pro' || key === 'pro20x')
     return { label: 'Pro 20x', color: 'orange' };
+  if (key === 'planmax' || key === 'claudemax')
+    return { label: 'Claude Max', color: 'orange' };
+  if (key === 'planpro' || key === 'claudepro')
+    return { label: 'Claude Pro', color: 'orange' };
   if (key === 'prolite' || key === 'pro5x')
     return { label: 'Pro 5x', color: 'cyan' };
   if (key === 'team') return { label: 'Team', color: 'green' };
+  if (key === 'planteam' || key === 'claudeteam')
+    return { label: 'Claude Team', color: 'green' };
   if (key === 'plus') return { label: 'Plus', color: 'purple' };
   if (key === 'free') return { label: 'Free', color: 'grey' };
+  if (key === 'planfree' || key === 'claudefree')
+    return { label: 'Claude Free', color: 'grey' };
+  if (key === 'claude') return { label: 'Claude', color: 'orange' };
   return { label: value, color: 'white' };
 };
 

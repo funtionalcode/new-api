@@ -1,11 +1,13 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -14,7 +16,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const cliproxyWhamUsageURL = "https://chatgpt.com/backend-api/wham/usage"
+const (
+	cliproxyWhamUsageURL     = "https://chatgpt.com/backend-api/wham/usage"
+	cliproxyClaudeUsageURL   = "https://api.anthropic.com/api/oauth/usage"
+	cliproxyClaudeProfileURL = "https://api.anthropic.com/api/oauth/profile"
+)
 
 type cliproxyAuthFileBindingRequest struct {
 	UserId       int    `json:"user_id"`
@@ -175,6 +181,9 @@ func RefreshCliproxyAuthFileBindingUsage(c *gin.Context) {
 		common.ApiSuccess(c, updatedBinding)
 		return
 	}
+	if isCliproxyClaudeAuthFile(binding) {
+		usage.PlanType = firstNonEmpty(fetchCliproxyClaudeProfilePlan(c.Request.Context(), client, binding.AuthIndex), usage.PlanType, binding.LastPlanType)
+	}
 	updatedBinding, err := model.UpdateCliproxyAuthFileBindingUsage(id, model.CliproxyUsageRefreshUpdate{
 		LastUsageTokens:          usage.UsedTokens,
 		LastUsageQuota:           usage.Quota,
@@ -272,6 +281,9 @@ func newCliproxyClientFromOptions() (*service.CliproxyAPIClient, error) {
 }
 
 func buildCliproxyUsageRefreshRequest(binding *model.CliproxyAuthFileBinding) service.CliproxyAPICallRequest {
+	if isCliproxyClaudeAuthFile(binding) {
+		return buildCliproxyClaudeUsageRequest(binding.AuthIndex)
+	}
 	return service.CliproxyAPICallRequest{
 		AuthIndex: binding.AuthIndex,
 		Method:    http.MethodGet,
@@ -283,6 +295,39 @@ func buildCliproxyUsageRefreshRequest(binding *model.CliproxyAuthFileBinding) se
 			"Chatgpt-Account-Id": binding.AccountId,
 		},
 	}
+}
+
+func buildCliproxyClaudeUsageRequest(authIndex string) service.CliproxyAPICallRequest {
+	return buildCliproxyClaudeOAuthRequest(authIndex, cliproxyClaudeUsageURL)
+}
+
+func buildCliproxyClaudeProfileRequest(authIndex string) service.CliproxyAPICallRequest {
+	return buildCliproxyClaudeOAuthRequest(authIndex, cliproxyClaudeProfileURL)
+}
+
+func buildCliproxyClaudeOAuthRequest(authIndex string, url string) service.CliproxyAPICallRequest {
+	return service.CliproxyAPICallRequest{
+		AuthIndex: authIndex,
+		Method:    http.MethodGet,
+		URL:       url,
+		Header: map[string]string{
+			"Authorization":  "Bearer $TOKEN$",
+			"Content-Type":   "application/json",
+			"anthropic-beta": "oauth-2025-04-20",
+		},
+	}
+}
+
+func fetchCliproxyClaudeProfilePlan(ctx context.Context, client *service.CliproxyAPIClient, authIndex string) string {
+	result, err := client.CallAPI(ctx, buildCliproxyClaudeProfileRequest(authIndex))
+	if err != nil || result == nil {
+		return ""
+	}
+	body := result.Body
+	if len(body) == 0 {
+		body = result.Data
+	}
+	return resolveCliproxyClaudeProfilePlan(body)
 }
 
 func extractCliproxyUsage(result *service.CliproxyAPICallResponse) (cliproxyUsageRefreshBody, error) {
@@ -297,8 +342,20 @@ func extractCliproxyUsage(result *service.CliproxyAPICallResponse) (cliproxyUsag
 		return cliproxyUsageRefreshBody{}, fmt.Errorf("刷新结果缺少用量数据")
 	}
 	fiveHourWindow, weeklyWindow := resolveCliproxyUsageWindows(body)
-	if len(fiveHourWindow) == 0 && len(weeklyWindow) == 0 && stringFromMap(body, "plan_type") == "" {
+	claudeFiveHourWindow, claudeWeeklyWindow := resolveCliproxyClaudeUsageWindows(body)
+	if len(fiveHourWindow) == 0 && len(weeklyWindow) == 0 && len(claudeFiveHourWindow) == 0 && len(claudeWeeklyWindow) == 0 && stringFromMap(body, "plan_type") == "" {
 		return cliproxyUsageRefreshBody{}, fmt.Errorf("刷新结果格式无效")
+	}
+	if len(claudeFiveHourWindow) > 0 || len(claudeWeeklyWindow) > 0 {
+		return cliproxyUsageRefreshBody{
+			UsedTokens:      intFromMap(body, "used_tokens"),
+			Quota:           intFromMap(body, "quota"),
+			PlanType:        firstNonEmpty(stringFromMap(body, "plan_type"), "claude"),
+			FiveHourPercent: percentFromWindow(claudeFiveHourWindow),
+			FiveHourResetAt: resetAtFromWindow(claudeFiveHourWindow),
+			WeeklyPercent:   percentFromWindow(claudeWeeklyWindow),
+			WeeklyResetAt:   resetAtFromWindow(claudeWeeklyWindow),
+		}, nil
 	}
 	codexFiveHourWindow, codexWeeklyWindow := resolveCliproxyCodexUsageWindows(body)
 	return cliproxyUsageRefreshBody{
@@ -306,13 +363,13 @@ func extractCliproxyUsage(result *service.CliproxyAPICallResponse) (cliproxyUsag
 		Quota:                intFromMap(body, "quota"),
 		PlanType:             stringFromMap(body, "plan_type"),
 		FiveHourPercent:      percentFromWindow(fiveHourWindow),
-		FiveHourResetAt:      int64FromMap(fiveHourWindow, "reset_at"),
+		FiveHourResetAt:      resetAtFromWindow(fiveHourWindow),
 		WeeklyPercent:        percentFromWindow(weeklyWindow),
-		WeeklyResetAt:        int64FromMap(weeklyWindow, "reset_at"),
+		WeeklyResetAt:        resetAtFromWindow(weeklyWindow),
 		CodexFiveHourPercent: percentFromWindow(codexFiveHourWindow),
-		CodexFiveHourResetAt: int64FromMap(codexFiveHourWindow, "reset_at"),
+		CodexFiveHourResetAt: resetAtFromWindow(codexFiveHourWindow),
 		CodexWeeklyPercent:   percentFromWindow(codexWeeklyWindow),
-		CodexWeeklyResetAt:   int64FromMap(codexWeeklyWindow, "reset_at"),
+		CodexWeeklyResetAt:   resetAtFromWindow(codexWeeklyWindow),
 	}, nil
 }
 
@@ -337,6 +394,10 @@ func resolveCliproxyCodexUsageWindows(body map[string]any) (map[string]any, map[
 	return nil, nil
 }
 
+func resolveCliproxyClaudeUsageWindows(body map[string]any) (map[string]any, map[string]any) {
+	return mapFromMap(body, "five_hour"), mapFromMap(body, "seven_day")
+}
+
 func classifyCliproxyUsageWindows(primaryWindow map[string]any, secondaryWindow map[string]any) (map[string]any, map[string]any) {
 	windows := []map[string]any{}
 	if len(primaryWindow) > 0 {
@@ -358,7 +419,85 @@ func classifyCliproxyUsageWindows(primaryWindow map[string]any, secondaryWindow 
 }
 
 func percentFromWindow(data map[string]any) int {
-	return int(math.Round(float64FromMap(data, "used_percent")))
+	percent := float64FromMap(data, "used_percent")
+	if percent == 0 {
+		percent = float64FromMap(data, "utilization")
+	}
+	return int(math.Round(percent))
+}
+
+func resetAtFromWindow(data map[string]any) int64 {
+	if data == nil {
+		return 0
+	}
+	if value := int64FromMap(data, "reset_at"); value > 0 {
+		return value
+	}
+	raw := stringFromMap(data, "resets_at")
+	if raw == "" {
+		return 0
+	}
+	if parsed, err := time.Parse(time.RFC3339, raw); err == nil {
+		return parsed.Unix()
+	}
+	if parsed, err := time.Parse(time.RFC3339Nano, raw); err == nil {
+		return parsed.Unix()
+	}
+	return int64FromMap(data, "resets_at")
+}
+
+func isCliproxyClaudeAuthFile(binding *model.CliproxyAuthFileBinding) bool {
+	if binding == nil {
+		return false
+	}
+	if isCliproxyClaudePlanType(binding.LastPlanType) {
+		return true
+	}
+	return isCliproxyClaudeAuthFileName(binding.AuthFile) || isCliproxyClaudeAuthFileName(binding.AuthName)
+}
+
+func isCliproxyClaudePlanType(value string) bool {
+	switch normalizeCliproxyPlan(value) {
+	case "claude", "planmax", "claudemax", "planpro", "claudepro", "planteam", "claudeteam", "planfree", "claudefree":
+		return true
+	default:
+		return false
+	}
+}
+
+func isCliproxyClaudeAuthFileName(value string) bool {
+	normalized := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(value)), "\\", "/")
+	if normalized == "" {
+		return false
+	}
+	segments := strings.Split(normalized, "/")
+	name := segments[len(segments)-1]
+	return strings.HasPrefix(name, "claude-") || strings.HasPrefix(name, "claude_")
+}
+
+func resolveCliproxyClaudeProfilePlan(profile map[string]any) string {
+	if len(profile) == 0 {
+		return ""
+	}
+	account := mapFromMap(profile, "account")
+	if value, ok := boolFromMap(account, "has_claude_max"); ok && value {
+		return "plan_max"
+	}
+	if value, ok := boolFromMap(account, "has_claude_pro"); ok && value {
+		return "plan_pro"
+	}
+	organization := mapFromMap(profile, "organization")
+	organizationType := strings.ToLower(stringFromMap(organization, "organization_type"))
+	subscriptionStatus := strings.ToLower(stringFromMap(organization, "subscription_status"))
+	if organizationType == "claude_team" && subscriptionStatus == "active" {
+		return "plan_team"
+	}
+	hasMax, hasMaxOK := boolFromMap(account, "has_claude_max")
+	hasPro, hasProOK := boolFromMap(account, "has_claude_pro")
+	if hasMaxOK && hasProOK && !hasMax && !hasPro {
+		return "plan_free"
+	}
+	return ""
 }
 
 func mapFromMap(data map[string]any, key string) map[string]any {
@@ -371,6 +510,29 @@ func mapFromMap(data map[string]any, key string) map[string]any {
 		return nil
 	}
 	return typedValue
+}
+
+func boolFromMap(data map[string]any, key string) (bool, bool) {
+	value, ok := data[key]
+	if !ok {
+		return false, false
+	}
+	switch typedValue := value.(type) {
+	case bool:
+		return typedValue, true
+	case float64:
+		return typedValue != 0, true
+	case int:
+		return typedValue != 0, true
+	case string:
+		parsedValue, err := strconv.ParseBool(strings.TrimSpace(typedValue))
+		if err != nil {
+			return false, false
+		}
+		return parsedValue, true
+	default:
+		return false, false
+	}
 }
 
 func sliceFromMap(data map[string]any, key string) []any {
@@ -419,6 +581,19 @@ func float64FromMap(data map[string]any, key string) float64 {
 
 func intFromMap(data map[string]any, key string) int {
 	return int(float64FromMap(data, key))
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func normalizeCliproxyPlan(value string) string {
+	return strings.NewReplacer("-", "", "_", "", " ", "").Replace(strings.ToLower(strings.TrimSpace(value)))
 }
 
 func parseOptionalBool(raw string) *bool {

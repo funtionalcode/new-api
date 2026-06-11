@@ -73,6 +73,31 @@ func TestNormalizeCliproxyAuthFilesSortsCodexPlans(t *testing.T) {
 	})
 }
 
+func TestNormalizeCliproxyAuthFilesSupportsClaudeMetadata(t *testing.T) {
+	files := normalizeCliproxyAuthFiles(cliproxyAuthFilesResponse{
+		Files: []cliproxyAuthFileResponse{
+			{
+				AuthIndex:   "c1fa0ce8add6b367",
+				Name:        "claude-hermensdriggars@gmail.com.json",
+				ID:          "claude-hermensdriggars@gmail.com.json",
+				Account:     "hermensdriggars@gmail.com",
+				Email:       "hermensdriggars@gmail.com",
+				AccountType: "oauth",
+				Provider:    "claude",
+				Type:        "claude",
+			},
+		},
+	})
+
+	require.Len(t, files, 1)
+	require.Equal(t, "c1fa0ce8add6b367", files[0].AuthIndex)
+	require.Equal(t, "claude-hermensdriggars@gmail.com.json", files[0].AuthFile)
+	require.Equal(t, "hermensdriggars@gmail.com", files[0].AccountID)
+	require.Equal(t, "claude", files[0].PlanType)
+	require.Equal(t, "claude", files[0].Provider)
+	require.Equal(t, "claude", files[0].Type)
+}
+
 func TestCliproxyAPIClientListAuthFilesSupportsDataField(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

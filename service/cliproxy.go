@@ -31,6 +31,8 @@ type CliproxyAuthFile struct {
 	AuthFile  string `json:"authFile"`
 	AccountID string `json:"accountId"`
 	PlanType  string `json:"planType"`
+	Provider  string `json:"provider,omitempty"`
+	Type      string `json:"type,omitempty"`
 	Enabled   bool   `json:"enabled"`
 }
 
@@ -50,6 +52,10 @@ type cliproxyAuthFileResponse struct {
 	PlanType       string                `json:"plan_type"`
 	CamelPlanType  string                `json:"planType"`
 	AccountType    string                `json:"account_type"`
+	Account        string                `json:"account"`
+	Email          string                `json:"email"`
+	Provider       string                `json:"provider"`
+	Type           string                `json:"type"`
 	Group          string                `json:"group"`
 	Balance        cliproxyBalance       `json:"balance"`
 	IDToken        cliproxyAuthFileToken `json:"id_token"`
@@ -161,12 +167,16 @@ func normalizeCliproxyAuthFiles(result cliproxyAuthFilesResponse) []CliproxyAuth
 	}
 	files := make([]CliproxyAuthFile, 0, len(items))
 	for _, item := range items {
+		provider := firstNonEmpty(item.Provider, item.Type)
+		fileType := firstNonEmpty(item.Type, item.Provider)
 		files = append(files, CliproxyAuthFile{
 			AuthIndex: firstNonEmpty(item.AuthIndex, item.CamelAuthIndex),
 			Name:      item.Name,
 			AuthFile:  firstNonEmpty(item.ID, item.AuthFile),
-			AccountID: firstNonEmpty(item.AccountID, item.CamelAccountID, item.IDToken.ChatGPTAccountID),
-			PlanType:  firstNonEmpty(item.Balance.Group, item.Group, item.IDToken.PlanType, item.PlanType, item.CamelPlanType, item.AccountType),
+			AccountID: firstNonEmpty(item.AccountID, item.CamelAccountID, item.IDToken.ChatGPTAccountID, item.Email, item.Account),
+			PlanType:  firstNonEmpty(item.Balance.Group, item.Group, item.IDToken.PlanType, item.PlanType, item.CamelPlanType, cliproxyProviderPlanType(provider, fileType), item.AccountType),
+			Provider:  provider,
+			Type:      fileType,
 			Enabled:   item.Enabled == nil && !item.Disabled || item.Enabled != nil && *item.Enabled,
 		})
 	}
@@ -176,21 +186,28 @@ func normalizeCliproxyAuthFiles(result cliproxyAuthFilesResponse) []CliproxyAuth
 	return files
 }
 
+func cliproxyProviderPlanType(provider string, fileType string) string {
+	if normalizeCliproxyPlan(provider) == "claude" || normalizeCliproxyPlan(fileType) == "claude" {
+		return "claude"
+	}
+	return ""
+}
+
 func normalizeCliproxyPlan(value string) string {
 	return strings.NewReplacer("-", "", "_", "", " ", "").Replace(strings.ToLower(strings.TrimSpace(value)))
 }
 
 func cliproxyPlanRank(value string) int {
 	switch normalizeCliproxyPlan(value) {
-	case "pro", "pro20x":
+	case "pro", "pro20x", "planmax", "claudemax", "planpro", "claudepro":
 		return 0
 	case "prolite", "pro5x":
 		return 1
-	case "team":
+	case "team", "planteam", "claudeteam":
 		return 2
 	case "plus":
 		return 3
-	case "free":
+	case "free", "planfree", "claudefree":
 		return 4
 	default:
 		return 5
