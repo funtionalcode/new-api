@@ -24,6 +24,11 @@ type PerformanceSetting struct {
 	MonitorMemoryThreshold int `json:"monitor_memory_threshold"`
 	// MonitorDiskThreshold 磁盘使用率阈值（%）
 	MonitorDiskThreshold int `json:"monitor_disk_threshold"`
+
+	// ServerLogCleanupMode 服务器日志清理方式：by_count 或 by_days
+	ServerLogCleanupMode string `json:"server_log_cleanup_mode"`
+	// ServerLogCleanupValue 服务器日志清理保留值
+	ServerLogCleanupValue int `json:"server_log_cleanup_value"`
 }
 
 // 默认配置
@@ -37,6 +42,9 @@ var performanceSetting = PerformanceSetting{
 	MonitorCPUThreshold:    90,
 	MonitorMemoryThreshold: 90,
 	MonitorDiskThreshold:   95,
+
+	ServerLogCleanupMode:  "by_count",
+	ServerLogCleanupValue: 10,
 }
 
 func init() {

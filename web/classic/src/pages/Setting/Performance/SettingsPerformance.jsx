@@ -45,6 +45,9 @@ import { useTranslation } from 'react-i18next';
 
 const { Text } = Typography;
 
+const LOG_CLEANUP_MODE_KEY = 'performance_setting.server_log_cleanup_mode';
+const LOG_CLEANUP_VALUE_KEY = 'performance_setting.server_log_cleanup_value';
+
 // 格式化字节大小
 function formatBytes(bytes, decimals = 2) {
   if (bytes === null || bytes === undefined || isNaN(bytes)) return '0 Bytes';
@@ -56,6 +59,14 @@ function formatBytes(bytes, decimals = 2) {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   if (i < 0 || i >= sizes.length) return bytes + ' Bytes';
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
+
+function normalizeLogCleanupMode(mode) {
+  return mode === 'by_days' ? 'by_days' : 'by_count';
+}
+
+function getLogCleanupMaxValue(mode) {
+  return normalizeLogCleanupMode(mode) === 'by_count' ? 1000 : 3650;
 }
 
 export default function SettingsPerformance(props) {
@@ -78,6 +89,11 @@ export default function SettingsPerformance(props) {
   const [logInfo, setLogInfo] = useState(null);
   const [logCleanupMode, setLogCleanupMode] = useState('by_count');
   const [logCleanupValue, setLogCleanupValue] = useState(10);
+  const [savedLogCleanup, setSavedLogCleanup] = useState({
+    mode: 'by_count',
+    value: 10,
+  });
+  const [logSaveLoading, setLogSaveLoading] = useState(false);
   const [logCleanupLoading, setLogCleanupLoading] = useState(false);
 
   function handleFieldChange(fieldName) {
@@ -185,15 +201,66 @@ export default function SettingsPerformance(props) {
     }
   }
 
-  async function cleanupLogFiles() {
-    if (logCleanupValue == null || isNaN(logCleanupValue) || logCleanupValue < 1) {
+  function getValidatedLogCleanupValue() {
+    const value = Number(logCleanupValue);
+    const maxValue = getLogCleanupMaxValue(logCleanupMode);
+    if (!Number.isInteger(value) || value < 1 || value > maxValue) {
       showError(t('请输入有效的数值'));
-      return;
+      return null;
     }
+    return value;
+  }
+
+  async function saveLogCleanupSettings() {
+    const value = getValidatedLogCleanupValue();
+    if (value === null) return;
+
+    const mode = normalizeLogCleanupMode(logCleanupMode);
+    const updates = [];
+    if (mode !== savedLogCleanup.mode) {
+      updates.push({ key: LOG_CLEANUP_MODE_KEY, value: mode });
+    }
+    if (value !== savedLogCleanup.value) {
+      updates.push({ key: LOG_CLEANUP_VALUE_KEY, value: String(value) });
+    }
+
+    if (!updates.length) return showWarning(t('你似乎并没有修改什么'));
+
+    setLogSaveLoading(true);
+    try {
+      const res = await Promise.all(
+        updates.map((item) =>
+          API.put('/api/option/', {
+            key: item.key,
+            value: item.value,
+          }),
+        ),
+      );
+      if (res.includes(undefined)) {
+        showError(t('部分保存失败，请重试'));
+        return;
+      }
+      showSuccess(t('保存成功'));
+      setSavedLogCleanup({ mode, value });
+      setLogCleanupMode(mode);
+      setLogCleanupValue(value);
+      props.refresh();
+    } catch (error) {
+      showError(t('保存失败，请重试'));
+    } finally {
+      setLogSaveLoading(false);
+    }
+  }
+
+  async function cleanupLogFiles() {
+    const value = getValidatedLogCleanupValue();
+    if (value === null) return;
+
+    const mode = normalizeLogCleanupMode(logCleanupMode);
     setLogCleanupLoading(true);
     try {
       const res = await API.delete(
-        `/api/performance/logs?mode=${logCleanupMode}&value=${logCleanupValue}`,
+        `/api/performance/logs?mode=${mode}&value=${value}`,
       );
       if (res.data.success) {
         const { deleted_count, freed_bytes } = res.data.data;
@@ -233,6 +300,25 @@ export default function SettingsPerformance(props) {
     if (refForm.current) {
       refForm.current.setValues({ ...inputs, ...currentInputs });
     }
+
+    const nextLogCleanupMode = normalizeLogCleanupMode(
+      props.options[LOG_CLEANUP_MODE_KEY],
+    );
+    const parsedLogCleanupValue = parseInt(
+      props.options[LOG_CLEANUP_VALUE_KEY],
+      10,
+    );
+    const nextLogCleanupValue =
+      Number.isInteger(parsedLogCleanupValue) && parsedLogCleanupValue > 0
+        ? parsedLogCleanupValue
+        : 10;
+    setLogCleanupMode(nextLogCleanupMode);
+    setLogCleanupValue(nextLogCleanupValue);
+    setSavedLogCleanup({
+      mode: nextLogCleanupMode,
+      value: nextLogCleanupValue,
+    });
+
     fetchStats();
     fetchLogInfo();
   }, [props.options]);
@@ -439,7 +525,9 @@ export default function SettingsPerformance(props) {
                   </Text>
                   <RadioGroup
                     value={logCleanupMode}
-                    onChange={(e) => setLogCleanupMode(e.target.value)}
+                    onChange={(e) =>
+                      setLogCleanupMode(normalizeLogCleanupMode(e.target.value))
+                    }
                   >
                     <Radio value='by_count'>{t('保留最近N个文件')}</Radio>
                     <Radio value='by_days'>{t('保留最近N天')}</Radio>
@@ -456,7 +544,7 @@ export default function SettingsPerformance(props) {
                   <InputNumber
                     value={logCleanupValue}
                     min={1}
-                    max={logCleanupMode === 'by_count' ? 1000 : 3650}
+                    max={getLogCleanupMaxValue(logCleanupMode)}
                     onChange={(value) => setLogCleanupValue(value)}
                     style={{ width: '100%' }}
                   />
@@ -474,24 +562,33 @@ export default function SettingsPerformance(props) {
                   >
                     &nbsp;
                   </Text>
-                <Popconfirm
-                  title={t('确认清理日志文件？')}
-                  content={
-                    logCleanupMode === 'by_count'
-                      ? t(
-                          '将只保留最近 {{value}} 个日志文件，其余将被删除。',
-                          { value: logCleanupValue },
-                        )
-                      : t('将删除 {{value}} 天前的日志文件。', {
-                          value: logCleanupValue,
-                        })
-                  }
-                  onConfirm={cleanupLogFiles}
-                >
-                  <Button type='danger' loading={logCleanupLoading}>
-                    {t('清理日志文件')}
-                  </Button>
-                </Popconfirm>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <Button
+                      type='primary'
+                      loading={logSaveLoading}
+                      onClick={saveLogCleanupSettings}
+                    >
+                      {t('保存日志设置')}
+                    </Button>
+                    <Popconfirm
+                      title={t('确认清理日志文件？')}
+                      content={
+                        logCleanupMode === 'by_count'
+                          ? t(
+                              '将只保留最近 {{value}} 个日志文件，其余将被删除。',
+                              { value: logCleanupValue },
+                            )
+                          : t('将删除 {{value}} 天前的日志文件。', {
+                              value: logCleanupValue,
+                            })
+                      }
+                      onConfirm={cleanupLogFiles}
+                    >
+                      <Button type='danger' loading={logCleanupLoading}>
+                        {t('清理日志文件')}
+                      </Button>
+                    </Popconfirm>
+                  </div>
                 </div>
               </Col>
             </Row>
