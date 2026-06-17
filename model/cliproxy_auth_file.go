@@ -17,7 +17,7 @@ type CliproxyAuthFileBinding struct {
 	AuthIndex                string `json:"auth_index" gorm:"size:128;uniqueIndex;not null"`
 	AuthName                 string `json:"auth_name" gorm:"size:255;default:''"`
 	AuthFile                 string `json:"auth_file" gorm:"type:text"`
-	Description              string `json:"description" gorm:"type:text"`
+	Note                     string `json:"note" gorm:"type:text"`
 	AccountId                string `json:"account_id" gorm:"size:128;index;default:''"`
 	Enabled                  bool   `json:"enabled" gorm:"default:true"`
 	LastRefreshedAt          int64  `json:"last_refreshed_at" gorm:"bigint;default:0"`
@@ -50,7 +50,7 @@ type CliproxyAuthFileBindingUpdate struct {
 	AuthIndex    string
 	AuthName     string
 	AuthFile     string
-	Description  string
+	Note         string
 	AccountId    string
 	LastPlanType string
 	Enabled      bool
@@ -200,7 +200,7 @@ func UpdateCliproxyAuthFileBinding(id int, update CliproxyAuthFileBindingUpdate)
 		AuthIndex:                update.AuthIndex,
 		AuthName:                 update.AuthName,
 		AuthFile:                 update.AuthFile,
-		Description:              update.Description,
+		Note:                     update.Note,
 		AccountId:                update.AccountId,
 		Enabled:                  update.Enabled,
 		LastRefreshedAt:          binding.LastRefreshedAt,
@@ -234,7 +234,7 @@ func UpdateCliproxyAuthFileBindingUsage(id int, update CliproxyUsageRefreshUpdat
 		AuthIndex:                binding.AuthIndex,
 		AuthName:                 binding.AuthName,
 		AuthFile:                 binding.AuthFile,
-		Description:              binding.Description,
+		Note:                     binding.Note,
 		AccountId:                binding.AccountId,
 		Enabled:                  binding.Enabled,
 		LastRefreshedAt:          time.Now().Unix(),

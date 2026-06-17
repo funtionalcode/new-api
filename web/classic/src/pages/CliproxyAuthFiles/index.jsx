@@ -44,8 +44,7 @@ const getAccountId = (authFile) =>
   authFile?.accountId || authFile?.account_id || '';
 const getPlanType = (authFile) =>
   authFile?.planType || authFile?.plan_type || authFile?.last_plan_type || '';
-const getAuthRemark = (authFile) =>
-  authFile?.description || authFile?.note || authFile?.remark || '';
+const getAuthNote = (authFile) => authFile?.note || '';
 
 const normalizePlanKey = (value) => {
   if (typeof value !== 'string') return '';
@@ -124,7 +123,7 @@ const emptyBindingForm = {
   auth_index: '',
   auth_name: '',
   auth_file: '',
-  description: '',
+  note: '',
   account_id: '',
   last_plan_type: '',
   enabled: true,
@@ -137,7 +136,7 @@ const buildBindingForm = (binding = emptyBindingForm) => ({
   auth_index: binding.auth_index || '',
   auth_name: binding.auth_name || '',
   auth_file: binding.auth_file || '',
-  description: getAuthRemark(binding),
+  note: getAuthNote(binding),
   account_id: binding.account_id || '',
   last_plan_type: binding.last_plan_type || '',
   enabled: binding.enabled !== false,
@@ -301,7 +300,7 @@ export default function CliproxyAuthFiles() {
         auth_index: getAuthIndex(remoteFile),
         auth_name: getAuthName(remoteFile),
         auth_file: getAuthFileContent(remoteFile),
-        description: getAuthRemark(remoteFile),
+        note: getAuthNote(remoteFile),
         account_id: getAccountId(remoteFile),
         last_plan_type: getPlanType(remoteFile),
         enabled: remoteFile?.enabled !== false,
@@ -337,7 +336,7 @@ export default function CliproxyAuthFiles() {
         auth_index: bindingForm.auth_index.trim(),
         auth_name: bindingForm.auth_name.trim(),
         auth_file: bindingForm.auth_file.trim(),
-        description: bindingForm.description.trim(),
+        note: bindingForm.note.trim(),
         account_id: bindingForm.account_id.trim(),
         last_plan_type: bindingForm.last_plan_type.trim(),
         enabled: bindingForm.enabled,
@@ -404,15 +403,15 @@ export default function CliproxyAuthFiles() {
     }
   };
 
-  const renderRemarkInput = () => (
+  const renderNoteInput = () => (
     <Form.TextArea
-      field='description'
+      field='note'
       label={t('备注')}
-      value={bindingForm.description}
+      value={bindingForm.note}
       onChange={(value) =>
         setBindingForm((current) => ({
           ...current,
-          description: value,
+          note: value,
         }))
       }
       placeholder={t('请输入备注')}
@@ -483,10 +482,10 @@ export default function CliproxyAuthFiles() {
     {
       title: t('备注'),
       render: (_, record) => {
-        const remark = getAuthRemark(record);
-        return remark ? (
-          <Tooltip content={remark}>
-            <div className='max-w-[160px] truncate'>{remark}</div>
+        const note = getAuthNote(record);
+        return note ? (
+          <Tooltip content={note}>
+            <div className='max-w-[160px] truncate'>{note}</div>
           </Tooltip>
         ) : (
           '-'
@@ -552,10 +551,10 @@ export default function CliproxyAuthFiles() {
     {
       title: t('备注'),
       render: (_, record) => {
-        const remark = getAuthRemark(record);
-        return remark ? (
-          <Tooltip content={remark}>
-            <div className='max-w-[160px] truncate'>{remark}</div>
+        const note = getAuthNote(record);
+        return note ? (
+          <Tooltip content={note}>
+            <div className='max-w-[160px] truncate'>{note}</div>
           </Tooltip>
         ) : (
           '-'
@@ -752,7 +751,7 @@ export default function CliproxyAuthFiles() {
                 value={bindingForm.username || '-'}
                 disabled
               />
-              {renderRemarkInput()}
+              {renderNoteInput()}
             </>
           ) : bindingForm.auth_index ? (
             <>
@@ -776,7 +775,7 @@ export default function CliproxyAuthFiles() {
                 }}
                 placeholder={t('搜索并选择用户')}
               />
-              {renderRemarkInput()}
+              {renderNoteInput()}
             </>
           ) : (
             <>
@@ -796,7 +795,7 @@ export default function CliproxyAuthFiles() {
                     auth_index: value,
                     auth_name: getAuthName(authFile),
                     auth_file: getAuthFileContent(authFile),
-                    description: getAuthRemark(authFile),
+                    note: getAuthNote(authFile),
                     account_id: getAccountId(authFile),
                     enabled: authFile?.enabled !== false,
                   }));
@@ -823,7 +822,7 @@ export default function CliproxyAuthFiles() {
                 }}
                 placeholder={t('搜索并选择用户')}
               />
-              {renderRemarkInput()}
+              {renderNoteInput()}
             </>
           )}
         </Form>

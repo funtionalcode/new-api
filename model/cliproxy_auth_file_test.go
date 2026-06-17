@@ -3,10 +3,29 @@ package model
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+type legacyCliproxyAuthFileBinding struct {
+	Id          int    `gorm:"primaryKey"`
+	UserId      int    `gorm:"index;not null"`
+	Username    string `gorm:"size:64;index;default:''"`
+	AuthIndex   string `gorm:"size:128;uniqueIndex;not null"`
+	AuthName    string `gorm:"size:255;default:''"`
+	AuthFile    string `gorm:"type:text"`
+	Description string `gorm:"type:text"`
+	AccountId   string `gorm:"size:128;index;default:''"`
+	Enabled     bool   `gorm:"default:true"`
+	CreatedAt   int64  `gorm:"bigint;index"`
+	UpdatedAt   int64  `gorm:"bigint"`
+}
+
+func (legacyCliproxyAuthFileBinding) TableName() string {
+	return "cliproxy_auth_file_bindings"
+}
 
 func TestGetCliproxyAuthFileBindingsSortsByPlanRank(t *testing.T) {
 	originalDB := DB
@@ -53,4 +72,43 @@ func TestGetCliproxyAuthFileBindingsSortsByPlanRank(t *testing.T) {
 		"unknown.json",
 		"empty.json",
 	}, names)
+}
+
+func TestMigrateCliproxyAuthFileBindingNoteRenamesLegacyDescription(t *testing.T) {
+	originalDB := DB
+	originalUsingSQLite := common.UsingSQLite
+	t.Cleanup(func() {
+		DB = originalDB
+		common.UsingSQLite = originalUsingSQLite
+	})
+
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	DB = db
+	common.UsingSQLite = true
+
+	require.NoError(t, db.AutoMigrate(&legacyCliproxyAuthFileBinding{}))
+	require.NoError(t, db.Create(&legacyCliproxyAuthFileBinding{
+		Id:          1,
+		UserId:      7,
+		Username:    "demo",
+		AuthIndex:   "auth-demo",
+		AuthName:    "auth-demo.json",
+		Description: "旧备注",
+		Enabled:     true,
+	}).Error)
+
+	require.NoError(t, migrateCliproxyAuthFileBindingNote())
+	require.NoError(t, db.AutoMigrate(&CliproxyAuthFileBinding{}))
+
+	hasNote, err := hasColumnByName("cliproxy_auth_file_bindings", "note")
+	require.NoError(t, err)
+	require.True(t, hasNote)
+	hasDescription, err := hasColumnByName("cliproxy_auth_file_bindings", "description")
+	require.NoError(t, err)
+	require.False(t, hasDescription)
+
+	binding, err := GetCliproxyAuthFileBindingById(1)
+	require.NoError(t, err)
+	require.Equal(t, "旧备注", binding.Note)
 }

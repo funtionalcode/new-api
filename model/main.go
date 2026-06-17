@@ -254,6 +254,9 @@ func migrateDB() error {
 	if err := migrateTokenModelLimitsToText(); err != nil {
 		return err
 	}
+	if err := migrateCliproxyAuthFileBindingNote(); err != nil {
+		return err
+	}
 
 	err := DB.AutoMigrate(
 		&Channel{},
@@ -299,6 +302,9 @@ func migrateDB() error {
 }
 
 func migrateDBFast() error {
+	if err := migrateCliproxyAuthFileBindingNote(); err != nil {
+		return err
+	}
 
 	var wg sync.WaitGroup
 
@@ -375,6 +381,86 @@ func migrateLOGDB() error {
 		return err
 	}
 	return nil
+}
+
+func migrateCliproxyAuthFileBindingNote() error {
+	const tableName = "cliproxy_auth_file_bindings"
+	if !DB.Migrator().HasTable(tableName) {
+		return nil
+	}
+
+	hasNote, err := hasColumnByName(tableName, "note")
+	if err != nil {
+		return err
+	}
+	hasDescription, err := hasColumnByName(tableName, "description")
+	if err != nil {
+		return err
+	}
+	if !hasDescription {
+		if hasNote {
+			return nil
+		}
+		return DB.Migrator().AddColumn(&CliproxyAuthFileBinding{}, "Note")
+	}
+
+	if !hasNote {
+		if err := renameCliproxyAuthFileBindingDescriptionToNote(); err == nil {
+			return nil
+		} else {
+			common.SysLog(fmt.Sprintf("Warning: failed to rename cliproxy auth file note column: %v", err))
+		}
+		if err := DB.Migrator().AddColumn(&CliproxyAuthFileBinding{}, "Note"); err != nil {
+			return err
+		}
+	}
+	return copyCliproxyAuthFileBindingDescriptionToNote()
+}
+
+func hasColumnByName(tableName string, columnName string) (bool, error) {
+	columnTypes, err := DB.Migrator().ColumnTypes(tableName)
+	if err != nil {
+		return false, err
+	}
+	for _, columnType := range columnTypes {
+		if strings.EqualFold(columnType.Name(), columnName) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func copyCliproxyAuthFileBindingDescriptionToNote() error {
+	tableName := quoteDBIdentifier("cliproxy_auth_file_bindings")
+	noteColumn := quoteDBIdentifier("note")
+	descriptionColumn := quoteDBIdentifier("description")
+	return DB.Exec(fmt.Sprintf(
+		"UPDATE %s SET %s = %s WHERE (%s IS NULL OR %s = '') AND %s IS NOT NULL AND %s <> ''",
+		tableName,
+		noteColumn,
+		descriptionColumn,
+		noteColumn,
+		noteColumn,
+		descriptionColumn,
+		descriptionColumn,
+	)).Error
+}
+
+func renameCliproxyAuthFileBindingDescriptionToNote() error {
+	tableName := quoteDBIdentifier("cliproxy_auth_file_bindings")
+	noteColumn := quoteDBIdentifier("note")
+	descriptionColumn := quoteDBIdentifier("description")
+	if common.UsingMySQL {
+		return DB.Exec(fmt.Sprintf("ALTER TABLE %s CHANGE %s %s text", tableName, descriptionColumn, noteColumn)).Error
+	}
+	return DB.Exec(fmt.Sprintf("ALTER TABLE %s RENAME COLUMN %s TO %s", tableName, descriptionColumn, noteColumn)).Error
+}
+
+func quoteDBIdentifier(identifier string) string {
+	if common.UsingPostgreSQL {
+		return `"` + identifier + `"`
+	}
+	return "`" + identifier + "`"
 }
 
 type sqliteColumnDef struct {

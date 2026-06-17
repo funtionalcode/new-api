@@ -30,7 +30,7 @@ func TestCliproxyAPIClientListAuthFiles(t *testing.T) {
 	require.Equal(t, "codex-duboislee1988@gmail.com-prolite.json", files[0].AuthFile)
 	require.Equal(t, "20ef4492-656e-40a0-8412-af905e51c9f9", files[0].AccountID)
 	require.Equal(t, "prolite", files[0].PlanType)
-	require.Equal(t, "主账号备注", files[0].Description)
+	require.Equal(t, "主账号备注", files[0].Note)
 	require.True(t, files[0].Enabled)
 }
 

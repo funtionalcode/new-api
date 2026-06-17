@@ -27,9 +27,7 @@ type cliproxyAuthFileBindingRequest struct {
 	AuthIndex    string `json:"auth_index"`
 	AuthName     string `json:"auth_name"`
 	AuthFile     string `json:"auth_file"`
-	Description  string `json:"description"`
 	Note         string `json:"note"`
-	Remark       string `json:"remark"`
 	AccountId    string `json:"account_id"`
 	LastPlanType string `json:"last_plan_type"`
 	Enabled      bool   `json:"enabled"`
@@ -92,7 +90,7 @@ func CreateCliproxyAuthFileBinding(c *gin.Context) {
 		AuthIndex:    update.AuthIndex,
 		AuthName:     update.AuthName,
 		AuthFile:     update.AuthFile,
-		Description:  update.Description,
+		Note:         update.Note,
 		AccountId:    update.AccountId,
 		LastPlanType: update.LastPlanType,
 		Enabled:      update.Enabled,
@@ -252,7 +250,7 @@ func decodeCliproxyAuthFileBindingRequest(c *gin.Context) (model.CliproxyAuthFil
 		AuthIndex:    strings.TrimSpace(request.AuthIndex),
 		AuthName:     strings.TrimSpace(request.AuthName),
 		AuthFile:     request.AuthFile,
-		Description:  firstNonEmpty(request.Description, request.Note, request.Remark),
+		Note:         request.Note,
 		AccountId:    strings.TrimSpace(request.AccountId),
 		LastPlanType: strings.TrimSpace(request.LastPlanType),
 		Enabled:      request.Enabled,
