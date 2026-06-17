@@ -55,6 +55,7 @@ type cliproxyAuthFileResponse struct {
 	AccountType    string                `json:"account_type"`
 	Account        string                `json:"account"`
 	Email          string                `json:"email"`
+	Note           string                `json:"note"`
 	Remark         string                `json:"remark"`
 	Description    string                `json:"description"`
 	Provider       string                `json:"provider"`
@@ -178,7 +179,7 @@ func normalizeCliproxyAuthFiles(result cliproxyAuthFilesResponse) []CliproxyAuth
 			AuthFile:    firstNonEmpty(item.ID, item.AuthFile),
 			AccountID:   firstNonEmpty(item.AccountID, item.CamelAccountID, item.IDToken.ChatGPTAccountID, item.Email, item.Account),
 			PlanType:    firstNonEmpty(item.Balance.Group, item.Group, item.IDToken.PlanType, item.PlanType, item.CamelPlanType, cliproxyProviderPlanType(provider, fileType), item.AccountType),
-			Description: firstNonEmpty(item.Remark, item.Description),
+			Description: firstNonEmpty(item.Note, item.Remark, item.Description),
 			Provider:    provider,
 			Type:        fileType,
 			Enabled:     item.Enabled == nil && !item.Disabled || item.Enabled != nil && *item.Enabled,

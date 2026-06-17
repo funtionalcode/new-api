@@ -15,7 +15,7 @@ func TestCliproxyAPIClientListAuthFiles(t *testing.T) {
 		require.Equal(t, "/v0/management/auth-files", r.URL.Path)
 		require.Equal(t, "Bearer cliproxyapi", r.Header.Get("Authorization"))
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"files":[{"auth_index":"f2ca5514ba44085e","name":"codex-duboislee1988@gmail.com-prolite.json","id":"codex-duboislee1988@gmail.com-prolite.json","account_type":"oauth","remark":"主账号备注","disabled":false,"id_token":{"chatgpt_account_id":"20ef4492-656e-40a0-8412-af905e51c9f9","plan_type":"prolite"}}]}`))
+		_, _ = w.Write([]byte(`{"files":[{"auth_index":"f2ca5514ba44085e","name":"codex-duboislee1988@gmail.com-prolite.json","id":"codex-duboislee1988@gmail.com-prolite.json","account_type":"oauth","note":"主账号备注","disabled":false,"id_token":{"chatgpt_account_id":"20ef4492-656e-40a0-8412-af905e51c9f9","plan_type":"prolite"}}]}`))
 	}))
 	defer server.Close()
 

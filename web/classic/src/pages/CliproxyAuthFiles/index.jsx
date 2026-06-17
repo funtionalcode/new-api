@@ -45,7 +45,7 @@ const getAccountId = (authFile) =>
 const getPlanType = (authFile) =>
   authFile?.planType || authFile?.plan_type || authFile?.last_plan_type || '';
 const getAuthRemark = (authFile) =>
-  authFile?.description || authFile?.remark || '';
+  authFile?.description || authFile?.note || authFile?.remark || '';
 
 const normalizePlanKey = (value) => {
   if (typeof value !== 'string') return '';
@@ -137,7 +137,7 @@ const buildBindingForm = (binding = emptyBindingForm) => ({
   auth_index: binding.auth_index || '',
   auth_name: binding.auth_name || '',
   auth_file: binding.auth_file || '',
-  description: binding.description || '',
+  description: getAuthRemark(binding),
   account_id: binding.account_id || '',
   last_plan_type: binding.last_plan_type || '',
   enabled: binding.enabled !== false,
@@ -551,14 +551,16 @@ export default function CliproxyAuthFiles() {
     { title: t('认证文件'), dataIndex: 'auth_name' },
     {
       title: t('备注'),
-      render: (_, record) =>
-        record.description ? (
-          <Tooltip content={record.description}>
-            <div className='max-w-[160px] truncate'>{record.description}</div>
+      render: (_, record) => {
+        const remark = getAuthRemark(record);
+        return remark ? (
+          <Tooltip content={remark}>
+            <div className='max-w-[160px] truncate'>{remark}</div>
           </Tooltip>
         ) : (
           '-'
-        ),
+        );
+      },
     },
     {
       title: t('套餐'),
@@ -738,7 +740,10 @@ export default function CliproxyAuthFiles() {
         onOk={saveBinding}
         confirmLoading={loading}
       >
-        <Form layout='vertical'>
+        <Form
+          key={bindingForm.id || bindingForm.auth_index || 'new'}
+          layout='vertical'
+        >
           {bindingForm.id ? (
             <>
               <Form.Input
