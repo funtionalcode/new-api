@@ -167,6 +167,7 @@ export default function CliproxyAuthFiles() {
   const [loading, setLoading] = useState(false);
   const [remoteLoading, setRemoteLoading] = useState(false);
   const [bindingLoading, setBindingLoading] = useState(false);
+  const [refreshingBindingId, setRefreshingBindingId] = useState(undefined);
   const [refreshingAll, setRefreshingAll] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -382,7 +383,7 @@ export default function CliproxyAuthFiles() {
   };
 
   const refreshUsage = async (binding) => {
-    setLoading(true);
+    setRefreshingBindingId(binding.id);
     try {
       const res = await API.post(
         `/api/cliproxy/auth-files/bindings/${binding.id}/refresh-usage`,
@@ -396,9 +397,25 @@ export default function CliproxyAuthFiles() {
     } catch (error) {
       showError(error);
     } finally {
-      setLoading(false);
+      setRefreshingBindingId(undefined);
     }
   };
+
+  const renderRemarkInput = () => (
+    <Form.TextArea
+      field='description'
+      label={t('备注')}
+      value={bindingForm.description}
+      onChange={(value) =>
+        setBindingForm((current) => ({
+          ...current,
+          description: value,
+        }))
+      }
+      placeholder={t('请输入备注')}
+      maxCount={255}
+    />
+  );
 
   const refreshAllUsage = async () => {
     if (bindings.length === 0) {
@@ -517,6 +534,17 @@ export default function CliproxyAuthFiles() {
     },
     { title: t('认证文件'), dataIndex: 'auth_name' },
     {
+      title: t('备注'),
+      render: (_, record) =>
+        record.description ? (
+          <Tooltip content={record.description}>
+            <div className='max-w-[160px] truncate'>{record.description}</div>
+          </Tooltip>
+        ) : (
+          '-'
+        ),
+    },
+    {
       title: t('套餐'),
       render: (_, record) => renderPlanTag(record.last_plan_type),
     },
@@ -569,30 +597,34 @@ export default function CliproxyAuthFiles() {
         </Tag>
       ),
     },
-    {
-      title: t('操作'),
-      render: (_, record) => (
-        <div className='flex gap-2'>
-          <Button size='small' onClick={() => refreshUsage(record)}>
-            {t('刷新额度')}
-          </Button>
-          {adminUser && (
-            <Button size='small' onClick={() => openEditModal(record)}>
-              {t('编辑')}
-            </Button>
-          )}
-          {adminUser && (
-            <Button
-              size='small'
-              type='danger'
-              onClick={() => deleteBinding(record)}
-            >
-              {t('删除')}
-            </Button>
-          )}
-        </div>
-      ),
-    },
+    ...(adminUser
+      ? [
+          {
+            title: t('操作'),
+            render: (_, record) => (
+              <div className='flex gap-2'>
+                <Button
+                  size='small'
+                  loading={refreshingBindingId === record.id}
+                  onClick={() => refreshUsage(record)}
+                >
+                  {t('刷新额度')}
+                </Button>
+                <Button size='small' onClick={() => openEditModal(record)}>
+                  {t('编辑')}
+                </Button>
+                <Button
+                  size='small'
+                  type='danger'
+                  onClick={() => deleteBinding(record)}
+                >
+                  {t('删除')}
+                </Button>
+              </div>
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -692,67 +724,17 @@ export default function CliproxyAuthFiles() {
       >
         <Form layout='vertical'>
           {bindingForm.id ? (
-            // 编辑模式：只允许编辑备注，其他字段禁用
             <>
-              <Form.Input
-                field='auth_index_display'
-                label={t('认证文件索引')}
-                value={bindingForm.auth_index}
-                disabled
-              />
-              <Form.Input
-                field='auth_name_display'
-                label={t('认证名称')}
-                value={bindingForm.auth_name || '-'}
-                disabled
-              />
-              <Form.Input
-                field='account_id_display'
-                label={t('账号')}
-                value={bindingForm.account_id || '-'}
-                disabled
-              />
               <Form.Input
                 field='username_display'
                 label={t('用户')}
                 value={bindingForm.username || '-'}
                 disabled
               />
-              <Form.TextArea
-                field='description'
-                label={t('备注')}
-                value={bindingForm.description}
-                onChange={(value) =>
-                  setBindingForm((current) => ({
-                    ...current,
-                    description: value,
-                  }))
-                }
-                placeholder={t('输入备注信息')}
-                maxCount={255}
-              />
+              {renderRemarkInput()}
             </>
           ) : bindingForm.auth_index ? (
-            // 从远端认证文件点击"绑定用户"时，认证文件信息只读回显
             <>
-              <Form.Input
-                field='auth_index_display'
-                label={t('认证文件')}
-                value={bindingForm.auth_index}
-                disabled
-              />
-              <Form.Input
-                field='auth_name_display'
-                label={t('认证名称')}
-                value={bindingForm.auth_name || '-'}
-                disabled
-              />
-              <Form.Input
-                field='account_id_display'
-                label={t('账号')}
-                value={bindingForm.account_id || '-'}
-                disabled
-              />
               <Form.Select
                 field='user_id'
                 label={t('用户')}
@@ -773,9 +755,9 @@ export default function CliproxyAuthFiles() {
                 }}
                 placeholder={t('搜索并选择用户')}
               />
+              {renderRemarkInput()}
             </>
           ) : (
-            // 新增绑定：认证文件可选择
             <>
               <Form.Select
                 field='auth_index'
@@ -819,6 +801,7 @@ export default function CliproxyAuthFiles() {
                 }}
                 placeholder={t('搜索并选择用户')}
               />
+              {renderRemarkInput()}
             </>
           )}
         </Form>

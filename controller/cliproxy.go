@@ -68,10 +68,6 @@ func GetCliproxyAuthFileBindings(c *gin.Context) {
 		AuthIndex: c.Query("auth_index"),
 		Enabled:   parseOptionalBool(c.Query("enabled")),
 	}
-	if c.GetInt("role") < common.RoleAdminUser {
-		query.UserId = c.GetInt("id")
-		query.Username = ""
-	}
 	bindings, total, err := model.GetCliproxyAuthFileBindings(query, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
