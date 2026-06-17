@@ -26,14 +26,15 @@ type CliproxyAPIClient struct {
 }
 
 type CliproxyAuthFile struct {
-	AuthIndex string `json:"authIndex"`
-	Name      string `json:"name"`
-	AuthFile  string `json:"authFile"`
-	AccountID string `json:"accountId"`
-	PlanType  string `json:"planType"`
-	Provider  string `json:"provider,omitempty"`
-	Type      string `json:"type,omitempty"`
-	Enabled   bool   `json:"enabled"`
+	AuthIndex   string `json:"authIndex"`
+	Name        string `json:"name"`
+	AuthFile    string `json:"authFile"`
+	AccountID   string `json:"accountId"`
+	PlanType    string `json:"planType"`
+	Description string `json:"description,omitempty"`
+	Provider    string `json:"provider,omitempty"`
+	Type        string `json:"type,omitempty"`
+	Enabled     bool   `json:"enabled"`
 }
 
 type cliproxyAuthFilesResponse struct {
@@ -54,6 +55,8 @@ type cliproxyAuthFileResponse struct {
 	AccountType    string                `json:"account_type"`
 	Account        string                `json:"account"`
 	Email          string                `json:"email"`
+	Remark         string                `json:"remark"`
+	Description    string                `json:"description"`
 	Provider       string                `json:"provider"`
 	Type           string                `json:"type"`
 	Group          string                `json:"group"`
@@ -170,14 +173,15 @@ func normalizeCliproxyAuthFiles(result cliproxyAuthFilesResponse) []CliproxyAuth
 		provider := firstNonEmpty(item.Provider, item.Type)
 		fileType := firstNonEmpty(item.Type, item.Provider)
 		files = append(files, CliproxyAuthFile{
-			AuthIndex: firstNonEmpty(item.AuthIndex, item.CamelAuthIndex),
-			Name:      item.Name,
-			AuthFile:  firstNonEmpty(item.ID, item.AuthFile),
-			AccountID: firstNonEmpty(item.AccountID, item.CamelAccountID, item.IDToken.ChatGPTAccountID, item.Email, item.Account),
-			PlanType:  firstNonEmpty(item.Balance.Group, item.Group, item.IDToken.PlanType, item.PlanType, item.CamelPlanType, cliproxyProviderPlanType(provider, fileType), item.AccountType),
-			Provider:  provider,
-			Type:      fileType,
-			Enabled:   item.Enabled == nil && !item.Disabled || item.Enabled != nil && *item.Enabled,
+			AuthIndex:   firstNonEmpty(item.AuthIndex, item.CamelAuthIndex),
+			Name:        item.Name,
+			AuthFile:    firstNonEmpty(item.ID, item.AuthFile),
+			AccountID:   firstNonEmpty(item.AccountID, item.CamelAccountID, item.IDToken.ChatGPTAccountID, item.Email, item.Account),
+			PlanType:    firstNonEmpty(item.Balance.Group, item.Group, item.IDToken.PlanType, item.PlanType, item.CamelPlanType, cliproxyProviderPlanType(provider, fileType), item.AccountType),
+			Description: firstNonEmpty(item.Remark, item.Description),
+			Provider:    provider,
+			Type:        fileType,
+			Enabled:     item.Enabled == nil && !item.Disabled || item.Enabled != nil && *item.Enabled,
 		})
 	}
 	sort.SliceStable(files, func(i, j int) bool {

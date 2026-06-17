@@ -44,6 +44,8 @@ const getAccountId = (authFile) =>
   authFile?.accountId || authFile?.account_id || '';
 const getPlanType = (authFile) =>
   authFile?.planType || authFile?.plan_type || authFile?.last_plan_type || '';
+const getAuthRemark = (authFile) =>
+  authFile?.description || authFile?.remark || '';
 
 const normalizePlanKey = (value) => {
   if (typeof value !== 'string') return '';
@@ -299,6 +301,7 @@ export default function CliproxyAuthFiles() {
         auth_index: getAuthIndex(remoteFile),
         auth_name: getAuthName(remoteFile),
         auth_file: getAuthFileContent(remoteFile),
+        description: getAuthRemark(remoteFile),
         account_id: getAccountId(remoteFile),
         last_plan_type: getPlanType(remoteFile),
         enabled: remoteFile?.enabled !== false,
@@ -478,6 +481,19 @@ export default function CliproxyAuthFiles() {
       render: (_, record) => record.accountId || record.account_id || '-',
     },
     {
+      title: t('备注'),
+      render: (_, record) => {
+        const remark = getAuthRemark(record);
+        return remark ? (
+          <Tooltip content={remark}>
+            <div className='max-w-[160px] truncate'>{remark}</div>
+          </Tooltip>
+        ) : (
+          '-'
+        );
+      },
+    },
+    {
       title: t('套餐'),
       render: (_, record) => renderPlanTag(getPlanType(record)),
     },
@@ -597,34 +613,34 @@ export default function CliproxyAuthFiles() {
         </Tag>
       ),
     },
-    ...(adminUser
-      ? [
-          {
-            title: t('操作'),
-            render: (_, record) => (
-              <div className='flex gap-2'>
-                <Button
-                  size='small'
-                  loading={refreshingBindingId === record.id}
-                  onClick={() => refreshUsage(record)}
-                >
-                  {t('刷新额度')}
-                </Button>
-                <Button size='small' onClick={() => openEditModal(record)}>
-                  {t('编辑')}
-                </Button>
-                <Button
-                  size='small'
-                  type='danger'
-                  onClick={() => deleteBinding(record)}
-                >
-                  {t('删除')}
-                </Button>
-              </div>
-            ),
-          },
-        ]
-      : []),
+    {
+      title: t('操作'),
+      render: (_, record) => (
+        <div className='flex gap-2'>
+          <Button
+            size='small'
+            loading={refreshingBindingId === record.id}
+            onClick={() => refreshUsage(record)}
+          >
+            {t('刷新额度')}
+          </Button>
+          {adminUser && (
+            <>
+              <Button size='small' onClick={() => openEditModal(record)}>
+                {t('编辑')}
+              </Button>
+              <Button
+                size='small'
+                type='danger'
+                onClick={() => deleteBinding(record)}
+              >
+                {t('删除')}
+              </Button>
+            </>
+          )}
+        </div>
+      ),
+    },
   ];
 
   return (
@@ -775,6 +791,7 @@ export default function CliproxyAuthFiles() {
                     auth_index: value,
                     auth_name: getAuthName(authFile),
                     auth_file: getAuthFileContent(authFile),
+                    description: getAuthRemark(authFile),
                     account_id: getAccountId(authFile),
                     enabled: authFile?.enabled !== false,
                   }));

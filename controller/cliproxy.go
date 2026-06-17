@@ -145,13 +145,6 @@ func RefreshCliproxyAuthFileBindingUsage(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	if c.GetInt("role") < common.RoleAdminUser && binding.UserId != c.GetInt("id") {
-		c.JSON(http.StatusForbidden, gin.H{
-			"success": false,
-			"message": "无权刷新该认证文件绑定",
-		})
-		return
-	}
 	client, err := newCliproxyClientFromOptions()
 	if err != nil {
 		common.ApiError(c, err)
