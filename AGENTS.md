@@ -135,3 +135,45 @@ For request structs that are parsed from client JSON and then re-marshaled to up
 ### Rule 7: Billing Expression System — Read `pkg/billingexpr/expr.md`
 
 When working on tiered/dynamic billing (expression-based pricing), you MUST read `pkg/billingexpr/expr.md` first. It documents the design philosophy, expression language (variables, functions, examples), full system architecture (editor → storage → pre-consume → settlement → log display), token normalization rules (`p`/`c` auto-exclusion), quota conversion, and expression versioning. All code changes to the billing expression system must follow the patterns described in that document.
+
+### Rule 8: Git Commits — Chinese Message, Fixed Author, Detailed Body
+
+When creating commits for this project, use the repository convention shown by recent commits.
+
+**Author:**
+- Always commit as `zhengyage <zhengyage@magicpipeline.com>`.
+- Before committing, verify or set `git config user.name zhengyage` and `git config user.email zhengyage@magicpipeline.com`.
+- If author metadata is wrong after committing, fix it before pushing.
+
+**Subject:**
+- Use Chinese Conventional Commit format: `type(scope): 中文说明`.
+- Keep the subject concise and specific, for example `fix(classic): 补充服务器日志设置保存入口`.
+- Do not use English-only subjects such as `fix(cliproxy): adjust auth binding access`.
+
+**Body:**
+- Non-trivial commits MUST include a Chinese body explaining what changed and why.
+- Use short paragraphs to describe the concrete behavior or implementation changes.
+- Include a `Tests:` section listing commands actually run and important failures if any.
+- Include `Constraint:`, `Scope-risk:`, and `Confidence:` trailers.
+- Mention constraints such as intentionally excluded behavior, no new background jobs, or known failed tests.
+
+**Required shape:**
+
+```text
+fix(scope): 中文提交标题
+
+说明修改了什么，以及为什么这样改。
+
+补充说明关键行为、回填逻辑、权限变化或兼容性处理。
+
+Tests:
+- command 1
+- command 2
+- command 3（失败：说明原因）
+
+Constraint: 说明本次明确不做什么或边界。
+Scope-risk: low|medium|high
+Confidence: low|medium|high
+```
+
+Before every `git commit`, inspect `git log --oneline -5` and match the local convention.
