@@ -36,6 +36,7 @@ import {
   initializeMaps,
   processUserData,
 } from '../../helpers/dashboard';
+import { createDashboardDimensionTooltipUpdater } from '../../helpers/dashboardTooltip';
 
 const USER_COLORS = [
   '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6',
@@ -212,28 +213,11 @@ export const useDashboardCharts = (
             value: (datum) => datum['rawQuota'] || 0,
           },
         ],
-        updateContent: (array) => {
-          array.sort((a, b) => b.value - a.value);
-          let sum = 0;
-          for (let i = 0; i < array.length; i++) {
-            if (array[i].key == '其他') {
-              continue;
-            }
-            let value = parseFloat(array[i].value);
-            if (isNaN(value)) {
-              value = 0;
-            }
-            if (array[i].datum && array[i].datum.TimeSum) {
-              sum = array[i].datum.TimeSum;
-            }
-            array[i].value = renderQuota(value, 4);
-          }
-          array.unshift({
-            key: t('总计'),
-            value: renderQuota(sum, 4),
-          });
-          return array;
-        },
+        updateContent: createDashboardDimensionTooltipUpdater({
+          totalLabel: t('总计'),
+          formatValue: (value) => renderQuota(value, 4),
+          getTotalValue: (item) => item.datum?.TimeSum,
+        }),
       },
     },
     color: {
@@ -277,21 +261,10 @@ export const useDashboardCharts = (
             value: (datum) => datum['Count'] || 0,
           },
         ],
-        updateContent: (array) => {
-          array.sort((a, b) => b.value - a.value);
-          let sum = 0;
-          for (let i = 0; i < array.length; i++) {
-            let value = parseFloat(array[i].value);
-            if (isNaN(value)) value = 0;
-            sum += value;
-            array[i].value = renderNumber(value);
-          }
-          array.unshift({
-            key: t('总计'),
-            value: renderNumber(sum),
-          });
-          return array;
-        },
+        updateContent: createDashboardDimensionTooltipUpdater({
+          totalLabel: t('总计'),
+          formatValue: renderNumber,
+        }),
       },
     },
     color: {
@@ -419,21 +392,10 @@ export const useDashboardCharts = (
           key: (datum) => datum['User'],
           value: (datum) => datum['rawQuota'] || 0,
         }],
-        updateContent: (array) => {
-          array.sort((a, b) => b.value - a.value);
-          let sum = 0;
-          for (let i = 0; i < array.length; i++) {
-            let value = parseFloat(array[i].value);
-            if (isNaN(value)) value = 0;
-            sum += value;
-            array[i].value = renderQuota(value, 4);
-          }
-          array.unshift({
-            key: t('总计'),
-            value: renderQuota(sum, 4),
-          });
-          return array;
-        },
+        updateContent: createDashboardDimensionTooltipUpdater({
+          totalLabel: t('总计'),
+          formatValue: (value) => renderQuota(value, 4),
+        }),
       },
     },
     color: { type: 'ordinal', range: USER_COLORS },
@@ -474,21 +436,10 @@ export const useDashboardCharts = (
           key: (datum) => datum['User'],
           value: (datum) => datum['Tokens'] || 0,
         }],
-        updateContent: (array) => {
-          array.sort((a, b) => b.value - a.value);
-          let sum = 0;
-          for (let i = 0; i < array.length; i++) {
-            let value = parseFloat(array[i].value);
-            if (isNaN(value)) value = 0;
-            sum += value;
-            array[i].value = renderNumber(value);
-          }
-          array.unshift({
-            key: t('总计'),
-            value: renderNumber(sum),
-          });
-          return array;
-        },
+        updateContent: createDashboardDimensionTooltipUpdater({
+          totalLabel: t('总计'),
+          formatValue: renderNumber,
+        }),
       },
     },
     color: { type: 'ordinal', range: USER_COLORS },
@@ -613,28 +564,11 @@ export const useDashboardCharts = (
                   value: (datum) => datum['rawQuota'] || 0,
                 },
               ],
-              updateContent: (array) => {
-                array.sort((a, b) => b.value - a.value);
-                let sum = 0;
-                for (let i = 0; i < array.length; i++) {
-                  if (array[i].key == '其他') {
-                    continue;
-                  }
-                  let value = parseFloat(array[i].value);
-                  if (isNaN(value)) {
-                    value = 0;
-                  }
-                  if (array[i].datum && array[i].datum.TimeSum) {
-                    sum = array[i].datum.TimeSum;
-                  }
-                  array[i].value = renderNumber(value);
-                }
-                array.unshift({
-                  key: t('总计'),
-                  value: renderNumber(sum),
-                });
-                return array;
-              },
+              updateContent: createDashboardDimensionTooltipUpdater({
+                totalLabel: t('总计'),
+                formatValue: renderNumber,
+                getTotalValue: (item) => item.datum?.TimeSum,
+              }),
             },
           }
         : {
@@ -653,28 +587,11 @@ export const useDashboardCharts = (
                   value: (datum) => datum['rawQuota'] || 0,
                 },
               ],
-              updateContent: (array) => {
-                array.sort((a, b) => b.value - a.value);
-                let sum = 0;
-                for (let i = 0; i < array.length; i++) {
-                  if (array[i].key == '其他') {
-                    continue;
-                  }
-                  let value = parseFloat(array[i].value);
-                  if (isNaN(value)) {
-                    value = 0;
-                  }
-                  if (array[i].datum && array[i].datum.TimeSum) {
-                    sum = array[i].datum.TimeSum;
-                  }
-                  array[i].value = renderQuota(value, 4);
-                }
-                array.unshift({
-                  key: t('总计'),
-                  value: renderQuota(sum, 4),
-                });
-                return array;
-              },
+              updateContent: createDashboardDimensionTooltipUpdater({
+                totalLabel: t('总计'),
+                formatValue: (value) => renderQuota(value, 4),
+                getTotalValue: (item) => item.datum?.TimeSum,
+              }),
             },
           };
 
@@ -777,6 +694,7 @@ export const useDashboardCharts = (
       getLineTotalBySelectedModels,
       getLineTotalTitle,
       selectedLineModels,
+      t,
       usageViewMode,
     ],
   );
@@ -860,25 +778,12 @@ export const useDashboardCharts = (
             key: (datum) => datum['User'],
             value: (datum) => datum['rawQuota'] || 0,
           }],
-          updateContent: (array) => {
-            array.sort((a, b) => b.value - a.value);
-            let sum = 0;
-            for (let i = 0; i < array.length; i++) {
-              let value = parseFloat(array[i].value);
-              if (isNaN(value)) value = 0;
-              sum += value;
-              array[i].value = isTokensMode
-                ? renderNumber(value)
-                : renderQuota(value, 4);
-            }
-            array.unshift({
-              key: t('总计'),
-              value: isTokensMode
-                ? renderNumber(sum)
-                : renderQuota(sum, 4),
-            });
-            return array;
-          },
+          updateContent: createDashboardDimensionTooltipUpdater({
+            totalLabel: t('总计'),
+            formatValue: (value) => isTokensMode
+              ? renderNumber(value)
+              : renderQuota(value, 4),
+          }),
         },
       };
 
