@@ -2681,7 +2681,11 @@
         "Filter by token name": "按令牌名称筛选",
         "Group by day": "按天分组",
         "Token Consumption": "Token 消耗",
-        "调用趋势": "调用趋势"
+        "调用趋势": "调用趋势",
+        "通知和价格相关设置": "通知和价格相关设置",
+        "开启后由管理员统一记录，用户不可单独关闭": "开启后由管理员统一记录，用户不可单独关闭",
+        "可信代理CIDR": "可信代理CIDR",
+        "仅当请求来源匹配这些CIDR时，才信任X-Forwarded-For和X-Real-IP": "仅当请求来源匹配这些CIDR时，才信任X-Forwarded-For和X-Real-IP"
     },
     "Load user consumption failed": "加载用户消耗失败",
     "Consumption Filters": "用户消耗筛选",

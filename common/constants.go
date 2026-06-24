@@ -114,6 +114,8 @@ var DebugEnabled bool
 var MemoryCacheEnabled bool
 
 var LogConsumeEnabled = true
+var RecordIpLogEnabled = true
+var TrustedProxyCIDRs = "127.0.0.1/32,::1/128,172.16.0.0/12"
 
 var TLSInsecureSkipVerify bool
 var InsecureTLSConfig = &tls.Config{InsecureSkipVerify: true}

@@ -3725,7 +3725,11 @@
         "Filter by username": "Filtrer par nom d’utilisateur",
         "Filter by token name": "Filtrer par nom de token",
         "Group by day": "Regrouper par jour",
-        "Token Consumption": "Consommation de tokens"
+        "Token Consumption": "Consommation de tokens",
+        "通知和价格相关设置": "Paramètres de notification et de tarification",
+        "开启后由管理员统一记录，用户不可单独关闭": "Une fois activé, l'enregistrement est géré globalement par les administrateurs et les utilisateurs ne peuvent pas le désactiver individuellement",
+        "可信代理CIDR": "CIDR des proxys de confiance",
+        "仅当请求来源匹配这些CIDR时，才信任X-Forwarded-For和X-Real-IP": "Seules les requêtes provenant de ces CIDR peuvent fournir X-Forwarded-For ou X-Real-IP"
     },
     "Load user consumption failed": "Échec du chargement de la consommation utilisateur",
     "Consumption Filters": "Filtres de consommation",

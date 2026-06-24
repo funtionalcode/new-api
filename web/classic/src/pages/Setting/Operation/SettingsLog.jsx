@@ -46,6 +46,8 @@ export default function SettingsLog(props) {
   const [loadingCleanHistoryLog, setLoadingCleanHistoryLog] = useState(false);
   const [inputs, setInputs] = useState({
     LogConsumeEnabled: false,
+    RecordIpLogEnabled: true,
+    TrustedProxyCIDRs: '',
     historyTimestamp: dayjs().subtract(1, 'month').toDate(),
   });
   const refForm = useRef();
@@ -212,6 +214,38 @@ export default function SettingsLog(props) {
                     setInputs({
                       ...inputs,
                       LogConsumeEnabled: value,
+                    });
+                  }}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Switch
+                  field={'RecordIpLogEnabled'}
+                  label={t('记录请求与错误日志IP')}
+                  size='default'
+                  checkedText='｜'
+                  uncheckedText='〇'
+                  extraText={t('开启后由管理员统一记录，用户不可单独关闭')}
+                  onChange={(value) => {
+                    setInputs({
+                      ...inputs,
+                      RecordIpLogEnabled: value,
+                    });
+                  }}
+                />
+              </Col>
+              <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+                <Form.Input
+                  field={'TrustedProxyCIDRs'}
+                  label={t('可信代理CIDR')}
+                  placeholder='127.0.0.1/32,::1/128,172.16.0.0/12'
+                  extraText={t(
+                    '仅当请求来源匹配这些CIDR时，才信任X-Forwarded-For和X-Real-IP',
+                  )}
+                  onChange={(value) => {
+                    setInputs({
+                      ...inputs,
+                      TrustedProxyCIDRs: value,
                     });
                   }}
                 />

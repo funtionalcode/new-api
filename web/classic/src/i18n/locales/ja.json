@@ -3694,7 +3694,11 @@
         "Filter by username": "ユーザー名で絞り込み",
         "Filter by token name": "トークン名で絞り込み",
         "Group by day": "日別にグループ化",
-        "Token Consumption": "Token 消費量"
+        "Token Consumption": "Token 消費量",
+        "通知和价格相关设置": "通知と価格に関する設定",
+        "开启后由管理员统一记录，用户不可单独关闭": "有効にすると管理者が一括で記録し、ユーザーは個別に無効化できません",
+        "可信代理CIDR": "信頼済みプロキシ CIDR",
+        "仅当请求来源匹配这些CIDR时，才信任X-Forwarded-For和X-Real-IP": "リクエスト元がこれらの CIDR に一致する場合のみ、X-Forwarded-For と X-Real-IP を信頼します"
     },
     "Load user consumption failed": "ユーザー消費量の読み込みに失敗しました",
     "Consumption Filters": "消費量フィルター",

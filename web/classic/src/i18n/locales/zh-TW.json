@@ -3718,7 +3718,11 @@
         "Filter by username": "按使用者名稱篩選",
         "Filter by token name": "按令牌名稱篩選",
         "Group by day": "按天分組",
-        "Token Consumption": "Token 消耗"
+        "Token Consumption": "Token 消耗",
+        "通知和价格相关设置": "通知與價格相關設定",
+        "开启后由管理员统一记录，用户不可单独关闭": "啟用後由管理員統一記錄，使用者不可單獨關閉",
+        "可信代理CIDR": "可信代理 CIDR",
+        "仅当请求来源匹配这些CIDR时，才信任X-Forwarded-For和X-Real-IP": "僅當請求來源符合這些 CIDR 時，才信任 X-Forwarded-For 和 X-Real-IP"
     },
     "Load user consumption failed": "載入使用者消耗失敗",
     "Consumption Filters": "使用者消耗篩選",

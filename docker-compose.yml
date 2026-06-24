@@ -4,7 +4,7 @@
 #
 # 启动方式：
 #   docker-compose up -d
-#   访问 http://localhost:3000
+#   容器应用监听 3001，建议在宿主机用 nginx 监听 3000 并反代到 127.0.0.1:3001
 #
 # ⚠️ 生产环境请修改所有默认密码！
 
@@ -22,13 +22,14 @@ services:
     restart: always
     command: --log-dir /app/logs
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3001:3001"
     volumes:
       - ./data:/data
       - ./logs:/app/logs
     environment:
       - SQL_DSN=postgresql://newapi:57bee75807044164@postgres:5432/newapi
       - REDIS_CONN_STRING=redis://:006e0b2853794870ad83551f6df8ce92@redis:6379/0
+      - PORT=3001
       - TZ=Asia/Shanghai
       - ERROR_LOG_ENABLED=true
       - BATCH_UPDATE_ENABLED=true
@@ -39,7 +40,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/api/status | grep -o '\"success\":\\s*true' || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:3001/api/status | grep -o '\"success\":\\s*true' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

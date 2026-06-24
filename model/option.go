@@ -47,6 +47,8 @@ func InitOptionMap() {
 	common.OptionMap["AutomaticDisableChannelEnabled"] = strconv.FormatBool(common.AutomaticDisableChannelEnabled)
 	common.OptionMap["AutomaticEnableChannelEnabled"] = strconv.FormatBool(common.AutomaticEnableChannelEnabled)
 	common.OptionMap["LogConsumeEnabled"] = strconv.FormatBool(common.LogConsumeEnabled)
+	common.OptionMap["RecordIpLogEnabled"] = strconv.FormatBool(common.RecordIpLogEnabled)
+	common.OptionMap["TrustedProxyCIDRs"] = common.TrustedProxyCIDRs
 	common.OptionMap["DisplayInCurrencyEnabled"] = strconv.FormatBool(common.DisplayInCurrencyEnabled)
 	common.OptionMap["DisplayTokenStatEnabled"] = strconv.FormatBool(common.DisplayTokenStatEnabled)
 	common.OptionMap["DrawingEnabled"] = strconv.FormatBool(common.DrawingEnabled)
@@ -292,6 +294,8 @@ func updateOptionMap(key string, value string) (err error) {
 			common.AutomaticEnableChannelEnabled = boolValue
 		case "LogConsumeEnabled":
 			common.LogConsumeEnabled = boolValue
+		case "RecordIpLogEnabled":
+			common.RecordIpLogEnabled = boolValue
 		case "DisplayInCurrencyEnabled":
 			// 兼容旧字段：同步到新配置 general_setting.quota_display_type（运行时生效）
 			// true -> USD, false -> TOKENS
@@ -357,6 +361,8 @@ func updateOptionMap(key string, value string) (err error) {
 	switch key {
 	case "EmailDomainWhitelist":
 		common.EmailDomainWhitelist = strings.Split(value, ",")
+	case "TrustedProxyCIDRs":
+		common.TrustedProxyCIDRs = value
 	case "SMTPServer":
 		common.SMTPServer = value
 	case "SMTPPort":
