@@ -34,6 +34,61 @@ func getScannerBufferSize() int {
 	return DefaultMaxScannerBufferSize
 }
 
+func logStreamClientGoneDiagnostic(c *gin.Context, info *relaycommon.RelayInfo, streamingTimeout, pingInterval time.Duration, pingEnabled bool) {
+	if c == nil || info == nil || info.StreamStatus == nil || info.StreamStatus.EndReason != relaycommon.StreamEndReasonClientGone {
+		return
+	}
+
+	model := info.OriginModelName
+	channelId := 0
+	if info.ChannelMeta != nil {
+		channelId = info.ChannelMeta.ChannelId
+		if info.ChannelMeta.UpstreamModelName != "" {
+			model = info.ChannelMeta.UpstreamModelName
+		}
+	}
+
+	firstResponseMs := int64(-1)
+	if info.HasSendResponse() {
+		firstResponseMs = info.FirstResponseTime.Sub(info.StartTime).Milliseconds()
+	}
+
+	errText := ""
+	if info.StreamStatus.EndError != nil {
+		errText = info.StreamStatus.EndError.Error()
+	}
+
+	req := c.Request
+	logger.LogError(c, fmt.Sprintf(
+		"stream client gone diagnostic request_id=%s user_id=%d token_id=%d model=%s channel_id=%d elapsed=%s first_response_ms=%d received=%d remote_addr=%q client_ip=%q x_forwarded_for=%q x_real_ip=%q forwarded=%q via=%q user_agent=%q proto=%q host=%q path=%q content_length=%d transfer_encoding=%q connection=%q error=%q streaming_timeout=%s ping_enabled=%t ping_interval=%s",
+		info.RequestId,
+		info.UserId,
+		info.TokenId,
+		model,
+		channelId,
+		time.Since(info.StartTime).Truncate(time.Millisecond),
+		firstResponseMs,
+		info.ReceivedResponseCount,
+		req.RemoteAddr,
+		c.ClientIP(),
+		req.Header.Get("X-Forwarded-For"),
+		req.Header.Get("X-Real-IP"),
+		req.Header.Get("Forwarded"),
+		req.Header.Get("Via"),
+		req.UserAgent(),
+		req.Proto,
+		req.Host,
+		req.URL.RequestURI(),
+		req.ContentLength,
+		strings.Join(req.TransferEncoding, ","),
+		req.Header.Get("Connection"),
+		errText,
+		streamingTimeout,
+		pingEnabled,
+		pingInterval,
+	))
+}
+
 func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo, dataHandler func(data string, sr *StreamResult)) {
 
 	if resp == nil || dataHandler == nil {
@@ -277,6 +332,8 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	case <-c.Request.Context().Done():
 		info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, c.Request.Context().Err())
 	}
+
+	logStreamClientGoneDiagnostic(c, info, streamingTimeout, pingInterval, pingEnabled)
 
 	if info.StreamStatus.IsNormalEnd() && !info.StreamStatus.HasErrors() {
 		logger.LogInfo(c, fmt.Sprintf("stream ended: %s", info.StreamStatus.Summary()))
