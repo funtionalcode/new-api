@@ -177,3 +177,13 @@ Confidence: low|medium|high
 ```
 
 Before every `git commit`, inspect `git log --oneline -5` and match the local convention.
+
+### Rule 9: Nginx Reverse Proxy Config — Preserve Large Payload Passthrough
+
+The canonical nginx reverse proxy example for host port `3000` MUST be kept in `docs/installation/nginx-new-api-3000.conf`.
+
+When updating nginx deployment docs or host config for this project:
+- Keep `client_max_body_size 0;` in the `server` block so nginx does not reject large AI API payloads with `413 Request Entity Too Large` before the application can process them.
+- Keep streaming-friendly proxy settings such as `proxy_buffering off`, `proxy_cache off`, and long read/send timeouts.
+- Keep real-client-IP headers (`X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`) so proxy-aware logging and rate-limit behavior stay correct.
+- Do not confuse nginx ingress limits with the application-level `MAX_REQUEST_BODY_MB` setting; nginx should pass requests through, while the app setting controls business/runtime protection.
