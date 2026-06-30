@@ -413,10 +413,20 @@ export const generateChartTimePoints = (
 };
 
 // ========== 用户维度数据处理 ==========
+const formatDashboardUserLabel = (username, remark) => {
+  const name = username || '-';
+  const note = (remark || '').trim();
+  return note ? `${name}\n${note}` : name;
+};
+
 export const processUserData = (data, dataExportDefaultTime, limit = 10) => {
   const userTotals = new Map();
   data.forEach((item) => {
-    const prev = userTotals.get(item.username) || { quota: 0, tokens: 0, remark: '' };
+    const prev = userTotals.get(item.username) || {
+      quota: 0,
+      tokens: 0,
+      remark: '',
+    };
     userTotals.set(item.username, {
       quota: prev.quota + item.quota,
       tokens: prev.tokens + (item.token_used || 0),
@@ -431,7 +441,9 @@ export const processUserData = (data, dataExportDefaultTime, limit = 10) => {
   const topUserSet = new Set(topUsers);
 
   const rankingData = sorted.slice(0, limit).map(([username, totals]) => ({
-    User: totals.remark || username,
+    User: formatDashboardUserLabel(username, totals.remark),
+    Username: username,
+    Remark: totals.remark || '',
     Quota: totals.quota,
     Tokens: totals.tokens,
   }));
@@ -472,9 +484,12 @@ export const processUserData = (data, dataExportDefaultTime, limit = 10) => {
     topUsers.forEach((user) => {
       const key = `${time}-${user}`;
       const val = timeUserMap.get(key);
+      const remark = userRemarkMap.get(user) || '';
       trendData.push({
         Time: time,
-        User: userRemarkMap.get(user) || user,
+        User: formatDashboardUserLabel(user, remark),
+        Username: user,
+        Remark: remark,
         Quota: val?.quota || 0,
         Tokens: val?.tokens || 0,
       });

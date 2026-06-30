@@ -31,7 +31,6 @@ const ChartsPanel = ({
   spec_rank_bar,
   spec_user_rank,
   spec_user_trend,
-  spec_token_consumption,
   CARD_PROPS,
   CHART_CONFIG,
   FLEX_CENTER_GAP2,
@@ -70,7 +69,6 @@ const ChartsPanel = ({
             <TabPane tab={<span>{t('调用次数排行')}</span>} itemKey='4' />
             <TabPane tab={<span>{t('用户消耗排行')}</span>} itemKey='5' />
             <TabPane tab={<span>{t('用户消耗趋势')}</span>} itemKey='6' />
-            <TabPane tab={<span>{t('Token Consumption')}</span>} itemKey='7' />
           </Tabs>
         </div>
       }
@@ -98,9 +96,6 @@ const ChartsPanel = ({
         )}
         {activeChartTab === '6' && (
           <VChart spec={spec_user_trend} option={CHART_CONFIG} />
-        )}
-        {activeChartTab === '7' && (
-          <VChart spec={spec_token_consumption} option={CHART_CONFIG} />
         )}
       </div>
     </Card>

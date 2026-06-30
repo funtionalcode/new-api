@@ -401,50 +401,6 @@ export const useDashboardCharts = (
     color: { type: 'ordinal', range: USER_COLORS },
   });
 
-  // ========== Admin: Token 消耗 ==========
-  const [spec_token_consumption, setSpecTokenConsumption] = useState({
-    type: 'area',
-    data: [{ id: 'tokenConsumptionData', values: [] }],
-    xField: 'Time',
-    yField: 'Tokens',
-    seriesField: 'User',
-    stack: false,
-    legends: { visible: true, selectMode: 'single' },
-    title: {
-      visible: true,
-      text: t('Token Consumption'),
-      subtext: '',
-    },
-    axes: [{
-      orient: 'left',
-      label: {
-        formatMethod: (value) => renderNumber(value),
-      },
-    }],
-    area: { style: { fillOpacity: 0.15 } },
-    line: { style: { lineWidth: 2 } },
-    point: { visible: false },
-    tooltip: {
-      mark: {
-        content: [{
-          key: (datum) => datum['User'],
-          value: (datum) => renderNumber(datum['Tokens'] || 0),
-        }],
-      },
-      dimension: {
-        content: [{
-          key: (datum) => datum['User'],
-          value: (datum) => datum['Tokens'] || 0,
-        }],
-        updateContent: createDashboardDimensionTooltipUpdater({
-          totalLabel: t('总计'),
-          formatValue: renderNumber,
-        }),
-      },
-    },
-    color: { type: 'ordinal', range: USER_COLORS },
-  });
-
   // ========== 数据处理函数 ==========
   const generateModelColors = useCallback((uniqueModels, modelColors) => {
     const newModelColors = {};
@@ -712,6 +668,8 @@ export const useDashboardCharts = (
 
       const userRankValues = rankingData.map((item) => ({
         User: item.User,
+        Username: item.Username,
+        Remark: item.Remark,
         rawQuota: isTokensMode ? (item.Tokens || 0) : item.Quota,
         Quota: isTokensMode
           ? renderNumber(item.Tokens || 0)
@@ -759,6 +717,8 @@ export const useDashboardCharts = (
         return {
           Time: item.Time,
           User: item.User,
+          Username: item.Username,
+          Remark: item.Remark,
           rawQuota: rawValue,
           Usage: rawValue,
         };
@@ -808,22 +768,6 @@ export const useDashboardCharts = (
         axes: userTrendAxes,
         tooltip: userTrendTooltip,
       }));
-
-      const tokenTrendValues = userTrend.map((item) => ({
-        Time: item.Time,
-        User: item.User,
-        Tokens: item.Tokens || 0,
-      }));
-      const totalUserTokens = rankingData.reduce((sum, item) => sum + (item.Tokens || 0), 0);
-
-      setSpecTokenConsumption((prev) => ({
-        ...prev,
-        data: [{ id: 'tokenConsumptionData', values: tokenTrendValues }],
-        title: {
-          ...prev.title,
-          subtext: `${t('总计')}：${renderNumber(totalUserTokens)}`,
-        },
-      }));
     },
     [dataExportDefaultTime, t, usageViewMode],
   );
@@ -842,7 +786,6 @@ export const useDashboardCharts = (
     spec_rank_bar,
     spec_user_rank,
     spec_user_trend,
-    spec_token_consumption,
     updateChartData,
     updateUserChartData,
     updateLineTotalBySelectedModels,
