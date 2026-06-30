@@ -39,6 +39,7 @@ type Log struct {
 	RequestId         string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
 	UpstreamRequestId string `json:"upstream_request_id,omitempty" gorm:"type:varchar(128);index:idx_logs_upstream_request_id;default:''"`
 	Other             string `json:"other"`
+	Remark            string `json:"remark,omitempty" gorm:"-"`
 }
 
 // don't use iota, avoid change log type value
@@ -285,7 +286,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 }
 
-func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
+func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, ip string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB
@@ -296,6 +297,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	tx = applyLogContainsFilter(tx, "logs.model_name", modelName)
 	tx = applyLogContainsFilter(tx, "logs.username", username)
 	tx = applyLogContainsFilter(tx, "logs.token_name", tokenName)
+	tx = applyLogContainsFilter(tx, "logs.ip", ip)
 	if requestId != "" {
 		tx = tx.Where("logs.request_id = ?", requestId)
 	}
@@ -323,10 +325,31 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 		return nil, 0, err
 	}
 
+	userIds := types.NewSet[int]()
 	channelIds := types.NewSet[int]()
 	for _, log := range logs {
+		if log.UserId != 0 {
+			userIds.Add(log.UserId)
+		}
 		if log.ChannelId != 0 {
 			channelIds.Add(log.ChannelId)
+		}
+	}
+
+	if userIds.Len() > 0 {
+		var users []struct {
+			Id     int    `gorm:"column:id"`
+			Remark string `gorm:"column:remark"`
+		}
+		if err = DB.Unscoped().Model(&User{}).Select("id, remark").Where("id IN ?", userIds.Items()).Find(&users).Error; err != nil {
+			return logs, total, err
+		}
+		remarkMap := make(map[int]string, len(users))
+		for _, user := range users {
+			remarkMap[user.Id] = user.Remark
+		}
+		for i := range logs {
+			logs[i].Remark = remarkMap[logs[i].UserId]
 		}
 	}
 
@@ -368,7 +391,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 
 const logSearchCountLimit = 10000
 
-func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
+func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, ip string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB.Where("logs.user_id = ?", userId)
@@ -378,6 +401,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 
 	tx = applyLogContainsFilter(tx, "logs.model_name", modelName)
 	tx = applyLogContainsFilter(tx, "logs.token_name", tokenName)
+	tx = applyLogContainsFilter(tx, "logs.ip", ip)
 	if requestId != "" {
 		tx = tx.Where("logs.request_id = ?", requestId)
 	}
@@ -432,7 +456,7 @@ func applyLogContainsFilter(tx *gorm.DB, column string, value string) *gorm.DB {
 	return tx.Where(column+" LIKE ? ESCAPE '!'", pattern)
 }
 
-func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
+func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, ip string) (stat Stat, err error) {
 	tx := LOG_DB.Table("logs").Select("sum(quota) quota")
 
 	// 为rpm和tpm创建单独的查询
@@ -442,6 +466,8 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	rpmTpmQuery = applyLogContainsFilter(rpmTpmQuery, "username", username)
 	tx = applyLogContainsFilter(tx, "token_name", tokenName)
 	rpmTpmQuery = applyLogContainsFilter(rpmTpmQuery, "token_name", tokenName)
+	tx = applyLogContainsFilter(tx, "ip", ip)
+	rpmTpmQuery = applyLogContainsFilter(rpmTpmQuery, "ip", ip)
 	if startTimestamp != 0 {
 		tx = tx.Where("created_at >= ?", startTimestamp)
 	}

@@ -94,6 +94,15 @@ const LogsFilters = ({
           />
 
           <Form.Input
+            field='ip'
+            prefix={<IconSearch />}
+            placeholder={t('IP')}
+            showClear
+            pure
+            size='small'
+          />
+
+          <Form.Input
             field='request_id'
             prefix={<IconSearch />}
             placeholder={t('Request ID')}

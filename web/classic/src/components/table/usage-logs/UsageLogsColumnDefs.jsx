@@ -204,6 +204,62 @@ function renderIsStream(bool, t, streamStatus) {
   }
 }
 
+function renderUsernameWithRemark(text, record, showUserInfoFunc) {
+  const username = text || '-';
+  const remark = (record?.remark || '').trim();
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        minWidth: 0,
+      }}
+    >
+      <Avatar
+        size='extra-small'
+        color={stringToColor(username)}
+        onClick={(event) => {
+          event.stopPropagation();
+          showUserInfoFunc(record.user_id);
+        }}
+      >
+        {typeof username === 'string' && username.slice(0, 1)}
+      </Avatar>
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            lineHeight: '18px',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {username}
+        </div>
+        {remark && (
+          <Tooltip content={remark} position='top' showArrow>
+            <div
+              style={{
+                color: 'var(--semi-color-text-2)',
+                fontSize: 12,
+                lineHeight: '16px',
+                maxWidth: 140,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {remark}
+            </div>
+          </Tooltip>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function renderUseTime(type, t) {
   const time = parseInt(type);
   if (time < 101) {
@@ -589,20 +645,7 @@ export const getLogsColumns = ({
       dataIndex: 'username',
       render: (text, record, index) => {
         return isAdminUser ? (
-          <div>
-            <Avatar
-              size='extra-small'
-              color={stringToColor(text)}
-              style={{ marginRight: 4 }}
-              onClick={(event) => {
-                event.stopPropagation();
-                showUserInfoFunc(record.user_id);
-              }}
-            >
-              {typeof text === 'string' && text.slice(0, 1)}
-            </Avatar>
-            {text}
-          </div>
+          renderUsernameWithRemark(text, record, showUserInfoFunc)
         ) : (
           <></>
         );
