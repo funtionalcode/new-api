@@ -101,13 +101,15 @@ func GetLogsStat(c *gin.Context) {
 	logType, _ := strconv.Atoi(c.Query("type"))
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	avgStartTimestamp, _ := strconv.ParseInt(c.Query("avg_start_timestamp"), 10, 64)
+	avgEndTimestamp, _ := strconv.ParseInt(c.Query("avg_end_timestamp"), 10, 64)
 	tokenName := c.Query("token_name")
 	username := c.Query("username")
 	modelName := c.Query("model_name")
 	channel, _ := strconv.Atoi(c.Query("channel"))
 	group := c.Query("group")
 	ip := c.Query("ip")
-	stat, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, ip)
+	stat, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, ip, avgStartTimestamp, avgEndTimestamp)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -117,9 +119,11 @@ func GetLogsStat(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"data": gin.H{
-			"quota": stat.Quota,
-			"rpm":   stat.Rpm,
-			"tpm":   stat.Tpm,
+			"quota":              stat.Quota,
+			"rpm":                stat.Rpm,
+			"tpm":                stat.Tpm,
+			"avg_use_time":       stat.AvgUseTime,
+			"avg_use_time_count": stat.AvgUseTimeCount,
 		},
 	})
 	return
@@ -130,12 +134,14 @@ func GetLogsSelfStat(c *gin.Context) {
 	logType, _ := strconv.Atoi(c.Query("type"))
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	avgStartTimestamp, _ := strconv.ParseInt(c.Query("avg_start_timestamp"), 10, 64)
+	avgEndTimestamp, _ := strconv.ParseInt(c.Query("avg_end_timestamp"), 10, 64)
 	tokenName := c.Query("token_name")
 	modelName := c.Query("model_name")
 	channel, _ := strconv.Atoi(c.Query("channel"))
 	group := c.Query("group")
 	ip := c.Query("ip")
-	quotaNum, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, ip)
+	quotaNum, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, ip, avgStartTimestamp, avgEndTimestamp)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -145,9 +151,11 @@ func GetLogsSelfStat(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"data": gin.H{
-			"quota": quotaNum.Quota,
-			"rpm":   quotaNum.Rpm,
-			"tpm":   quotaNum.Tpm,
+			"quota":              quotaNum.Quota,
+			"rpm":                quotaNum.Rpm,
+			"tpm":                quotaNum.Tpm,
+			"avg_use_time":       quotaNum.AvgUseTime,
+			"avg_use_time_count": quotaNum.AvgUseTimeCount,
 			//"token": tokenNum,
 		},
 	})

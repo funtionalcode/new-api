@@ -18,10 +18,19 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Tag, Space, Skeleton } from '@douyinfe/semi-ui';
+import { Tag, Space, Skeleton, Select } from '@douyinfe/semi-ui';
 import { renderQuota } from '../../../helpers';
 import CompactModeToggle from '../../common/ui/CompactModeToggle';
 import { useMinimumLoadingTime } from '../../../hooks/common/useMinimumLoadingTime';
+
+const formatAverageUseTime = (value, count) => {
+  const time = Number(value || 0);
+  const sampleCount = Number(count || 0);
+  if (!Number.isFinite(time) || time <= 0 || sampleCount <= 0) {
+    return '-';
+  }
+  return `${time >= 10 ? time.toFixed(1) : time.toFixed(2)} s`;
+};
 
 const LogsActions = ({
   stat,
@@ -29,23 +38,33 @@ const LogsActions = ({
   showStat,
   compactMode,
   setCompactMode,
+  avgUseTimeWindow,
+  handleAvgUseTimeWindowChange,
   t,
 }) => {
   const showSkeleton = useMinimumLoadingTime(loadingStat);
   const needSkeleton = !showStat || showSkeleton;
+  const avgUseTimeWindowOptions = [
+    { label: t('筛选时间'), value: 'filter' },
+    { label: t('近 1 分钟'), value: '60' },
+    { label: t('近 5 分钟'), value: '300' },
+    { label: t('近 15 分钟'), value: '900' },
+    { label: t('近 60 分钟'), value: '3600' },
+  ];
 
   const placeholder = (
     <Space>
       <Skeleton.Title style={{ width: 108, height: 21, borderRadius: 6 }} />
       <Skeleton.Title style={{ width: 65, height: 21, borderRadius: 6 }} />
       <Skeleton.Title style={{ width: 64, height: 21, borderRadius: 6 }} />
+      <Skeleton.Title style={{ width: 108, height: 21, borderRadius: 6 }} />
     </Space>
   );
 
   return (
     <div className='flex flex-col md:flex-row justify-between items-start md:items-center gap-2 w-full'>
       <Skeleton loading={needSkeleton} active placeholder={placeholder}>
-        <Space>
+        <Space wrap>
           <Tag
             color='blue'
             style={{
@@ -80,6 +99,29 @@ const LogsActions = ({
           >
             TPM: {stat.tpm}
           </Tag>
+          <Tag
+            color='green'
+            style={{
+              fontWeight: 500,
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+              padding: 13,
+            }}
+            className='!rounded-lg'
+          >
+            {t('平均耗时')}:{' '}
+            {formatAverageUseTime(
+              stat.avg_use_time,
+              stat.avg_use_time_count,
+            )}
+          </Tag>
+          <Select
+            value={avgUseTimeWindow}
+            onChange={handleAvgUseTimeWindowChange}
+            optionList={avgUseTimeWindowOptions}
+            size='small'
+            disabled={loadingStat}
+            style={{ width: 120 }}
+          />
         </Space>
       </Skeleton>
 
