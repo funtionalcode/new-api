@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Tag, Space, Skeleton, DatePicker } from '@douyinfe/semi-ui';
+import { Tag, Space, Skeleton, DatePicker, Button } from '@douyinfe/semi-ui';
 import { renderQuota } from '../../../helpers';
 import CompactModeToggle from '../../common/ui/CompactModeToggle';
 import { useMinimumLoadingTime } from '../../../hooks/common/useMinimumLoadingTime';
@@ -40,6 +40,7 @@ const LogsActions = ({
   setCompactMode,
   avgUseTimeDateRange,
   handleAvgUseTimeDateRangeChange,
+  handleAvgUseTimeQuery,
   t,
 }) => {
   const showSkeleton = useMinimumLoadingTime(loadingStat);
@@ -118,6 +119,14 @@ const LogsActions = ({
             disabled={loadingStat}
             style={{ width: 340 }}
           />
+          <Button
+            type='tertiary'
+            size='small'
+            loading={loadingStat}
+            onClick={handleAvgUseTimeQuery}
+          >
+            {t('查询')}
+          </Button>
         </Space>
       </Skeleton>
 

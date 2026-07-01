@@ -387,8 +387,11 @@ export const useLogsData = () => {
 
   const handleAvgUseTimeDateRangeChange = (value) => {
     setAvgUseTimeDateRange(value);
+  };
+
+  const handleAvgUseTimeQuery = () => {
     if (formApi) {
-      handleEyeClick(value);
+      handleEyeClick(avgUseTimeDateRange);
     }
   };
 
@@ -964,6 +967,7 @@ export const useLogsData = () => {
     copyText,
     handleEyeClick,
     handleAvgUseTimeDateRangeChange,
+    handleAvgUseTimeQuery,
     resetAvgUseTimeDateRange,
     setLogsFormat,
     hasExpandableRows,
