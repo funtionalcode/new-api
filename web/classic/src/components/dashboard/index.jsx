@@ -59,7 +59,7 @@ const Dashboard = () => {
 
   // ========== 主要数据管理 ==========
   const dashboardData = useDashboardData(userState, userDispatch, statusState);
-  const [usageViewMode, setUsageViewMode] = useState('quota');
+  const [usageViewMode, setUsageViewMode] = useState('tokens');
   const [userData, setUserData] = useState([]);
 
   // ========== 图表管理 ==========

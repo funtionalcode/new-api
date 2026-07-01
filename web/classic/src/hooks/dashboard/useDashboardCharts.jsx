@@ -658,13 +658,13 @@ export const useDashboardCharts = (
   // ========== 用户维度图表数据处理 ==========
   const updateUserChartData = useCallback(
     (data, timeGranularity = dataExportDefaultTime) => {
+      const isTokensMode = usageViewMode === 'tokens';
       const { rankingData, trendData: userTrend } = processUserData(
         data,
         timeGranularity,
         10,
+        isTokensMode ? 'tokens' : 'quota',
       );
-
-      const isTokensMode = usageViewMode === 'tokens';
 
       const userRankValues = rankingData.map((item) => ({
         User: item.User,

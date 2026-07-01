@@ -419,7 +419,12 @@ const formatDashboardUserLabel = (username, remark) => {
   return note ? `${name}\n${note}` : name;
 };
 
-export const processUserData = (data, dataExportDefaultTime, limit = 10) => {
+export const processUserData = (
+  data,
+  dataExportDefaultTime,
+  limit = 10,
+  rankBy = 'quota',
+) => {
   const userTotals = new Map();
   data.forEach((item) => {
     const prev = userTotals.get(item.username) || {
@@ -434,8 +439,9 @@ export const processUserData = (data, dataExportDefaultTime, limit = 10) => {
     });
   });
 
+  const sortKey = rankBy === 'tokens' ? 'tokens' : 'quota';
   const sorted = Array.from(userTotals.entries()).sort(
-    (a, b) => b[1].quota - a[1].quota,
+    (a, b) => b[1][sortKey] - a[1][sortKey],
   );
   const topUsers = sorted.slice(0, limit).map(([u]) => u);
   const topUserSet = new Set(topUsers);
