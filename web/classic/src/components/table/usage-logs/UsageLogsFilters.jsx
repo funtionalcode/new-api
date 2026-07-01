@@ -30,6 +30,7 @@ const LogsFilters = ({
   setShowColumnSelector,
   formApi,
   setLogType,
+  resetAvgUseTimeDateRange,
   loading,
   isAdminUser,
   t,
@@ -175,6 +176,7 @@ const LogsFilters = ({
               onClick={() => {
                 if (formApi) {
                   formApi.reset();
+                  resetAvgUseTimeDateRange();
                   setLogType(0);
                   setTimeout(() => {
                     refresh();

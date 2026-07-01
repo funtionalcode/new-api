@@ -84,9 +84,15 @@ export const useLogsData = () => {
   const BILLING_DISPLAY_MODE_STORAGE_KEY = isAdminUser
     ? 'logs-billing-display-mode-admin'
     : 'logs-billing-display-mode-user';
-  const AVG_USE_TIME_WINDOW_STORAGE_KEY = isAdminUser
-    ? 'logs-avg-use-time-window-admin'
-    : 'logs-avg-use-time-window-user';
+
+  const getDefaultDateRange = () => {
+    const current = new Date();
+    return [
+      timestamp2string(getTodayStartTimestamp()),
+      timestamp2string(current.getTime() / 1000 + 3600),
+    ];
+  };
+  const defaultDateRange = getDefaultDateRange();
 
   // Statistics state
   const [stat, setStat] = useState({
@@ -95,13 +101,11 @@ export const useLogsData = () => {
     avg_use_time: 0,
     avg_use_time_count: 0,
   });
-  const [avgUseTimeWindow, setAvgUseTimeWindow] = useState(() => {
-    return localStorage.getItem(AVG_USE_TIME_WINDOW_STORAGE_KEY) || 'filter';
-  });
+  const [avgUseTimeDateRange, setAvgUseTimeDateRange] =
+    useState(defaultDateRange);
 
   // Form state
   const [formApi, setFormApi] = useState(null);
-  let now = new Date();
   const formInitValues = {
     username: '',
     token_name: '',
@@ -110,10 +114,7 @@ export const useLogsData = () => {
     group: '',
     ip: '',
     request_id: '',
-    dateRange: [
-      timestamp2string(getTodayStartTimestamp()),
-      timestamp2string(now.getTime() / 1000 + 3600),
-    ],
+    dateRange: defaultDateRange,
     logType: '0',
   };
 
@@ -241,16 +242,13 @@ export const useLogsData = () => {
     localStorage.setItem(BILLING_DISPLAY_MODE_STORAGE_KEY, billingDisplayMode);
   }, [BILLING_DISPLAY_MODE_STORAGE_KEY, billingDisplayMode]);
 
-  useEffect(() => {
-    localStorage.setItem(AVG_USE_TIME_WINDOW_STORAGE_KEY, avgUseTimeWindow);
-  }, [AVG_USE_TIME_WINDOW_STORAGE_KEY, avgUseTimeWindow]);
-
   // 获取表单值的辅助函数，确保所有值都是字符串
   const getFormValues = () => {
     const formValues = formApi ? formApi.getValues() : {};
 
-    let start_timestamp = timestamp2string(getTodayStartTimestamp());
-    let end_timestamp = timestamp2string(now.getTime() / 1000 + 3600);
+    const fallbackDateRange = getDefaultDateRange();
+    let start_timestamp = fallbackDateRange[0];
+    let end_timestamp = fallbackDateRange[1];
 
     if (
       formValues.dateRange &&
@@ -278,25 +276,19 @@ export const useLogsData = () => {
   const getStatTimestampParams = (
     startTimestamp,
     endTimestamp,
-    selectedAvgUseTimeWindow = avgUseTimeWindow,
+    selectedAvgUseTimeDateRange = avgUseTimeDateRange,
   ) => {
     const localStartTimestamp = Date.parse(startTimestamp) / 1000;
     const localEndTimestamp = Date.parse(endTimestamp) / 1000;
-
-    if (selectedAvgUseTimeWindow === 'filter') {
-      return {
-        localStartTimestamp,
-        localEndTimestamp,
-        avgStartTimestamp: localStartTimestamp,
-        avgEndTimestamp: localEndTimestamp,
-      };
-    }
-
-    const windowSeconds = parseInt(selectedAvgUseTimeWindow, 10);
-    const avgEndTimestamp = Math.floor(Date.now() / 1000);
-    const avgStartTimestamp = Number.isFinite(windowSeconds)
-      ? avgEndTimestamp - windowSeconds
+    const hasAvgDateRange =
+      Array.isArray(selectedAvgUseTimeDateRange) &&
+      selectedAvgUseTimeDateRange.length === 2;
+    const avgStartTimestamp = hasAvgDateRange
+      ? Date.parse(selectedAvgUseTimeDateRange[0]) / 1000
       : localStartTimestamp;
+    const avgEndTimestamp = hasAvgDateRange
+      ? Date.parse(selectedAvgUseTimeDateRange[1]) / 1000
+      : localEndTimestamp;
 
     return {
       localStartTimestamp,
@@ -307,7 +299,9 @@ export const useLogsData = () => {
   };
 
   // Statistics functions
-  const getLogSelfStat = async (selectedAvgUseTimeWindow = avgUseTimeWindow) => {
+  const getLogSelfStat = async (
+    selectedAvgUseTimeDateRange = avgUseTimeDateRange,
+  ) => {
     const {
       token_name,
       model_name,
@@ -326,7 +320,7 @@ export const useLogsData = () => {
     } = getStatTimestampParams(
       start_timestamp,
       end_timestamp,
-      selectedAvgUseTimeWindow,
+      selectedAvgUseTimeDateRange,
     );
     let url = `/api/log/self/stat?type=${currentLogType}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&avg_start_timestamp=${avgStartTimestamp}&avg_end_timestamp=${avgEndTimestamp}&group=${group}&ip=${ip}`;
     url = encodeURI(url);
@@ -339,7 +333,9 @@ export const useLogsData = () => {
     }
   };
 
-  const getLogStat = async (selectedAvgUseTimeWindow = avgUseTimeWindow) => {
+  const getLogStat = async (
+    selectedAvgUseTimeDateRange = avgUseTimeDateRange,
+  ) => {
     const {
       username,
       token_name,
@@ -360,7 +356,7 @@ export const useLogsData = () => {
     } = getStatTimestampParams(
       start_timestamp,
       end_timestamp,
-      selectedAvgUseTimeWindow,
+      selectedAvgUseTimeDateRange,
     );
     let url = `/api/log/stat?type=${currentLogType}&username=${username}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&avg_start_timestamp=${avgStartTimestamp}&avg_end_timestamp=${avgEndTimestamp}&channel=${channel}&group=${group}&ip=${ip}`;
     url = encodeURI(url);
@@ -373,25 +369,31 @@ export const useLogsData = () => {
     }
   };
 
-  const handleEyeClick = async (selectedAvgUseTimeWindow = avgUseTimeWindow) => {
+  const handleEyeClick = async (
+    selectedAvgUseTimeDateRange = avgUseTimeDateRange,
+  ) => {
     if (loadingStat) {
       return;
     }
     setLoadingStat(true);
     if (isAdminUser) {
-      await getLogStat(selectedAvgUseTimeWindow);
+      await getLogStat(selectedAvgUseTimeDateRange);
     } else {
-      await getLogSelfStat(selectedAvgUseTimeWindow);
+      await getLogSelfStat(selectedAvgUseTimeDateRange);
     }
     setShowStat(true);
     setLoadingStat(false);
   };
 
-  const handleAvgUseTimeWindowChange = (value) => {
-    setAvgUseTimeWindow(value);
+  const handleAvgUseTimeDateRangeChange = (value) => {
+    setAvgUseTimeDateRange(value);
     if (formApi) {
       handleEyeClick(value);
     }
+  };
+
+  const resetAvgUseTimeDateRange = () => {
+    setAvgUseTimeDateRange(formInitValues.dateRange);
   };
 
   // User info function
@@ -915,7 +917,7 @@ export const useLogsData = () => {
     pageSize,
     logType,
     stat,
-    avgUseTimeWindow,
+    avgUseTimeDateRange,
     isAdminUser,
 
     // Form state
@@ -961,7 +963,8 @@ export const useLogsData = () => {
     refresh,
     copyText,
     handleEyeClick,
-    handleAvgUseTimeWindowChange,
+    handleAvgUseTimeDateRangeChange,
+    resetAvgUseTimeDateRange,
     setLogsFormat,
     hasExpandableRows,
     setLogType,

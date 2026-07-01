@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Tag, Space, Skeleton, Select } from '@douyinfe/semi-ui';
+import { Tag, Space, Skeleton, DatePicker } from '@douyinfe/semi-ui';
 import { renderQuota } from '../../../helpers';
 import CompactModeToggle from '../../common/ui/CompactModeToggle';
 import { useMinimumLoadingTime } from '../../../hooks/common/useMinimumLoadingTime';
@@ -38,26 +38,19 @@ const LogsActions = ({
   showStat,
   compactMode,
   setCompactMode,
-  avgUseTimeWindow,
-  handleAvgUseTimeWindowChange,
+  avgUseTimeDateRange,
+  handleAvgUseTimeDateRangeChange,
   t,
 }) => {
   const showSkeleton = useMinimumLoadingTime(loadingStat);
   const needSkeleton = !showStat || showSkeleton;
-  const avgUseTimeWindowOptions = [
-    { label: t('筛选时间'), value: 'filter' },
-    { label: t('近 1 分钟'), value: '60' },
-    { label: t('近 5 分钟'), value: '300' },
-    { label: t('近 15 分钟'), value: '900' },
-    { label: t('近 60 分钟'), value: '3600' },
-  ];
 
   const placeholder = (
     <Space>
       <Skeleton.Title style={{ width: 108, height: 21, borderRadius: 6 }} />
       <Skeleton.Title style={{ width: 65, height: 21, borderRadius: 6 }} />
       <Skeleton.Title style={{ width: 64, height: 21, borderRadius: 6 }} />
-      <Skeleton.Title style={{ width: 108, height: 21, borderRadius: 6 }} />
+      <Skeleton.Title style={{ width: 320, height: 21, borderRadius: 6 }} />
     </Space>
   );
 
@@ -114,13 +107,16 @@ const LogsActions = ({
               stat.avg_use_time_count,
             )}
           </Tag>
-          <Select
-            value={avgUseTimeWindow}
-            onChange={handleAvgUseTimeWindowChange}
-            optionList={avgUseTimeWindowOptions}
+          <DatePicker
+            type='dateTimeRange'
+            value={avgUseTimeDateRange}
+            onChange={handleAvgUseTimeDateRangeChange}
+            placeholder={[t('平均耗时开始时间'), t('平均耗时结束时间')]}
             size='small'
+            pure
+            showClear={false}
             disabled={loadingStat}
-            style={{ width: 120 }}
+            style={{ width: 340 }}
           />
         </Space>
       </Skeleton>
