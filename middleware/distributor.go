@@ -36,6 +36,21 @@ func Distribute() func(c *gin.Context) {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 			return
 		}
+		if shouldCheckUserTokenLimit(c, shouldSelectChannel) {
+			userId := c.GetInt("id")
+			if userId > 0 {
+				limitResult, limitErr := model.CheckUserTokenLimit(userId, time.Now())
+				if limitErr != nil {
+					common.SysLog(fmt.Sprintf("check user token limit failed, user_id=%d: %s", userId, limitErr.Error()))
+					abortWithOpenAiMessage(c, http.StatusInternalServerError, i18n.T(c, i18n.MsgDatabaseError))
+					return
+				}
+				if limitResult.Exceeded {
+					abortWithOpenAiMessage(c, http.StatusForbidden, limitResult.Message(), types.ErrorCodeInsufficientUserQuota)
+					return
+				}
+			}
+		}
 		if ok {
 			id, err := strconv.Atoi(channelId.(string))
 			if err != nil {
@@ -166,6 +181,21 @@ func Distribute() func(c *gin.Context) {
 			service.RecordChannelAffinity(c, channel.Id)
 		}
 	}
+}
+
+func shouldCheckUserTokenLimit(c *gin.Context, shouldSelectChannel bool) bool {
+	if shouldSelectChannel {
+		return true
+	}
+	relayModeValue, ok := c.Get("relay_mode")
+	if !ok {
+		return false
+	}
+	relayMode, ok := relayModeValue.(int)
+	if !ok {
+		return false
+	}
+	return relayMode == relayconstant.RelayModeVideoSubmit
 }
 
 // getModelFromRequest 从请求中读取模型信息

@@ -49,11 +49,29 @@ const AddUserModal = (props) => {
     display_name: '',
     password: '',
     remark: '',
+    daily_token_limit: 0,
+    weekly_token_limit: 0,
+    monthly_token_limit: 0,
   });
 
   const submit = async (values) => {
     setLoading(true);
-    const res = await API.post(`/api/user/`, values);
+    const payload = { ...values };
+    ['daily_token_limit', 'weekly_token_limit', 'monthly_token_limit'].forEach(
+      (field) => {
+        payload[field] = Number(payload[field]) || 0;
+      },
+    );
+    if (
+      payload.daily_token_limit < 0 ||
+      payload.weekly_token_limit < 0 ||
+      payload.monthly_token_limit < 0
+    ) {
+      showError(t('周期 Token 上限不能为负数'));
+      setLoading(false);
+      return;
+    }
+    const res = await API.post(`/api/user/`, payload);
     const { success, message } = res.data;
     if (success) {
       showSuccess(t('用户账户创建成功！'));
@@ -171,6 +189,44 @@ const AddUserModal = (props) => {
                       label={t('备注')}
                       placeholder={t('请输入备注（仅管理员可见）')}
                       showClear
+                    />
+                  </Col>
+                  <Col span={24}>
+                    <div
+                      className='text-xs'
+                      style={{ color: 'var(--semi-color-text-2)' }}
+                    >
+                      {t('Token 周期上限，0 表示不限')}
+                    </div>
+                  </Col>
+                  <Col xs={24} sm={24} md={8}>
+                    <Form.InputNumber
+                      field='daily_token_limit'
+                      label={t('每日 Token')}
+                      min={0}
+                      precision={0}
+                      step={1000}
+                      style={{ width: '100%' }}
+                    />
+                  </Col>
+                  <Col xs={24} sm={24} md={8}>
+                    <Form.InputNumber
+                      field='weekly_token_limit'
+                      label={t('每周 Token')}
+                      min={0}
+                      precision={0}
+                      step={1000}
+                      style={{ width: '100%' }}
+                    />
+                  </Col>
+                  <Col xs={24} sm={24} md={8}>
+                    <Form.InputNumber
+                      field='monthly_token_limit'
+                      label={t('每月 Token')}
+                      min={0}
+                      precision={0}
+                      step={1000}
+                      style={{ width: '100%' }}
                     />
                   </Col>
                 </Row>

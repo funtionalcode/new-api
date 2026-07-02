@@ -177,6 +177,41 @@ const renderQuotaUsage = (text, record, t) => {
   );
 };
 
+const formatTokenLimit = (value, t) => {
+  const limit = Number(value) || 0;
+  return limit > 0 ? renderNumber(limit) : t('不限');
+};
+
+const renderTokenLimits = (text, record, t) => {
+  const daily = formatTokenLimit(record.daily_token_limit, t);
+  const weekly = formatTokenLimit(record.weekly_token_limit, t);
+  const monthly = formatTokenLimit(record.monthly_token_limit, t);
+  const popoverContent = (
+    <div className='text-xs p-2 space-y-1'>
+      <div>
+        {t('每日 Token 上限')}: {daily}
+      </div>
+      <div>
+        {t('每周 Token 上限')}: {weekly}
+      </div>
+      <div>
+        {t('每月 Token 上限')}: {monthly}
+      </div>
+    </div>
+  );
+  return (
+    <Popover content={popoverContent} position='top'>
+      <Tag color='white' shape='circle'>
+        <Space spacing={2}>
+          <span>{t('日')}: {daily}</span>
+          <span>{t('周')}: {weekly}</span>
+          <span>{t('月')}: {monthly}</span>
+        </Space>
+      </Tag>
+    </Popover>
+  );
+};
+
 /**
  * Render invite information
  */
@@ -337,6 +372,11 @@ export const getUsersColumns = ({
       title: t('剩余额度/总额度'),
       key: 'quota_usage',
       render: (text, record) => renderQuotaUsage(text, record, t),
+    },
+    {
+      title: t('Token 上限'),
+      key: 'token_limits',
+      render: (text, record) => renderTokenLimits(text, record, t),
     },
     {
       title: t('分组'),

@@ -304,6 +304,9 @@ func GetUser(c *gin.Context) {
 			"quota":                user.Quota,
 			"used_quota":           user.UsedQuota,
 			"request_count":        user.RequestCount,
+			"daily_token_limit":    user.DailyTokenLimit,
+			"weekly_token_limit":   user.WeeklyTokenLimit,
+			"monthly_token_limit":  user.MonthlyTokenLimit,
 			"group":                user.Group,
 			"aff_code":             user.AffCode,
 			"aff_count":            user.AffCount,
@@ -601,6 +604,10 @@ func UpdateUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
 		return
 	}
+	if hasNegativeTokenLimit(updatedUser) {
+		common.ApiError(c, fmt.Errorf("周期 Token 上限不能为负数"))
+		return
+	}
 	originUser, err := model.GetUserById(updatedUser.Id, false)
 	if err != nil {
 		common.ApiError(c, err)
@@ -669,6 +676,10 @@ func validateUserModelLimits(modelLimits []string) error {
 		}
 	}
 	return nil
+}
+
+func hasNegativeTokenLimit(user model.User) bool {
+	return user.DailyTokenLimit < 0 || user.WeeklyTokenLimit < 0 || user.MonthlyTokenLimit < 0
 }
 
 func AdminClearUserBinding(c *gin.Context) {
@@ -902,6 +913,10 @@ func CreateUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
 		return
 	}
+	if hasNegativeTokenLimit(user) {
+		common.ApiError(c, fmt.Errorf("周期 Token 上限不能为负数"))
+		return
+	}
 	if user.DisplayName == "" {
 		user.DisplayName = user.Username
 	}
@@ -912,10 +927,14 @@ func CreateUser(c *gin.Context) {
 	}
 	// Even for admin users, we cannot fully trust them!
 	cleanUser := model.User{
-		Username:    user.Username,
-		Password:    user.Password,
-		DisplayName: user.DisplayName,
-		Role:        user.Role, // 保持管理员设置的角色
+		Username:          user.Username,
+		Password:          user.Password,
+		DisplayName:       user.DisplayName,
+		Role:              user.Role, // 保持管理员设置的角色
+		Remark:            user.Remark,
+		DailyTokenLimit:   user.DailyTokenLimit,
+		WeeklyTokenLimit:  user.WeeklyTokenLimit,
+		MonthlyTokenLimit: user.MonthlyTokenLimit,
 	}
 	if err := cleanUser.Insert(0); err != nil {
 		common.ApiError(c, err)

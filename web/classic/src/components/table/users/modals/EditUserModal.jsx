@@ -95,6 +95,9 @@ const EditUserModal = (props) => {
     quota_amount: 0,
     group: 'default',
     remark: '',
+    daily_token_limit: 0,
+    weekly_token_limit: 0,
+    monthly_token_limit: 0,
     model_limits_enabled: false,
     model_limits: [],
   });
@@ -175,6 +178,20 @@ const EditUserModal = (props) => {
     delete payload.quota;
     delete payload.quota_amount;
     delete payload.setting;
+    ['daily_token_limit', 'weekly_token_limit', 'monthly_token_limit'].forEach(
+      (field) => {
+        payload[field] = Number(payload[field]) || 0;
+      },
+    );
+    if (
+      payload.daily_token_limit < 0 ||
+      payload.weekly_token_limit < 0 ||
+      payload.monthly_token_limit < 0
+    ) {
+      showError(t('周期 Token 上限不能为负数'));
+      setLoading(false);
+      return;
+    }
     if (payload.model_limits_enabled && (!payload.model_limits || payload.model_limits.length === 0)) {
       showError(t('启用模型限制时至少需要选择一个模型'));
       setLoading(false);
@@ -481,7 +498,10 @@ const EditUserModal = (props) => {
                             ? `▾ ${t('收起原生额度输入')}`
                             : `▸ ${t('使用原生额度输入')}`}
                         </div>
-                        <div style={{ display: showQuotaInput ? 'block' : 'none' }} className='mt-2'>
+                        <div
+                          style={{ display: showQuotaInput ? 'block' : 'none' }}
+                          className='mt-2'
+                        >
                           <Form.InputNumber
                             field='quota'
                             label={t('额度')}
@@ -490,6 +510,48 @@ const EditUserModal = (props) => {
                             readonly
                           />
                         </div>
+                      </Col>
+
+                      <Col span={24}>
+                        <div
+                          className='text-xs'
+                          style={{ color: 'var(--semi-color-text-2)' }}
+                        >
+                          {t('Token 周期上限，0 表示不限')}
+                        </div>
+                      </Col>
+
+                      <Col xs={24} sm={24} md={8}>
+                        <Form.InputNumber
+                          field='daily_token_limit'
+                          label={t('每日 Token')}
+                          min={0}
+                          precision={0}
+                          step={1000}
+                          style={{ width: '100%' }}
+                        />
+                      </Col>
+
+                      <Col xs={24} sm={24} md={8}>
+                        <Form.InputNumber
+                          field='weekly_token_limit'
+                          label={t('每周 Token')}
+                          min={0}
+                          precision={0}
+                          step={1000}
+                          style={{ width: '100%' }}
+                        />
+                      </Col>
+
+                      <Col xs={24} sm={24} md={8}>
+                        <Form.InputNumber
+                          field='monthly_token_limit'
+                          label={t('每月 Token')}
+                          min={0}
+                          precision={0}
+                          step={1000}
+                          style={{ width: '100%' }}
+                        />
                       </Col>
                     </Row>
                   </Card>
