@@ -647,6 +647,19 @@ func (user *User) Delete() error {
 	return invalidateUserCache(user.Id)
 }
 
+func (user *User) Restore() error {
+	if user.Id == 0 {
+		return errors.New("id 为空！")
+	}
+	if err := DB.Unscoped().Model(&User{}).Where("id = ?", user.Id).Update("deleted_at", nil).Error; err != nil {
+		return err
+	}
+	if err := DB.Unscoped().First(user, "id = ?", user.Id).Error; err != nil {
+		return err
+	}
+	return invalidateUserCache(user.Id)
+}
+
 func (user *User) HardDelete() error {
 	if user.Id == 0 {
 		return errors.New("id 为空！")

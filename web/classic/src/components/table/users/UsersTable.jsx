@@ -29,6 +29,7 @@ import PromoteUserModal from './modals/PromoteUserModal';
 import DemoteUserModal from './modals/DemoteUserModal';
 import EnableDisableUserModal from './modals/EnableDisableUserModal';
 import DeleteUserModal from './modals/DeleteUserModal';
+import RestoreUserModal from './modals/RestoreUserModal';
 import ResetPasskeyModal from './modals/ResetPasskeyModal';
 import ResetTwoFAModal from './modals/ResetTwoFAModal';
 import UserSubscriptionsModal from './modals/UserSubscriptionsModal';
@@ -58,6 +59,7 @@ const UsersTable = (usersData) => {
   const [showDemoteModal, setShowDemoteModal] = useState(false);
   const [showEnableDisableModal, setShowEnableDisableModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [modalUser, setModalUser] = useState(null);
   const [enableDisableAction, setEnableDisableAction] = useState('');
   const [showResetPasskeyModal, setShowResetPasskeyModal] = useState(false);
@@ -85,6 +87,11 @@ const UsersTable = (usersData) => {
   const showDeleteUserModal = (user) => {
     setModalUser(user);
     setShowDeleteModal(true);
+  };
+
+  const showRestoreUserModal = (user) => {
+    setModalUser(user);
+    setShowRestoreModal(true);
   };
 
   const showResetPasskeyUserModal = (user) => {
@@ -118,6 +125,11 @@ const UsersTable = (usersData) => {
     setShowEnableDisableModal(false);
   };
 
+  const handleRestoreConfirm = async () => {
+    await manageUser(modalUser.id, 'restore', modalUser);
+    setShowRestoreModal(false);
+  };
+
   const handleResetPasskeyConfirm = async () => {
     await resetUserPasskey(modalUser);
     setShowResetPasskeyModal(false);
@@ -138,6 +150,7 @@ const UsersTable = (usersData) => {
       showDemoteModal: showDemoteUserModal,
       showEnableDisableModal: showEnableDisableUserModal,
       showDeleteModal: showDeleteUserModal,
+      showRestoreModal: showRestoreUserModal,
       showResetPasskeyModal: showResetPasskeyUserModal,
       showResetTwoFAModal: showResetTwoFAUserModal,
       showUserSubscriptionsModal: showUserSubscriptionsUserModal,
@@ -150,6 +163,7 @@ const UsersTable = (usersData) => {
     showDemoteUserModal,
     showEnableDisableUserModal,
     showDeleteUserModal,
+    showRestoreUserModal,
     showResetPasskeyUserModal,
     showResetTwoFAUserModal,
     showUserSubscriptionsUserModal,
@@ -234,6 +248,13 @@ const UsersTable = (usersData) => {
         activePage={activePage}
         refresh={refresh}
         manageUser={manageUser}
+        t={t}
+      />
+
+      <RestoreUserModal
+        visible={showRestoreModal}
+        onCancel={() => setShowRestoreModal(false)}
+        onConfirm={handleRestoreConfirm}
         t={t}
       />
 

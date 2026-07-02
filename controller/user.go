@@ -1004,6 +1004,29 @@ func ManageUser(c *gin.Context) {
 		if err := model.InvalidateUserTokensCache(user.Id); err != nil {
 			common.SysLog(fmt.Sprintf("failed to invalidate tokens cache for user %d: %s", user.Id, err.Error()))
 		}
+	case "restore":
+		adminInfo := map[string]interface{}{
+			"admin_id":       c.GetInt("id"),
+			"admin_username": c.GetString("username"),
+		}
+		if err := user.Restore(); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if err := model.InvalidateUserTokensCache(user.Id); err != nil {
+			common.SysLog(fmt.Sprintf("failed to invalidate tokens cache for user %d: %s", user.Id, err.Error()))
+		}
+		model.RecordLogWithAdminInfo(user.Id, model.LogTypeManage, "管理员恢复已注销用户", adminInfo)
+		clearUser := model.User{
+			Role:   user.Role,
+			Status: user.Status,
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "",
+			"data":    clearUser,
+		})
+		return
 	case "promote":
 		if myRole != common.RoleRootUser {
 			common.ApiErrorI18n(c, i18n.MsgUserAdminCannotPromote)
@@ -1070,6 +1093,9 @@ func ManageUser(c *gin.Context) {
 			"success": true,
 			"message": "",
 		})
+		return
+	default:
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 

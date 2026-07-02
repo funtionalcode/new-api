@@ -248,6 +248,7 @@ const renderOperations = (
     showDemoteModal,
     showEnableDisableModal,
     showDeleteModal,
+    showRestoreModal,
     showResetPasskeyModal,
     showResetTwoFAModal,
     showUserSubscriptionsModal,
@@ -255,7 +256,11 @@ const renderOperations = (
   },
 ) => {
   if (record.DeletedAt !== null) {
-    return <></>;
+    return (
+      <Button size='small' onClick={() => showRestoreModal(record)}>
+        {t('恢复')}
+      </Button>
+    );
   }
 
   const moreMenu = [
@@ -348,6 +353,7 @@ export const getUsersColumns = ({
   showDemoteModal,
   showEnableDisableModal,
   showDeleteModal,
+  showRestoreModal,
   showResetPasskeyModal,
   showResetTwoFAModal,
   showUserSubscriptionsModal,
@@ -420,6 +426,7 @@ export const getUsersColumns = ({
           showDemoteModal,
           showEnableDisableModal,
           showDeleteModal,
+          showRestoreModal,
           showResetPasskeyModal,
           showResetTwoFAModal,
           showUserSubscriptionsModal,

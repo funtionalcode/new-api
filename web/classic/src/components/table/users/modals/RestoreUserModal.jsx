@@ -20,39 +20,18 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 import { Modal } from '@douyinfe/semi-ui';
 
-const DeleteUserModal = ({
-  visible,
-  onCancel,
-  onConfirm,
-  user,
-  users,
-  activePage,
-  refresh,
-  manageUser,
-  t,
-}) => {
-  const handleConfirm = async () => {
-    await manageUser(user.id, 'delete', user);
-    await refresh();
-    setTimeout(() => {
-      if (users.length === 0 && activePage > 1) {
-        refresh(activePage - 1);
-      }
-    }, 100);
-    onCancel(); // Close modal after success
-  };
-
+const RestoreUserModal = ({ visible, onCancel, onConfirm, t }) => {
   return (
     <Modal
-      title={t('确定是否要注销此用户？')}
+      title={t('确定要恢复此用户吗？')}
       visible={visible}
       onCancel={onCancel}
-      onOk={handleConfirm}
-      type='danger'
+      onOk={onConfirm}
+      type='warning'
     >
-      {t('注销后用户将不能继续使用，管理员可在用户管理中恢复')}
+      {t('恢复后该用户将重新出现在可用用户列表中，账号状态保持注销前的状态')}
     </Modal>
   );
 };
 
-export default DeleteUserModal;
+export default RestoreUserModal;

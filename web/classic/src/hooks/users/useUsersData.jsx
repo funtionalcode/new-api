@@ -141,6 +141,14 @@ export const useUsersData = () => {
           if (action === 'delete') {
             return { ...u, DeletedAt: new Date() };
           }
+          if (action === 'restore') {
+            return {
+              ...u,
+              DeletedAt: null,
+              status: user.status,
+              role: user.role,
+            };
+          }
           return { ...u, status: user.status, role: user.role };
         }
         return u;
