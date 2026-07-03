@@ -324,6 +324,32 @@ func SetApiRouter(router *gin.Engine) {
 			}
 		}
 
+		glmQuotaRoute := apiRouter.Group("/glm-quota")
+		{
+			glmQuotaRoute.GET("/bindings", middleware.UserAuth(), controller.GetGLMQuotaBindings)
+			glmQuotaRoute.POST("/bindings/:id/refresh-usage", middleware.UserAuth(), controller.RefreshGLMQuotaBindingUsage)
+			glmQuotaAdminRoute := glmQuotaRoute.Group("")
+			glmQuotaAdminRoute.Use(middleware.AdminAuth())
+			{
+				glmQuotaAdminRoute.POST("/bindings", controller.CreateGLMQuotaBinding)
+				glmQuotaAdminRoute.PUT("/bindings/:id", controller.UpdateGLMQuotaBinding)
+				glmQuotaAdminRoute.DELETE("/bindings/:id", controller.DeleteGLMQuotaBinding)
+			}
+		}
+
+		deepSeekQuotaRoute := apiRouter.Group("/deepseek-quota")
+		{
+			deepSeekQuotaRoute.GET("/bindings", middleware.UserAuth(), controller.GetDeepSeekQuotaBindings)
+			deepSeekQuotaRoute.POST("/bindings/:id/refresh-usage", middleware.UserAuth(), controller.RefreshDeepSeekQuotaBindingUsage)
+			deepSeekQuotaAdminRoute := deepSeekQuotaRoute.Group("")
+			deepSeekQuotaAdminRoute.Use(middleware.AdminAuth())
+			{
+				deepSeekQuotaAdminRoute.POST("/bindings", controller.CreateDeepSeekQuotaBinding)
+				deepSeekQuotaAdminRoute.PUT("/bindings/:id", controller.UpdateDeepSeekQuotaBinding)
+				deepSeekQuotaAdminRoute.DELETE("/bindings/:id", controller.DeleteDeepSeekQuotaBinding)
+			}
+		}
+
 		logRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())
 		{
 			logRoute.GET("/token", middleware.TokenAuthReadOnly(), controller.GetLogByKey)

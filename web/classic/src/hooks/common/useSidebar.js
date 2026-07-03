@@ -39,6 +39,8 @@ export const DEFAULT_ADMIN_CONFIG = {
     midjourney: true,
     task: true,
     authFiles: true,
+    glmQuota: true,
+    deepSeekQuota: true,
     userConsumption: true,
   },
   personal: {

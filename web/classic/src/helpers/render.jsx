@@ -82,6 +82,8 @@ import {
   CalendarClock,
   Files,
   ChartNoAxesColumn,
+  Gauge,
+  Wallet,
 } from 'lucide-react';
 import {
   SiAtlassian,
@@ -145,6 +147,10 @@ export function getLucideIcon(key, selected = false) {
       return <Files {...commonProps} color={iconColor} />;
     case 'userConsumption':
       return <ChartNoAxesColumn {...commonProps} color={iconColor} />;
+    case 'glmQuota':
+      return <Gauge {...commonProps} color={iconColor} />;
+    case 'deepSeekQuota':
+      return <Wallet {...commonProps} color={iconColor} />;
     case 'redemption':
       return <Gift {...commonProps} color={iconColor} />;
     case 'user':

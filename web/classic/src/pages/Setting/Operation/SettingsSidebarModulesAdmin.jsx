@@ -161,6 +161,16 @@ export default function SettingsSidebarModulesAdmin(props) {
           description: t('管理 Cliproxy 认证文件和用户绑定'),
         },
         {
+          key: 'glmQuota',
+          title: t('GLM额度'),
+          description: t('BigModel 用量额度监控'),
+        },
+        {
+          key: 'deepSeekQuota',
+          title: t('DeepSeek额度'),
+          description: t('DeepSeek 用量额度监控'),
+        },
+        {
           key: 'userConsumption',
           title: t('用户消耗'),
           description: t('按用户和令牌统计消耗'),

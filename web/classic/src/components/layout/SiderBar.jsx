@@ -34,6 +34,8 @@ const routerMap = {
   home: '/',
   channel: '/console/channel',
   authFiles: '/console/cliproxy-auth-files',
+  glmQuota: '/console/glm-quota',
+  deepSeekQuota: '/console/deepseek-quota',
   userConsumption: '/console/user-consumption',
   token: '/console/token',
   redemption: '/console/redemption',
@@ -111,6 +113,16 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('认证文件'),
         itemKey: 'authFiles',
         to: '/cliproxy-auth-files',
+      },
+      {
+        text: t('GLM额度'),
+        itemKey: 'glmQuota',
+        to: '/glm-quota',
+      },
+      {
+        text: t('DeepSeek额度'),
+        itemKey: 'deepSeekQuota',
+        to: '/deepseek-quota',
       },
       {
         text: t('用户消耗'),

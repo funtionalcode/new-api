@@ -86,6 +86,8 @@ export default function SettingsSidebarModulesUser() {
         log: isSidebarModuleAllowed('console', 'log'),
         midjourney: isSidebarModuleAllowed('console', 'midjourney'),
         task: isSidebarModuleAllowed('console', 'task'),
+        glmQuota: isSidebarModuleAllowed('console', 'glmQuota'),
+        deepSeekQuota: isSidebarModuleAllowed('console', 'deepSeekQuota'),
       };
     }
 
@@ -319,6 +321,16 @@ export default function SettingsSidebarModulesUser() {
           description: t('绘图任务记录'),
         },
         { key: 'task', title: t('任务日志'), description: t('系统任务记录') },
+        {
+          key: 'glmQuota',
+          title: t('GLM额度'),
+          description: t('BigModel 用量额度监控'),
+        },
+        {
+          key: 'deepSeekQuota',
+          title: t('DeepSeek额度'),
+          description: t('DeepSeek 用量额度监控'),
+        },
       ],
     },
     {

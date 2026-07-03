@@ -46,6 +46,8 @@ import ModelDeploymentPage from './pages/ModelDeployment';
 import Playground from './pages/Playground';
 import Subscription from './pages/Subscription';
 import CliproxyAuthFiles from './pages/CliproxyAuthFiles';
+import GlmQuota from './pages/GlmQuota';
+import DeepSeekQuota from './pages/DeepSeekQuota';
 import UserConsumption from './pages/UserConsumption';
 import OAuth2Callback from './components/auth/OAuth2Callback';
 import PersonalSetting from './components/settings/PersonalSetting';
@@ -146,6 +148,22 @@ function App() {
           element={
             <PrivateRoute>
               <CliproxyAuthFiles />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/glm-quota'
+          element={
+            <PrivateRoute>
+              <GlmQuota />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/deepseek-quota'
+          element={
+            <PrivateRoute>
+              <DeepSeekQuota />
             </PrivateRoute>
           }
         />

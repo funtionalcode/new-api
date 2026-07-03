@@ -76,6 +76,8 @@ const NotificationSettings = ({
       log: true,
       midjourney: true,
       task: true,
+      glmQuota: true,
+      deepSeekQuota: true,
     },
     personal: {
       enabled: true,
@@ -164,6 +166,8 @@ const NotificationSettings = ({
         log: true,
         midjourney: true,
         task: true,
+        glmQuota: true,
+        deepSeekQuota: true,
       },
       personal: { enabled: true, topup: true, personal: true },
       admin: {
@@ -271,6 +275,16 @@ const NotificationSettings = ({
           description: t('绘图任务记录'),
         },
         { key: 'task', title: t('任务日志'), description: t('系统任务记录') },
+        {
+          key: 'glmQuota',
+          title: t('GLM额度'),
+          description: t('BigModel 用量额度监控'),
+        },
+        {
+          key: 'deepSeekQuota',
+          title: t('DeepSeek额度'),
+          description: t('DeepSeek 用量额度监控'),
+        },
       ],
     },
     {
