@@ -48,7 +48,7 @@ const buildQuotaForm = (binding = emptyQuotaForm) => ({
   id: binding.id,
   name: binding.name || '',
   note: binding.note || '',
-  request_curl: '',
+  request_curl: binding.request_curl || '',
   enabled: binding.enabled !== false,
 });
 

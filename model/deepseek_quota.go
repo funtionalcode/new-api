@@ -12,7 +12,7 @@ type DeepSeekQuotaBinding struct {
 	Id                         int    `json:"id" gorm:"primaryKey"`
 	Name                       string `json:"name" gorm:"size:128;index;not null"`
 	Note                       string `json:"note" gorm:"type:text"`
-	RequestCurl                string `json:"-" gorm:"type:text;not null"`
+	RequestCurl                string `json:"request_curl,omitempty" gorm:"type:text;not null"`
 	LastMonthlyLimitTokens     int64  `json:"last_monthly_limit_tokens" gorm:"bigint;default:0"`
 	LastMonthlyUsedTokens      int64  `json:"last_monthly_used_tokens" gorm:"bigint;default:0"`
 	LastMonthlyRemainingTokens int64  `json:"last_monthly_remaining_tokens" gorm:"bigint;default:0"`

@@ -1,6 +1,11 @@
 package controller
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
+)
 
 func TestExtractDeepSeekQuotaUsageParsesSummary(t *testing.T) {
 	body := []byte(`{
@@ -85,5 +90,19 @@ func TestBuildDeepSeekQuotaCurlRequestParsesHeadersAndCookie(t *testing.T) {
 	}
 	if requestConfig.Headers["x-client-platform"] != "web" {
 		t.Fatalf("x-client-platform header = %q", requestConfig.Headers["x-client-platform"])
+	}
+}
+
+func TestSanitizeDeepSeekQuotaBindingForRoleKeepsCurlForAdminOnly(t *testing.T) {
+	adminBinding := &model.DeepSeekQuotaBinding{RequestCurl: "curl secret"}
+	sanitizeDeepSeekQuotaBindingForRole(adminBinding, common.RoleAdminUser)
+	if adminBinding.RequestCurl != "curl secret" {
+		t.Fatalf("admin RequestCurl = %q", adminBinding.RequestCurl)
+	}
+
+	userBinding := &model.DeepSeekQuotaBinding{RequestCurl: "curl secret"}
+	sanitizeDeepSeekQuotaBindingForRole(userBinding, 0)
+	if userBinding.RequestCurl != "" {
+		t.Fatalf("user RequestCurl = %q, want empty", userBinding.RequestCurl)
 	}
 }

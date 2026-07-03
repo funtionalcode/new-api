@@ -97,6 +97,16 @@ var glmQuotaPlanSpecs = map[string]glmQuotaPlanSpec{
 		FiveHourLimitTokens: 60_000_000,
 		WeeklyLimitTokens:   300_000_000,
 	},
+	"advanced": {
+		Label:               "高级版",
+		FiveHourLimitTokens: 160_000_000,
+		WeeklyLimitTokens:   800_000_000,
+	},
+	"高级版": {
+		Label:               "高级版",
+		FiveHourLimitTokens: 160_000_000,
+		WeeklyLimitTokens:   800_000_000,
+	},
 }
 
 func GetGLMQuotaBindings(c *gin.Context) {
@@ -110,6 +120,7 @@ func GetGLMQuotaBindings(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	sanitizeGLMQuotaBindingsForRole(bindings, c.GetInt("role"))
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(bindings)
 	common.ApiSuccess(c, pageInfo)
@@ -192,6 +203,7 @@ func RefreshGLMQuotaBindingUsage(c *gin.Context) {
 			common.ApiError(c, fmt.Errorf("刷新额度失败: %s；保存错误失败: %w", err.Error(), updateErr))
 			return
 		}
+		sanitizeGLMQuotaBindingForRole(updatedBinding, c.GetInt("role"))
 		common.ApiSuccess(c, updatedBinding)
 		return
 	}
@@ -213,7 +225,21 @@ func RefreshGLMQuotaBindingUsage(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	sanitizeGLMQuotaBindingForRole(updatedBinding, c.GetInt("role"))
 	common.ApiSuccess(c, updatedBinding)
+}
+
+func sanitizeGLMQuotaBindingsForRole(bindings []*model.GLMQuotaBinding, role int) {
+	for _, binding := range bindings {
+		sanitizeGLMQuotaBindingForRole(binding, role)
+	}
+}
+
+func sanitizeGLMQuotaBindingForRole(binding *model.GLMQuotaBinding, role int) {
+	if binding == nil || role >= common.RoleAdminUser {
+		return
+	}
+	binding.RequestCurl = ""
 }
 
 func decodeGLMQuotaBindingRequest(c *gin.Context, requireCurl bool) (model.GLMQuotaBindingUpdate, error) {

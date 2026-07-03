@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/i18n"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/service"
@@ -36,12 +37,12 @@ func Distribute() func(c *gin.Context) {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 			return
 		}
+		requestUserId := c.GetInt("id")
 		if shouldCheckUserTokenLimit(c, shouldSelectChannel) {
-			userId := c.GetInt("id")
-			if userId > 0 {
-				limitResult, limitErr := model.CheckUserTokenLimit(userId, time.Now())
+			if requestUserId > 0 {
+				limitResult, limitErr := model.CheckUserTokenLimit(requestUserId, time.Now())
 				if limitErr != nil {
-					common.SysLog(fmt.Sprintf("check user token limit failed, user_id=%d: %s", userId, limitErr.Error()))
+					common.SysLog(fmt.Sprintf("check user token limit failed, user_id=%d: %s", requestUserId, limitErr.Error()))
 					abortWithOpenAiMessage(c, http.StatusInternalServerError, i18n.T(c, i18n.MsgDatabaseError))
 					return
 				}
@@ -64,6 +65,10 @@ func Distribute() func(c *gin.Context) {
 			}
 			if channel.Status != common.ChannelStatusEnabled {
 				abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorChannelDisabled))
+				return
+			}
+			if !channel.IsOpenToUser(requestUserId) {
+				abortWithOpenAiMessage(c, http.StatusForbidden, "该渠道未开放给当前用户")
 				return
 			}
 		} else {
@@ -126,6 +131,8 @@ func Distribute() func(c *gin.Context) {
 								abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorAffinityChannelDisabled))
 								return
 							}
+						} else if !preferred.IsOpenToUser(requestUserId) {
+							logger.LogDebug(c, "affinity channel %d is not open to user %d, ignore it", preferred.Id, requestUserId)
 						} else if usingGroup == "auto" {
 							userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
 							autoGroups := service.GetUserAutoGroup(userGroup)

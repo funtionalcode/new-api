@@ -184,6 +184,7 @@ const EditChannelModal = (props) => {
     auto_ban: 1,
     test_model: '',
     groups: ['default'],
+    open_user_ids: [],
     priority: 0,
     weight: 0,
     tag: '',
@@ -224,6 +225,7 @@ const EditChannelModal = (props) => {
   const [originModelOptions, setOriginModelOptions] = useState([]);
   const [modelOptions, setModelOptions] = useState([]);
   const [groupOptions, setGroupOptions] = useState([]);
+  const [openUserOptions, setOpenUserOptions] = useState([]);
   const [basicModels, setBasicModels] = useState([]);
   const [fullModels, setFullModels] = useState([]);
   const [modelGroups, setModelGroups] = useState([]);
@@ -323,6 +325,46 @@ const EditChannelModal = (props) => {
       name: keyword,
     });
   }, [modelSearchMatchedCount, modelSearchValue, t]);
+  const formatOpenUserOption = (user) => {
+    const username = user?.username || user?.display_name || '-';
+    const remark = user?.remark ? ` / ${user.remark}` : '';
+    return {
+      value: Number(user?.id),
+      label: `${username} (ID: ${user?.id})${remark}`,
+    };
+  };
+  const mergeOpenUserOptions = (currentOptions, nextOptions) => {
+    const optionMap = new Map();
+    [...currentOptions, ...nextOptions].forEach((option) => {
+      const value = Number(option?.value);
+      if (!Number.isFinite(value) || value <= 0) {
+        return;
+      }
+      optionMap.set(value, { ...option, value });
+    });
+    return Array.from(optionMap.values());
+  };
+  const searchOpenUsers = async (keyword) => {
+    const trimmed = (keyword || '').trim();
+    if (!trimmed) {
+      return;
+    }
+    try {
+      const res = await API.get('/api/user/search', {
+        params: { keyword: trimmed, group: '', p: 1, page_size: 20 },
+      });
+      if (res.data.success) {
+        const options = (res.data.data?.items || []).map(formatOpenUserOption);
+        setOpenUserOptions((current) =>
+          mergeOpenUserOptions(current, options),
+        );
+      } else {
+        showError(res.data.message || t('搜索用户失败'));
+      }
+    } catch (error) {
+      showError(error);
+    }
+  };
   const paramOverrideMeta = useMemo(() => {
     const raw =
       typeof inputs.param_override === 'string'
@@ -837,6 +879,15 @@ const EditChannelModal = (props) => {
       } else {
         data.groups = data.group.split(',');
       }
+      data.open_user_ids = Array.isArray(data.open_user_ids)
+        ? data.open_user_ids.map((id) => Number(id)).filter((id) => id > 0)
+        : [];
+      setOpenUserOptions((current) =>
+        mergeOpenUserOptions(
+          current,
+          (data.open_user_infos || []).map(formatOpenUserOption),
+        ),
+      );
       if (data.model_mapping !== '') {
         data.model_mapping = JSON.stringify(
           JSON.parse(data.model_mapping),
@@ -1393,6 +1444,7 @@ const EditChannelModal = (props) => {
     setDoubaoApiEditUnlocked(false);
     doubaoApiClickCountRef.current = 0;
     setModelSearchValue('');
+    setOpenUserOptions([]);
     // 重置高级设置折叠状态
     setAdvancedSettingsOpen(false);
     // 清空表单中的key_mode字段
@@ -1853,9 +1905,20 @@ const EditChannelModal = (props) => {
     delete localInputs.upstream_model_update_last_check_time;
     delete localInputs.upstream_model_update_last_detected_models;
     delete localInputs.upstream_model_update_ignored_models;
+    delete localInputs.open_user_infos;
 
     let res;
     localInputs.auto_ban = localInputs.auto_ban ? 1 : 0;
+    localInputs.open_user_ids = Array.from(
+      new Set(
+        (Array.isArray(localInputs.open_user_ids)
+          ? localInputs.open_user_ids
+          : []
+        )
+          .map((id) => Number(id))
+          .filter((id) => Number.isFinite(id) && id > 0),
+      ),
+    ).sort((a, b) => a - b);
     localInputs.models = localInputs.models.join(',');
     localInputs.group = (localInputs.groups || []).join(',');
 
@@ -3592,6 +3655,26 @@ const EditChannelModal = (props) => {
                     style={{ width: '100%' }}
                     position='top'
                     onChange={(value) => handleInputChange('groups', value)}
+                  />
+
+                  <Form.Select
+                    field='open_user_ids'
+                    label={t('开放用户')}
+                    placeholder={t('不选择表示所有用户均可使用该渠道')}
+                    multiple
+                    filter
+                    remote
+                    autoClearSearchValue={false}
+                    searchPosition='dropdown'
+                    optionList={openUserOptions}
+                    style={{ width: '100%' }}
+                    onSearch={searchOpenUsers}
+                    onChange={(value) =>
+                      handleInputChange('open_user_ids', value)
+                    }
+                    extraText={t(
+                      '不配置时默认开放给所有用户；配置后仅选中的用户可以使用该渠道',
+                    )}
                   />
 
                   {/* Model Mapping - Core Config */}

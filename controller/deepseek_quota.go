@@ -87,6 +87,7 @@ func GetDeepSeekQuotaBindings(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	sanitizeDeepSeekQuotaBindingsForRole(bindings, c.GetInt("role"))
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(bindings)
 	common.ApiSuccess(c, pageInfo)
@@ -166,6 +167,7 @@ func RefreshDeepSeekQuotaBindingUsage(c *gin.Context) {
 			common.ApiError(c, fmt.Errorf("刷新额度失败: %s；保存错误失败: %w", err.Error(), updateErr))
 			return
 		}
+		sanitizeDeepSeekQuotaBindingForRole(updatedBinding, c.GetInt("role"))
 		common.ApiSuccess(c, updatedBinding)
 		return
 	}
@@ -199,7 +201,21 @@ func RefreshDeepSeekQuotaBindingUsage(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	sanitizeDeepSeekQuotaBindingForRole(updatedBinding, c.GetInt("role"))
 	common.ApiSuccess(c, updatedBinding)
+}
+
+func sanitizeDeepSeekQuotaBindingsForRole(bindings []*model.DeepSeekQuotaBinding, role int) {
+	for _, binding := range bindings {
+		sanitizeDeepSeekQuotaBindingForRole(binding, role)
+	}
+}
+
+func sanitizeDeepSeekQuotaBindingForRole(binding *model.DeepSeekQuotaBinding, role int) {
+	if binding == nil || role >= common.RoleAdminUser {
+		return
+	}
+	binding.RequestCurl = ""
 }
 
 func decodeDeepSeekQuotaBindingRequest(c *gin.Context, requireCurl bool) (model.DeepSeekQuotaBindingUpdate, error) {

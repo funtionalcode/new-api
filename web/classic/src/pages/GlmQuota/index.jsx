@@ -43,6 +43,12 @@ const planSpecs = [
     fiveHourLimitTokens: 60000000,
     weeklyLimitTokens: 300000000,
   },
+  {
+    value: '高级版',
+    label: '高级版',
+    fiveHourLimitTokens: 160000000,
+    weeklyLimitTokens: 800000000,
+  },
 ];
 
 const emptyQuotaForm = {
@@ -60,7 +66,7 @@ const buildQuotaForm = (binding = emptyQuotaForm) => ({
   id: binding.id,
   name: binding.name || '',
   note: binding.note || '',
-  request_curl: '',
+  request_curl: binding.request_curl || '',
   plan_type: binding.plan_type || '',
   five_hour_limit_tokens: Number(binding.five_hour_limit_tokens || 0),
   weekly_limit_tokens: Number(binding.weekly_limit_tokens || 0),

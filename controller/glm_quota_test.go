@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 )
 
@@ -58,6 +59,36 @@ func TestApplyGLMQuotaPlanSpecDefaultsStandard(t *testing.T) {
 	}
 	if update.WeeklyLimitTokens != 300000000 {
 		t.Fatalf("WeeklyLimitTokens = %d, want 300000000", update.WeeklyLimitTokens)
+	}
+}
+
+func TestApplyGLMQuotaPlanSpecDefaultsAdvanced(t *testing.T) {
+	update := model.GLMQuotaBindingUpdate{PlanType: "高级版"}
+
+	applyGLMQuotaPlanSpecDefaults(&update)
+
+	if update.PlanType != "高级版" {
+		t.Fatalf("PlanType = %q, want 高级版", update.PlanType)
+	}
+	if update.FiveHourLimitTokens != 160000000 {
+		t.Fatalf("FiveHourLimitTokens = %d, want 160000000", update.FiveHourLimitTokens)
+	}
+	if update.WeeklyLimitTokens != 800000000 {
+		t.Fatalf("WeeklyLimitTokens = %d, want 800000000", update.WeeklyLimitTokens)
+	}
+}
+
+func TestSanitizeGLMQuotaBindingForRoleKeepsCurlForAdminOnly(t *testing.T) {
+	adminBinding := &model.GLMQuotaBinding{RequestCurl: "curl secret"}
+	sanitizeGLMQuotaBindingForRole(adminBinding, common.RoleAdminUser)
+	if adminBinding.RequestCurl != "curl secret" {
+		t.Fatalf("admin RequestCurl = %q", adminBinding.RequestCurl)
+	}
+
+	userBinding := &model.GLMQuotaBinding{RequestCurl: "curl secret"}
+	sanitizeGLMQuotaBindingForRole(userBinding, 0)
+	if userBinding.RequestCurl != "" {
+		t.Fatalf("user RequestCurl = %q, want empty", userBinding.RequestCurl)
 	}
 }
 

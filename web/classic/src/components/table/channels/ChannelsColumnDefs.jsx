@@ -51,6 +51,8 @@ import {
 } from '@douyinfe/semi-icons';
 import { FaRandom } from 'react-icons/fa';
 
+const { Text } = Typography;
+
 // Render functions
 const renderType = (type, record = {}, t) => {
   const channelInfo = record?.channel_info;
@@ -304,6 +306,60 @@ const getUpstreamUpdateMeta = (record) => {
   };
 };
 
+const renderOpenUsers = (record, t) => {
+  if (!record || record.children !== undefined) {
+    return <Text type='tertiary'>-</Text>;
+  }
+  const openUserIds = Array.isArray(record.open_user_ids)
+    ? record.open_user_ids.map((id) => Number(id)).filter((id) => id > 0)
+    : [];
+  if (openUserIds.length === 0) {
+    return (
+      <Tag color='green' shape='circle' type='light'>
+        {t('全部用户')}
+      </Tag>
+    );
+  }
+
+  const infoMap = new Map(
+    (record.open_user_infos || []).map((info) => [Number(info.id), info]),
+  );
+  const labels = openUserIds.map((id) => {
+    const info = infoMap.get(id) || { id };
+    const username = info.username || info.display_name || '-';
+    const remark = info.remark ? ` / ${info.remark}` : '';
+    return `${username} (ID: ${id})${remark}`;
+  });
+  const previewLabels = labels.slice(0, 3);
+  const omittedCount = labels.length - previewLabels.length;
+
+  return (
+    <Tooltip
+      content={
+        <div className='max-w-sm'>
+          {labels.map((label) => (
+            <div key={label}>{label}</div>
+          ))}
+        </div>
+      }
+      position='topLeft'
+    >
+      <Space spacing={4} wrap>
+        {previewLabels.map((label) => (
+          <Tag key={label} color='blue' shape='circle' type='light'>
+            {label}
+          </Tag>
+        ))}
+        {omittedCount > 0 && (
+          <Tag color='grey' shape='circle' type='light'>
+            +{omittedCount}
+          </Tag>
+        )}
+      </Space>
+    </Tooltip>
+  );
+};
+
 export const getChannelsColumns = ({
   t,
   COLUMN_KEYS,
@@ -475,6 +531,12 @@ export const getChannelsColumns = ({
           </Space>
         </div>
       ),
+    },
+    {
+      key: COLUMN_KEYS.OPEN_USERS,
+      title: t('开放用户'),
+      dataIndex: 'open_user_ids',
+      render: (text, record) => renderOpenUsers(record, t),
     },
     {
       key: COLUMN_KEYS.TYPE,

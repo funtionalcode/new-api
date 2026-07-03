@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -41,15 +43,17 @@ type Channel struct {
 	UsedQuota          int64   `json:"used_quota" gorm:"bigint;default:0"`
 	ModelMapping       *string `json:"model_mapping" gorm:"type:text"`
 	//MaxInputTokens     *int    `json:"max_input_tokens" gorm:"default:0"`
-	StatusCodeMapping *string `json:"status_code_mapping" gorm:"type:varchar(1024);default:''"`
-	Priority          *int64  `json:"priority" gorm:"bigint;default:0"`
-	AutoBan           *int    `json:"auto_ban" gorm:"default:1"`
-	OtherInfo         string  `json:"other_info"`
-	Tag               *string `json:"tag" gorm:"index"`
-	Setting           *string `json:"setting" gorm:"type:text"` // 渠道额外设置
-	ParamOverride     *string `json:"param_override" gorm:"type:text"`
-	HeaderOverride    *string `json:"header_override" gorm:"type:text"`
-	Remark            *string `json:"remark" gorm:"type:varchar(255)" validate:"max=255"`
+	StatusCodeMapping *string               `json:"status_code_mapping" gorm:"type:varchar(1024);default:''"`
+	Priority          *int64                `json:"priority" gorm:"bigint;default:0"`
+	AutoBan           *int                  `json:"auto_ban" gorm:"default:1"`
+	OtherInfo         string                `json:"other_info"`
+	Tag               *string               `json:"tag" gorm:"index"`
+	Setting           *string               `json:"setting" gorm:"type:text"` // 渠道额外设置
+	ParamOverride     *string               `json:"param_override" gorm:"type:text"`
+	HeaderOverride    *string               `json:"header_override" gorm:"type:text"`
+	Remark            *string               `json:"remark" gorm:"type:varchar(255)" validate:"max=255"`
+	OpenUserIds       ChannelOpenUserIds    `json:"open_user_ids" gorm:"type:text;column:open_user_ids"`
+	OpenUserInfos     []ChannelOpenUserInfo `json:"open_user_infos,omitempty" gorm:"-"`
 	// add after v0.8.5
 	ChannelInfo ChannelInfo `json:"channel_info" gorm:"type:json"`
 
@@ -57,6 +61,15 @@ type Channel struct {
 
 	// cache info
 	Keys []string `json:"-" gorm:"-"`
+}
+
+type ChannelOpenUserIds []int
+
+type ChannelOpenUserInfo struct {
+	Id          int    `json:"id"`
+	Username    string `json:"username"`
+	DisplayName string `json:"display_name,omitempty"`
+	Remark      string `json:"remark,omitempty"`
 }
 
 type ChannelInfo struct {
@@ -170,6 +183,151 @@ func (c ChannelInfo) Value() (driver.Value, error) {
 func (c *ChannelInfo) Scan(value interface{}) error {
 	bytesValue, _ := value.([]byte)
 	return common.Unmarshal(bytesValue, c)
+}
+
+func NormalizeChannelOpenUserIds(ids []int) []int {
+	if len(ids) == 0 {
+		return nil
+	}
+	seen := make(map[int]struct{}, len(ids))
+	normalized := make([]int, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		normalized = append(normalized, id)
+	}
+	sort.Ints(normalized)
+	return normalized
+}
+
+func (ids ChannelOpenUserIds) Value() (driver.Value, error) {
+	normalized := NormalizeChannelOpenUserIds([]int(ids))
+	if len(normalized) == 0 {
+		return "", nil
+	}
+	bytesValue, err := common.Marshal(normalized)
+	if err != nil {
+		return nil, err
+	}
+	return string(bytesValue), nil
+}
+
+func (ids *ChannelOpenUserIds) Scan(value interface{}) error {
+	if value == nil {
+		*ids = nil
+		return nil
+	}
+	var raw string
+	switch v := value.(type) {
+	case []byte:
+		raw = string(v)
+	case string:
+		raw = v
+	default:
+		return fmt.Errorf("unsupported open_user_ids type %T", value)
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "null" {
+		*ids = nil
+		return nil
+	}
+	if strings.HasPrefix(raw, "[") {
+		var parsed []int
+		if err := common.Unmarshal([]byte(raw), &parsed); err != nil {
+			return err
+		}
+		*ids = ChannelOpenUserIds(NormalizeChannelOpenUserIds(parsed))
+		return nil
+	}
+	parsed := make([]int, 0)
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		id, err := strconv.Atoi(part)
+		if err != nil {
+			return err
+		}
+		parsed = append(parsed, id)
+	}
+	*ids = ChannelOpenUserIds(NormalizeChannelOpenUserIds(parsed))
+	return nil
+}
+
+func (channel *Channel) GetOpenUserIds() []int {
+	if channel == nil {
+		return nil
+	}
+	return NormalizeChannelOpenUserIds([]int(channel.OpenUserIds))
+}
+
+func (channel *Channel) IsOpenToUser(userId int) bool {
+	openUserIds := channel.GetOpenUserIds()
+	if len(openUserIds) == 0 {
+		return true
+	}
+	if userId <= 0 {
+		return false
+	}
+	index := sort.SearchInts(openUserIds, userId)
+	return index < len(openUserIds) && openUserIds[index] == userId
+}
+
+func LoadChannelOpenUserInfos(channels []*Channel) error {
+	idSet := make(map[int]struct{})
+	for _, channel := range channels {
+		for _, id := range channel.GetOpenUserIds() {
+			idSet[id] = struct{}{}
+		}
+	}
+	if len(idSet) == 0 {
+		return nil
+	}
+	ids := make([]int, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+	sort.Ints(ids)
+
+	var users []User
+	if err := DB.Unscoped().
+		Select("id", "username", "display_name", "remark").
+		Where("id IN ?", ids).
+		Find(&users).Error; err != nil {
+		return err
+	}
+	userMap := make(map[int]ChannelOpenUserInfo, len(users))
+	for _, user := range users {
+		userMap[user.Id] = ChannelOpenUserInfo{
+			Id:          user.Id,
+			Username:    user.Username,
+			DisplayName: user.DisplayName,
+			Remark:      user.Remark,
+		}
+	}
+	for _, channel := range channels {
+		openUserIds := channel.GetOpenUserIds()
+		if len(openUserIds) == 0 {
+			channel.OpenUserInfos = nil
+			continue
+		}
+		infos := make([]ChannelOpenUserInfo, 0, len(openUserIds))
+		for _, id := range openUserIds {
+			if info, ok := userMap[id]; ok {
+				infos = append(infos, info)
+				continue
+			}
+			infos = append(infos, ChannelOpenUserInfo{Id: id})
+		}
+		channel.OpenUserInfos = infos
+	}
+	return nil
 }
 
 func (channel *Channel) GetKeys() []string {
@@ -564,6 +722,10 @@ func (channel *Channel) Update() error {
 	}
 	var err error
 	err = DB.Model(channel).Updates(channel).Error
+	if err != nil {
+		return err
+	}
+	err = DB.Model(channel).Update("open_user_ids", channel.OpenUserIds).Error
 	if err != nil {
 		return err
 	}

@@ -12,7 +12,7 @@ type GLMQuotaBinding struct {
 	Id                     int    `json:"id" gorm:"primaryKey"`
 	Name                   string `json:"name" gorm:"size:128;index;not null"`
 	Note                   string `json:"note" gorm:"type:text"`
-	RequestCurl            string `json:"-" gorm:"type:text;not null"`
+	RequestCurl            string `json:"request_curl,omitempty" gorm:"type:text;not null"`
 	PlanType               string `json:"plan_type" gorm:"size:64;default:''"`
 	FiveHourLimitTokens    int64  `json:"five_hour_limit_tokens" gorm:"bigint;default:0"`
 	WeeklyLimitTokens      int64  `json:"weekly_limit_tokens" gorm:"bigint;default:0"`

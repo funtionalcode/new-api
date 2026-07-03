@@ -160,6 +160,11 @@ func GetAllChannels(c *gin.Context) {
 	for _, datum := range channelData {
 		clearChannelInfo(datum)
 	}
+	if err := model.LoadChannelOpenUserInfos(channelData); err != nil {
+		common.SysError("failed to load channel open user infos: " + err.Error())
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "获取渠道开放用户失败，请稍后重试"})
+		return
+	}
 
 	countQuery := buildChannelListQuery(groupFilter, statusFilter, -1)
 	var results []struct {
@@ -366,6 +371,11 @@ func SearchChannels(c *gin.Context) {
 	for _, datum := range pagedData {
 		clearChannelInfo(datum)
 	}
+	if err := model.LoadChannelOpenUserInfos(pagedData); err != nil {
+		common.SysError("failed to load channel open user infos: " + err.Error())
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "获取渠道开放用户失败，请稍后重试"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -392,6 +402,11 @@ func GetChannel(c *gin.Context) {
 	}
 	if channel != nil {
 		clearChannelInfo(channel)
+		if err := model.LoadChannelOpenUserInfos([]*model.Channel{channel}); err != nil {
+			common.SysError("failed to load channel open user infos: " + err.Error())
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": "获取渠道开放用户失败，请稍后重试"})
+			return
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -888,6 +903,9 @@ func UpdateChannel(c *gin.Context) {
 
 	// Always copy the original ChannelInfo so that fields like IsMultiKey and MultiKeySize are retained.
 	channel.ChannelInfo = originChannel.ChannelInfo
+	if channel.OpenUserIds == nil {
+		channel.OpenUserIds = originChannel.OpenUserIds
+	}
 
 	// If the request explicitly specifies a new MultiKeyMode, apply it on top of the original info.
 	if channel.MultiKeyMode != nil && *channel.MultiKeyMode != "" {
