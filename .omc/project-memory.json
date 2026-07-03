@@ -1,0 +1,516 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1780990166488,
+  "projectRoot": "/Users/funtional/GolandProjects/new-api",
+  "techStack": {
+    "languages": [
+      {
+        "name": "Go",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "go.mod"
+        ]
+      },
+      {
+        "name": "C/C++",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "Makefile"
+        ]
+      }
+    ],
+    "frameworks": [],
+    "packageManager": "go",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "go build ./...",
+    "testCommand": "go test ./controller ./model",
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "bin",
+      "docs",
+      "src"
+    ],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [
+    "2026-07-03: 二开功能记录维护在 docs/custom-development-features.md；后续新增或调整二开功能时同步更新该文件，记录模块、功能、范围、验证和提交；不要记录 curl、cookie、session、代理密码、SSH 密码等敏感信息。"
+  ],
+  "directoryMap": {
+    "bin": {
+      "path": "bin",
+      "purpose": "Executable scripts",
+      "fileCount": 3,
+      "lastAccessed": 1780990166356,
+      "keyFiles": [
+        "migration_v0.2-v0.3.sql",
+        "migration_v0.3-v0.4.sql",
+        "time_test.sh"
+      ]
+    },
+    "common": {
+      "path": "common",
+      "purpose": null,
+      "fileCount": 46,
+      "lastAccessed": 1780990166363,
+      "keyFiles": [
+        "api_type.go",
+        "api_type_test.go",
+        "audio.go",
+        "body_storage.go",
+        "constants.go"
+      ]
+    },
+    "constant": {
+      "path": "constant",
+      "purpose": null,
+      "fileCount": 14,
+      "lastAccessed": 1780990166375,
+      "keyFiles": [
+        "README.md",
+        "api_type.go",
+        "azure.go",
+        "cache_key.go",
+        "channel.go"
+      ]
+    },
+    "controller": {
+      "path": "controller",
+      "purpose": null,
+      "fileCount": 72,
+      "lastAccessed": 1780990166377,
+      "keyFiles": [
+        "billing.go",
+        "channel-billing.go",
+        "channel-test.go",
+        "channel.go",
+        "channel_affinity_cache.go"
+      ]
+    },
+    "data": {
+      "path": "data",
+      "purpose": "Data files",
+      "fileCount": 0,
+      "lastAccessed": 1780990166389,
+      "keyFiles": []
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 4,
+      "lastAccessed": 1780990166392,
+      "keyFiles": [
+        "ionet-client.md",
+        "translation-glossary.fr.md",
+        "translation-glossary.md",
+        "translation-glossary.ru.md"
+      ]
+    },
+    "dto": {
+      "path": "dto",
+      "purpose": null,
+      "fileCount": 29,
+      "lastAccessed": 1780990166392,
+      "keyFiles": [
+        "audio.go",
+        "channel_settings.go",
+        "claude.go",
+        "embedding.go",
+        "error.go"
+      ]
+    },
+    "electron": {
+      "path": "electron",
+      "purpose": null,
+      "fileCount": 12,
+      "lastAccessed": 1780990166393,
+      "keyFiles": [
+        "README.md",
+        "build.sh",
+        "create-tray-icon.js",
+        "entitlements.mac.plist",
+        "icon.png"
+      ]
+    },
+    "i18n": {
+      "path": "i18n",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1780990166422,
+      "keyFiles": [
+        "i18n.go",
+        "keys.go"
+      ]
+    },
+    "logger": {
+      "path": "logger",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1780990166425,
+      "keyFiles": [
+        "logger.go"
+      ]
+    },
+    "logs": {
+      "path": "logs",
+      "purpose": null,
+      "fileCount": 5,
+      "lastAccessed": 1780990166426,
+      "keyFiles": [
+        "oneapi-20260520141143.log",
+        "oneapi-20260526094415.log",
+        "oneapi-20260529181056.log",
+        "oneapi-20260609135922.log",
+        "oneapi-20260609135923.log"
+      ]
+    },
+    "middleware": {
+      "path": "middleware",
+      "purpose": "Middleware",
+      "fileCount": 24,
+      "lastAccessed": 1780990166428,
+      "keyFiles": [
+        "auth.go",
+        "body_cleanup.go",
+        "cache.go",
+        "cors.go",
+        "disable-cache.go"
+      ]
+    },
+    "model": {
+      "path": "model",
+      "purpose": null,
+      "fileCount": 40,
+      "lastAccessed": 1780990166428,
+      "keyFiles": [
+        "ability.go",
+        "channel.go",
+        "channel_cache.go",
+        "channel_satisfy.go",
+        "checkin.go"
+      ]
+    },
+    "oauth": {
+      "path": "oauth",
+      "purpose": null,
+      "fileCount": 8,
+      "lastAccessed": 1780990166441,
+      "keyFiles": [
+        "discord.go",
+        "generic.go",
+        "github.go",
+        "linuxdo.go",
+        "oidc.go"
+      ]
+    },
+    "pkg": {
+      "path": "pkg",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1780990166441,
+      "keyFiles": []
+    },
+    "relay": {
+      "path": "relay",
+      "purpose": null,
+      "fileCount": 15,
+      "lastAccessed": 1780990166441,
+      "keyFiles": [
+        "audio_handler.go",
+        "chat_completions_via_responses.go",
+        "claude_handler.go",
+        "compatible_handler.go",
+        "embedding_handler.go"
+      ]
+    },
+    "router": {
+      "path": "router",
+      "purpose": null,
+      "fileCount": 6,
+      "lastAccessed": 1780990166447,
+      "keyFiles": [
+        "api-router.go",
+        "dashboard.go",
+        "main.go",
+        "relay-router.go",
+        "video-router.go"
+      ]
+    },
+    "service": {
+      "path": "service",
+      "purpose": null,
+      "fileCount": 56,
+      "lastAccessed": 1780990166468,
+      "keyFiles": [
+        "audio.go",
+        "billing.go",
+        "billing_session.go",
+        "channel.go",
+        "channel_affinity.go"
+      ]
+    },
+    "setting": {
+      "path": "setting",
+      "purpose": null,
+      "fileCount": 10,
+      "lastAccessed": 1780990166469,
+      "keyFiles": [
+        "auto_group.go",
+        "chat.go",
+        "midjourney.go",
+        "payment_creem.go",
+        "payment_stripe.go"
+      ]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 0,
+      "lastAccessed": 1780990166472,
+      "keyFiles": []
+    },
+    "types": {
+      "path": "types",
+      "purpose": "Type definitions",
+      "fileCount": 9,
+      "lastAccessed": 1780990166476,
+      "keyFiles": [
+        "channel_error.go",
+        "error.go",
+        "file_data.go",
+        "file_source.go",
+        "price_data.go"
+      ]
+    },
+    "web": {
+      "path": "web",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1780990166476,
+      "keyFiles": []
+    },
+    "setting/config": {
+      "path": "setting/config",
+      "purpose": "Configuration files",
+      "fileCount": 2,
+      "lastAccessed": 1780990166487,
+      "keyFiles": [
+        "config.go",
+        "config_test.go"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "web/classic/src/hooks/dashboard/useDashboardData.js",
+      "accessCount": 10,
+      "lastAccessed": 1780991637823,
+      "type": "file"
+    },
+    {
+      "path": "controller/usedata.go",
+      "accessCount": 7,
+      "lastAccessed": 1780991585664,
+      "type": "file"
+    },
+    {
+      "path": "model/usedata.go",
+      "accessCount": 7,
+      "lastAccessed": 1780991778714,
+      "type": "file"
+    },
+    {
+      "path": "web/classic/src/components/dashboard/index.jsx",
+      "accessCount": 6,
+      "lastAccessed": 1780991617625,
+      "type": "file"
+    },
+    {
+      "path": "router/api-router.go",
+      "accessCount": 5,
+      "lastAccessed": 1780991756533,
+      "type": "file"
+    },
+    {
+      "path": "controller/log.go",
+      "accessCount": 2,
+      "lastAccessed": 1780990659412,
+      "type": "file"
+    },
+    {
+      "path": "web/classic/src/pages/UserConsumption/index.jsx",
+      "accessCount": 2,
+      "lastAccessed": 1780990668981,
+      "type": "file"
+    },
+    {
+      "path": "web/classic/src/hooks/usage-logs/useUsageLogsData.jsx",
+      "accessCount": 2,
+      "lastAccessed": 1780990685828,
+      "type": "file"
+    },
+    {
+      "path": "middleware/auth.go",
+      "accessCount": 2,
+      "lastAccessed": 1780990707093,
+      "type": "file"
+    },
+    {
+      "path": "web/classic/src/components/dashboard/ChartsPanel.jsx",
+      "accessCount": 2,
+      "lastAccessed": 1780990728021,
+      "type": "file"
+    },
+    {
+      "path": "router/dashboard.go",
+      "accessCount": 1,
+      "lastAccessed": 1780990625347,
+      "type": "file"
+    },
+    {
+      "path": "controller/rankings.go",
+      "accessCount": 1,
+      "lastAccessed": 1780990625494,
+      "type": "file"
+    },
+    {
+      "path": "model/log.go",
+      "accessCount": 1,
+      "lastAccessed": 1780990636912,
+      "type": "file"
+    },
+    {
+      "path": "main.go",
+      "accessCount": 1,
+      "lastAccessed": 1780990637053,
+      "type": "file"
+    },
+    {
+      "path": "web/classic/src/pages/Setting/Dashboard/SettingsDataDashboard.jsx",
+      "accessCount": 1,
+      "lastAccessed": 1780990646794,
+      "type": "file"
+    },
+    {
+      "path": "web/classic/src/helpers/dashboard.jsx",
+      "accessCount": 1,
+      "lastAccessed": 1780990656802,
+      "type": "file"
+    },
+    {
+      "path": "web/classic/src/pages/Dashboard/index.jsx",
+      "accessCount": 1,
+      "lastAccessed": 1780990656896,
+      "type": "file"
+    },
+    {
+      "path": "web/classic/src/hooks/dashboard/useDashboardCharts.jsx",
+      "accessCount": 1,
+      "lastAccessed": 1780990656939,
+      "type": "file"
+    },
+    {
+      "path": "web/classic/src/App.jsx",
+      "accessCount": 1,
+      "lastAccessed": 1780990656998,
+      "type": "file"
+    },
+    {
+      "path": "web/classic/src/hooks/dashboard/useDashboardStats.jsx",
+      "accessCount": 1,
+      "lastAccessed": 1780990657052,
+      "type": "file"
+    },
+    {
+      "path": "model/user.go",
+      "accessCount": 1,
+      "lastAccessed": 1780990663482,
+      "type": "file"
+    },
+    {
+      "path": "controller/user.go",
+      "accessCount": 1,
+      "lastAccessed": 1780990663558,
+      "type": "file"
+    },
+    {
+      "path": "web/classic/src/components/dashboard/StatsCards.jsx",
+      "accessCount": 1,
+      "lastAccessed": 1780990680215,
+      "type": "file"
+    },
+    {
+      "path": "model/usedata_rankings.go",
+      "accessCount": 1,
+      "lastAccessed": 1780990685873,
+      "type": "file"
+    },
+    {
+      "path": "service/rankings.go",
+      "accessCount": 1,
+      "lastAccessed": 1780990685885,
+      "type": "file"
+    },
+    {
+      "path": "controller/cliproxy.go",
+      "accessCount": 1,
+      "lastAccessed": 1780990689508,
+      "type": "file"
+    },
+    {
+      "path": "web/classic/src/helpers/data.js",
+      "accessCount": 1,
+      "lastAccessed": 1780990707052,
+      "type": "file"
+    },
+    {
+      "path": "web/classic/src/helpers/utils.jsx",
+      "accessCount": 1,
+      "lastAccessed": 1780990707112,
+      "type": "file"
+    },
+    {
+      "path": "web/classic/src/components/layout/SiderBar.jsx",
+      "accessCount": 1,
+      "lastAccessed": 1780990707130,
+      "type": "file"
+    },
+    {
+      "path": "web/classic/src/components/settings/DashboardSetting.jsx",
+      "accessCount": 1,
+      "lastAccessed": 1780990707188,
+      "type": "file"
+    },
+    {
+      "path": "model/cliproxy_auth_file.go",
+      "accessCount": 1,
+      "lastAccessed": 1780990727921,
+      "type": "file"
+    },
+    {
+      "path": "web/classic/package.json",
+      "accessCount": 1,
+      "lastAccessed": 1780991099769,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}
