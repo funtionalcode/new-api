@@ -1,0 +1,93 @@
+package model
+
+import (
+	"testing"
+
+	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
+)
+
+func useQuotaProxyTestDB(t *testing.T) {
+	t.Helper()
+	originalDB := DB
+	t.Cleanup(func() {
+		DB = originalDB
+	})
+
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&GLMQuotaBinding{}, &DeepSeekQuotaBinding{}))
+	DB = db
+}
+
+func TestUpdateGLMQuotaBindingSavesAndClearsProxy(t *testing.T) {
+	useQuotaProxyTestDB(t)
+
+	binding := &GLMQuotaBinding{
+		Name:                "glm",
+		RequestCurl:         "curl https://bigmodel.cn",
+		PlanType:            "标准版",
+		FiveHourLimitTokens: 1,
+		WeeklyLimitTokens:   1,
+		Enabled:             true,
+	}
+	require.NoError(t, CreateGLMQuotaBinding(binding))
+
+	updated, err := UpdateGLMQuotaBinding(binding.Id, GLMQuotaBindingUpdate{
+		Name:                "glm",
+		RequestCurl:         "curl ignored",
+		Proxy:               "socks5://user:pass@example.com:1080",
+		UpdateProxy:         true,
+		PlanType:            "标准版",
+		FiveHourLimitTokens: 1,
+		WeeklyLimitTokens:   1,
+		Enabled:             true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "socks5://user:pass@example.com:1080", updated.Proxy)
+	require.Equal(t, "curl https://bigmodel.cn", updated.RequestCurl)
+
+	updated, err = UpdateGLMQuotaBinding(binding.Id, GLMQuotaBindingUpdate{
+		Name:                "glm",
+		Proxy:               "",
+		UpdateProxy:         true,
+		PlanType:            "标准版",
+		FiveHourLimitTokens: 1,
+		WeeklyLimitTokens:   1,
+		Enabled:             true,
+	})
+	require.NoError(t, err)
+	require.Empty(t, updated.Proxy)
+}
+
+func TestUpdateDeepSeekQuotaBindingSavesAndClearsProxy(t *testing.T) {
+	useQuotaProxyTestDB(t)
+
+	binding := &DeepSeekQuotaBinding{
+		Name:        "deepseek",
+		RequestCurl: "curl https://platform.deepseek.com",
+		Enabled:     true,
+	}
+	require.NoError(t, CreateDeepSeekQuotaBinding(binding))
+
+	updated, err := UpdateDeepSeekQuotaBinding(binding.Id, DeepSeekQuotaBindingUpdate{
+		Name:        "deepseek",
+		RequestCurl: "curl ignored",
+		Proxy:       "http://proxy.example.com:8080",
+		UpdateProxy: true,
+		Enabled:     true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "http://proxy.example.com:8080", updated.Proxy)
+	require.Equal(t, "curl https://platform.deepseek.com", updated.RequestCurl)
+
+	updated, err = UpdateDeepSeekQuotaBinding(binding.Id, DeepSeekQuotaBindingUpdate{
+		Name:        "deepseek",
+		Proxy:       "",
+		UpdateProxy: true,
+		Enabled:     true,
+	})
+	require.NoError(t, err)
+	require.Empty(t, updated.Proxy)
+}

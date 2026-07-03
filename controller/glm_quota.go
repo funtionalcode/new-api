@@ -24,13 +24,14 @@ const (
 )
 
 type glmQuotaBindingRequest struct {
-	Name                string `json:"name"`
-	Note                string `json:"note"`
-	RequestCurl         string `json:"request_curl"`
-	PlanType            string `json:"plan_type"`
-	FiveHourLimitTokens int64  `json:"five_hour_limit_tokens"`
-	WeeklyLimitTokens   int64  `json:"weekly_limit_tokens"`
-	Enabled             bool   `json:"enabled"`
+	Name                string  `json:"name"`
+	Note                string  `json:"note"`
+	RequestCurl         string  `json:"request_curl"`
+	Proxy               *string `json:"proxy"`
+	PlanType            string  `json:"plan_type"`
+	FiveHourLimitTokens int64   `json:"five_hour_limit_tokens"`
+	WeeklyLimitTokens   int64   `json:"weekly_limit_tokens"`
+	Enabled             bool    `json:"enabled"`
 }
 
 type glmQuotaUsageRequest struct {
@@ -136,6 +137,7 @@ func CreateGLMQuotaBinding(c *gin.Context) {
 		Name:                update.Name,
 		Note:                update.Note,
 		RequestCurl:         update.RequestCurl,
+		Proxy:               update.Proxy,
 		PlanType:            update.PlanType,
 		FiveHourLimitTokens: update.FiveHourLimitTokens,
 		WeeklyLimitTokens:   update.WeeklyLimitTokens,
@@ -240,6 +242,7 @@ func sanitizeGLMQuotaBindingForRole(binding *model.GLMQuotaBinding, role int) {
 		return
 	}
 	binding.RequestCurl = ""
+	binding.Proxy = ""
 }
 
 func decodeGLMQuotaBindingRequest(c *gin.Context, requireCurl bool) (model.GLMQuotaBindingUpdate, error) {
@@ -252,10 +255,14 @@ func decodeGLMQuotaBindingRequest(c *gin.Context, requireCurl bool) (model.GLMQu
 		Note:                strings.TrimSpace(request.Note),
 		RequestCurl:         strings.TrimSpace(request.RequestCurl),
 		UpdateCurl:          strings.TrimSpace(request.RequestCurl) != "",
+		UpdateProxy:         request.Proxy != nil,
 		PlanType:            strings.TrimSpace(request.PlanType),
 		FiveHourLimitTokens: request.FiveHourLimitTokens,
 		WeeklyLimitTokens:   request.WeeklyLimitTokens,
 		Enabled:             request.Enabled,
+	}
+	if request.Proxy != nil {
+		update.Proxy = strings.TrimSpace(*request.Proxy)
 	}
 	applyGLMQuotaPlanSpecDefaults(&update)
 	if err := model.ValidateGLMQuotaBindingUpdate(update, requireCurl); err != nil {
@@ -303,7 +310,10 @@ func refreshGLMQuotaUsage(ctx context.Context, binding *model.GLMQuotaBinding, n
 	if request.Header.Get("User-Agent") == "" {
 		request.Header.Set("User-Agent", "Mozilla/5.0")
 	}
-	client := &http.Client{Timeout: 30 * time.Second}
+	client, err := quotaHTTPClient(binding.Proxy)
+	if err != nil {
+		return glmQuotaUsageRefreshBody{}, err
+	}
 	response, err := client.Do(request)
 	if err != nil {
 		return glmQuotaUsageRefreshBody{}, err

@@ -56,6 +56,7 @@ const emptyQuotaForm = {
   name: '',
   note: '',
   request_curl: '',
+  proxy: '',
   plan_type: '',
   five_hour_limit_tokens: 0,
   weekly_limit_tokens: 0,
@@ -67,6 +68,7 @@ const buildQuotaForm = (binding = emptyQuotaForm) => ({
   name: binding.name || '',
   note: binding.note || '',
   request_curl: binding.request_curl || '',
+  proxy: binding.proxy || '',
   plan_type: binding.plan_type || '',
   five_hour_limit_tokens: Number(binding.five_hour_limit_tokens || 0),
   weekly_limit_tokens: Number(binding.weekly_limit_tokens || 0),
@@ -240,6 +242,7 @@ export default function GlmQuota() {
         name: quotaForm.name.trim(),
         note: quotaForm.note.trim(),
         request_curl: quotaForm.request_curl.trim(),
+        proxy: quotaForm.proxy.trim(),
         plan_type: quotaForm.plan_type.trim(),
         five_hour_limit_tokens: Number(
           quotaForm.five_hour_limit_tokens || 0,
@@ -595,6 +598,17 @@ export default function GlmQuota() {
                 : t('粘贴 bigmodel.cn 用量接口 curl')
             }
             autosize={{ minRows: 5, maxRows: 10 }}
+          />
+          <Form.Input
+            field='proxy'
+            label={t('代理地址')}
+            value={quotaForm.proxy}
+            onChange={(value) =>
+              setQuotaForm((current) => ({ ...current, proxy: value }))
+            }
+            placeholder={t('例如: socks5://user:pass@host:port')}
+            showClear
+            extraText={t('用于配置网络代理，支持 socks5 协议')}
           />
           <div className='flex items-center gap-3'>
             <Text>{t('启用')}</Text>

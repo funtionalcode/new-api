@@ -78,17 +78,29 @@ func TestApplyGLMQuotaPlanSpecDefaultsAdvanced(t *testing.T) {
 	}
 }
 
-func TestSanitizeGLMQuotaBindingForRoleKeepsCurlForAdminOnly(t *testing.T) {
-	adminBinding := &model.GLMQuotaBinding{RequestCurl: "curl secret"}
+func TestSanitizeGLMQuotaBindingForRoleKeepsSensitiveConfigForAdminOnly(t *testing.T) {
+	adminBinding := &model.GLMQuotaBinding{
+		RequestCurl: "curl secret",
+		Proxy:       "socks5://user:pass@example.com:1080",
+	}
 	sanitizeGLMQuotaBindingForRole(adminBinding, common.RoleAdminUser)
 	if adminBinding.RequestCurl != "curl secret" {
 		t.Fatalf("admin RequestCurl = %q", adminBinding.RequestCurl)
 	}
+	if adminBinding.Proxy != "socks5://user:pass@example.com:1080" {
+		t.Fatalf("admin Proxy = %q", adminBinding.Proxy)
+	}
 
-	userBinding := &model.GLMQuotaBinding{RequestCurl: "curl secret"}
+	userBinding := &model.GLMQuotaBinding{
+		RequestCurl: "curl secret",
+		Proxy:       "socks5://user:pass@example.com:1080",
+	}
 	sanitizeGLMQuotaBindingForRole(userBinding, 0)
 	if userBinding.RequestCurl != "" {
 		t.Fatalf("user RequestCurl = %q, want empty", userBinding.RequestCurl)
+	}
+	if userBinding.Proxy != "" {
+		t.Fatalf("user Proxy = %q, want empty", userBinding.Proxy)
 	}
 }
 

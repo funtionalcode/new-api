@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 	"unicode"
 
 	"github.com/QuantumNous/new-api/common"
@@ -19,10 +18,11 @@ import (
 )
 
 type deepSeekQuotaBindingRequest struct {
-	Name        string `json:"name"`
-	Note        string `json:"note"`
-	RequestCurl string `json:"request_curl"`
-	Enabled     bool   `json:"enabled"`
+	Name        string  `json:"name"`
+	Note        string  `json:"note"`
+	RequestCurl string  `json:"request_curl"`
+	Proxy       *string `json:"proxy"`
+	Enabled     bool    `json:"enabled"`
 }
 
 type deepSeekQuotaCurlRequest struct {
@@ -103,6 +103,7 @@ func CreateDeepSeekQuotaBinding(c *gin.Context) {
 		Name:        update.Name,
 		Note:        update.Note,
 		RequestCurl: update.RequestCurl,
+		Proxy:       update.Proxy,
 		Enabled:     update.Enabled,
 	}
 	if err := model.CreateDeepSeekQuotaBinding(binding); err != nil {
@@ -216,6 +217,7 @@ func sanitizeDeepSeekQuotaBindingForRole(binding *model.DeepSeekQuotaBinding, ro
 		return
 	}
 	binding.RequestCurl = ""
+	binding.Proxy = ""
 }
 
 func decodeDeepSeekQuotaBindingRequest(c *gin.Context, requireCurl bool) (model.DeepSeekQuotaBindingUpdate, error) {
@@ -228,7 +230,11 @@ func decodeDeepSeekQuotaBindingRequest(c *gin.Context, requireCurl bool) (model.
 		Note:        strings.TrimSpace(request.Note),
 		RequestCurl: strings.TrimSpace(request.RequestCurl),
 		UpdateCurl:  strings.TrimSpace(request.RequestCurl) != "",
+		UpdateProxy: request.Proxy != nil,
 		Enabled:     request.Enabled,
+	}
+	if request.Proxy != nil {
+		update.Proxy = strings.TrimSpace(*request.Proxy)
 	}
 	if err := model.ValidateDeepSeekQuotaBindingUpdate(update, requireCurl); err != nil {
 		return model.DeepSeekQuotaBindingUpdate{}, err
@@ -258,7 +264,10 @@ func refreshDeepSeekQuotaUsage(ctx context.Context, binding *model.DeepSeekQuota
 	if request.Header.Get("User-Agent") == "" {
 		request.Header.Set("User-Agent", "Mozilla/5.0")
 	}
-	client := &http.Client{Timeout: 30 * time.Second}
+	client, err := quotaHTTPClient(binding.Proxy)
+	if err != nil {
+		return deepSeekQuotaUsageRefreshBody{}, err
+	}
 	response, err := client.Do(request)
 	if err != nil {
 		return deepSeekQuotaUsageRefreshBody{}, err

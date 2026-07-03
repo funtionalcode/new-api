@@ -13,6 +13,7 @@ type DeepSeekQuotaBinding struct {
 	Name                       string `json:"name" gorm:"size:128;index;not null"`
 	Note                       string `json:"note" gorm:"type:text"`
 	RequestCurl                string `json:"request_curl,omitempty" gorm:"type:text;not null"`
+	Proxy                      string `json:"proxy,omitempty" gorm:"type:text"`
 	LastMonthlyLimitTokens     int64  `json:"last_monthly_limit_tokens" gorm:"bigint;default:0"`
 	LastMonthlyUsedTokens      int64  `json:"last_monthly_used_tokens" gorm:"bigint;default:0"`
 	LastMonthlyRemainingTokens int64  `json:"last_monthly_remaining_tokens" gorm:"bigint;default:0"`
@@ -39,6 +40,8 @@ type DeepSeekQuotaBindingUpdate struct {
 	Note        string
 	RequestCurl string
 	UpdateCurl  bool
+	Proxy       string
+	UpdateProxy bool
 	Enabled     bool
 }
 
@@ -117,6 +120,9 @@ func UpdateDeepSeekQuotaBinding(id int, update DeepSeekQuotaBindingUpdate) (*Dee
 	}
 	if update.UpdateCurl {
 		updates["request_curl"] = strings.TrimSpace(update.RequestCurl)
+	}
+	if update.UpdateProxy {
+		updates["proxy"] = strings.TrimSpace(update.Proxy)
 	}
 	if err := DB.Model(&DeepSeekQuotaBinding{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 		return nil, err

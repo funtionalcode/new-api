@@ -41,6 +41,7 @@ const emptyQuotaForm = {
   name: '',
   note: '',
   request_curl: '',
+  proxy: '',
   enabled: true,
 };
 
@@ -49,6 +50,7 @@ const buildQuotaForm = (binding = emptyQuotaForm) => ({
   name: binding.name || '',
   note: binding.note || '',
   request_curl: binding.request_curl || '',
+  proxy: binding.proxy || '',
   enabled: binding.enabled !== false,
 });
 
@@ -222,6 +224,7 @@ export default function DeepSeekQuota() {
         name: quotaForm.name.trim(),
         note: quotaForm.note.trim(),
         request_curl: quotaForm.request_curl.trim(),
+        proxy: quotaForm.proxy.trim(),
         enabled: quotaForm.enabled,
       };
       const res = quotaForm.id
@@ -521,6 +524,17 @@ export default function DeepSeekQuota() {
                 : t('粘贴 platform.deepseek.com 额度接口 curl')
             }
             autosize={{ minRows: 5, maxRows: 10 }}
+          />
+          <Form.Input
+            field='proxy'
+            label={t('代理地址')}
+            value={quotaForm.proxy}
+            onChange={(value) =>
+              setQuotaForm((current) => ({ ...current, proxy: value }))
+            }
+            placeholder={t('例如: socks5://user:pass@host:port')}
+            showClear
+            extraText={t('用于配置网络代理，支持 socks5 协议')}
           />
           <div className='flex items-center gap-3'>
             <Text>{t('启用')}</Text>

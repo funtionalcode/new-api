@@ -93,16 +93,28 @@ func TestBuildDeepSeekQuotaCurlRequestParsesHeadersAndCookie(t *testing.T) {
 	}
 }
 
-func TestSanitizeDeepSeekQuotaBindingForRoleKeepsCurlForAdminOnly(t *testing.T) {
-	adminBinding := &model.DeepSeekQuotaBinding{RequestCurl: "curl secret"}
+func TestSanitizeDeepSeekQuotaBindingForRoleKeepsSensitiveConfigForAdminOnly(t *testing.T) {
+	adminBinding := &model.DeepSeekQuotaBinding{
+		RequestCurl: "curl secret",
+		Proxy:       "socks5://user:pass@example.com:1080",
+	}
 	sanitizeDeepSeekQuotaBindingForRole(adminBinding, common.RoleAdminUser)
 	if adminBinding.RequestCurl != "curl secret" {
 		t.Fatalf("admin RequestCurl = %q", adminBinding.RequestCurl)
 	}
+	if adminBinding.Proxy != "socks5://user:pass@example.com:1080" {
+		t.Fatalf("admin Proxy = %q", adminBinding.Proxy)
+	}
 
-	userBinding := &model.DeepSeekQuotaBinding{RequestCurl: "curl secret"}
+	userBinding := &model.DeepSeekQuotaBinding{
+		RequestCurl: "curl secret",
+		Proxy:       "socks5://user:pass@example.com:1080",
+	}
 	sanitizeDeepSeekQuotaBindingForRole(userBinding, 0)
 	if userBinding.RequestCurl != "" {
 		t.Fatalf("user RequestCurl = %q, want empty", userBinding.RequestCurl)
+	}
+	if userBinding.Proxy != "" {
+		t.Fatalf("user Proxy = %q, want empty", userBinding.Proxy)
 	}
 }

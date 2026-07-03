@@ -13,6 +13,7 @@ type GLMQuotaBinding struct {
 	Name                   string `json:"name" gorm:"size:128;index;not null"`
 	Note                   string `json:"note" gorm:"type:text"`
 	RequestCurl            string `json:"request_curl,omitempty" gorm:"type:text;not null"`
+	Proxy                  string `json:"proxy,omitempty" gorm:"type:text"`
 	PlanType               string `json:"plan_type" gorm:"size:64;default:''"`
 	FiveHourLimitTokens    int64  `json:"five_hour_limit_tokens" gorm:"bigint;default:0"`
 	WeeklyLimitTokens      int64  `json:"weekly_limit_tokens" gorm:"bigint;default:0"`
@@ -40,6 +41,8 @@ type GLMQuotaBindingUpdate struct {
 	Note                string
 	RequestCurl         string
 	UpdateCurl          bool
+	Proxy               string
+	UpdateProxy         bool
 	PlanType            string
 	FiveHourLimitTokens int64
 	WeeklyLimitTokens   int64
@@ -122,6 +125,9 @@ func UpdateGLMQuotaBinding(id int, update GLMQuotaBindingUpdate) (*GLMQuotaBindi
 	}
 	if update.UpdateCurl {
 		updates["request_curl"] = strings.TrimSpace(update.RequestCurl)
+	}
+	if update.UpdateProxy {
+		updates["proxy"] = strings.TrimSpace(update.Proxy)
 	}
 	if err := DB.Model(&GLMQuotaBinding{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 		return nil, err
