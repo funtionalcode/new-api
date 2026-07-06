@@ -30,7 +30,15 @@ import {
   Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
-import { API, isAdmin, isRoot, showError, showSuccess } from '../../helpers';
+import {
+  API,
+  getCliproxyAuthProvider,
+  getCliproxyRefreshStatus,
+  isAdmin,
+  isRoot,
+  showError,
+  showSuccess,
+} from '../../helpers';
 
 const { Text } = Typography;
 
@@ -79,6 +87,22 @@ const getPlanTagConfig = (value) => {
 const renderPlanTag = (value) => {
   const config = getPlanTagConfig(value);
   if (!config) return '-';
+  return (
+    <Tag color={config.color} shape='circle'>
+      {config.label}
+    </Tag>
+  );
+};
+
+const renderAuthProviderTag = (record, t) => {
+  const provider = getCliproxyAuthProvider(record);
+  const configs = {
+    codex: { label: 'Codex', color: 'cyan' },
+    claude: { label: 'Claude', color: 'orange' },
+    unknown: { label: t('未知'), color: 'grey' },
+  };
+  const config = configs[provider] || configs.unknown;
+
   return (
     <Tag color={config.color} shape='circle'>
       {config.label}
@@ -145,6 +169,30 @@ const buildBindingForm = (binding = emptyBindingForm) => ({
 const formatTime = (timestamp) => {
   if (!timestamp) return '-';
   return new Date(timestamp * 1000).toLocaleString();
+};
+
+const renderRefreshProgress = (record, t) => {
+  const refreshStatus = getCliproxyRefreshStatus(record);
+
+  return (
+    <div>
+      <div>
+        <Text type={refreshStatus.failed ? 'danger' : undefined}>
+          {t(refreshStatus.labelKey)}
+        </Text>
+      </div>
+      <Text type='tertiary'>{formatTime(refreshStatus.refreshedAt)}</Text>
+      {refreshStatus.error ? (
+        <Tooltip content={refreshStatus.error}>
+          <div className='mt-1 max-w-[220px] truncate'>
+            <Text type='danger' size='small'>
+              {refreshStatus.error}
+            </Text>
+          </div>
+        </Tooltip>
+      ) : null}
+    </div>
+  );
 };
 
 const normalizeRemoteAuthFiles = (response) => {
@@ -391,7 +439,12 @@ export default function CliproxyAuthFiles() {
         `/api/cliproxy/auth-files/bindings/${binding.id}/refresh-usage`,
       );
       if (res.data.success) {
-        showSuccess(t('刷新成功'));
+        const refreshStatus = getCliproxyRefreshStatus(res.data.data);
+        if (refreshStatus.failed) {
+          showError(refreshStatus.error || t('刷新失败'));
+        } else {
+          showSuccess(t('刷新成功'));
+        }
         await loadBindings();
       } else {
         showError(res.data.message || t('刷新失败'));
@@ -436,7 +489,13 @@ export default function CliproxyAuthFiles() {
         ),
       );
       results.forEach((result) => {
-        if (result.status === 'fulfilled' && result.value?.data?.success) {
+        const data = result.value?.data;
+        const refreshStatus = getCliproxyRefreshStatus(data?.data);
+        if (
+          result.status === 'fulfilled' &&
+          data?.success &&
+          !refreshStatus.failed
+        ) {
           successCount++;
         } else {
           failCount++;
@@ -470,6 +529,10 @@ export default function CliproxyAuthFiles() {
   }, [rootUser]);
 
   const remoteColumns = [
+    {
+      title: t('类型'),
+      render: (_, record) => renderAuthProviderTag(record, t),
+    },
     { title: t('认证文件'), dataIndex: 'name' },
     {
       title: t('索引'),
@@ -539,6 +602,10 @@ export default function CliproxyAuthFiles() {
 
   const bindingColumns = [
     {
+      title: t('类型'),
+      render: (_, record) => renderAuthProviderTag(record, t),
+    },
+    {
       title: t('用户'),
       render: (_, record) => (
         <div>
@@ -599,12 +666,7 @@ export default function CliproxyAuthFiles() {
     },
     {
       title: t('刷新进度'),
-      render: (_, record) => (
-        <div>
-          <div>{record.last_error ? t('刷新失败') : t('刷新成功')}</div>
-          <Text type='tertiary'>{formatTime(record.last_refreshed_at)}</Text>
-        </div>
-      ),
+      render: (_, record) => renderRefreshProgress(record, t),
     },
     {
       title: t('状态'),
