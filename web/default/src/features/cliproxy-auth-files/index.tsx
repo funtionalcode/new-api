@@ -62,6 +62,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Progress } from '@/components/ui/progress'
 import { Switch } from '@/components/ui/switch'
 import {
   Table,
@@ -209,6 +210,114 @@ function PlanLabel(props: { value?: string | null }) {
         </span>
       ) : null}
     </Badge>
+  )
+}
+
+function normalizeUsagePercent(value: unknown): number {
+  const percent = Number(value || 0)
+  if (!Number.isFinite(percent)) return 0
+  return Math.min(100, Math.max(0, Math.round(percent)))
+}
+
+function usageProgressColor(percent: number): string {
+  if (percent >= 90) {
+    return '[&_[data-slot=progress-indicator]]:bg-rose-500'
+  }
+  if (percent >= 70) {
+    return '[&_[data-slot=progress-indicator]]:bg-amber-500'
+  }
+  return '[&_[data-slot=progress-indicator]]:bg-emerald-500'
+}
+
+function UsageLimitBar({
+  label,
+  percent,
+  resetAt,
+  resetLabel,
+}: {
+  label: string
+  percent: number
+  resetAt: number
+  resetLabel: string
+}) {
+  const normalizedPercent = normalizeUsagePercent(percent)
+
+  return (
+    <div className='min-w-[180px] space-y-1'>
+      <div className='flex items-center justify-between gap-3 text-xs'>
+        <span className='text-muted-foreground'>{label}</span>
+        <span className='font-mono font-medium'>{normalizedPercent}%</span>
+      </div>
+      <Progress
+        value={normalizedPercent}
+        className={cn('h-1.5', usageProgressColor(normalizedPercent))}
+      />
+      <div className='text-muted-foreground text-xs'>
+        {resetLabel}: {resetAt > 0 ? formatTimestampToDate(resetAt) : '-'}
+      </div>
+    </div>
+  )
+}
+
+function BindingUsageCell({
+  binding,
+  labels,
+}: {
+  binding: CliproxyAuthFileBinding
+  labels: {
+    fiveHour: string
+    weekly: string
+    codexFiveHour: string
+    codexWeekly: string
+    reset: string
+    quota: string
+  }
+}) {
+  const hasUsageWindow =
+    binding.last_refreshed_at > 0 ||
+    binding.last_five_hour_reset_at > 0 ||
+    binding.last_weekly_reset_at > 0 ||
+    binding.last_codex_five_hour_reset_at > 0 ||
+    binding.last_codex_weekly_reset_at > 0
+
+  if (!hasUsageWindow) {
+    return (
+      <div>
+        <div>{formatTokens(binding.last_usage_tokens)}</div>
+        <div className='text-muted-foreground text-xs'>
+          {labels.quota} {binding.last_usage_quota || '-'}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className='grid gap-3 xl:grid-cols-2'>
+      <UsageLimitBar
+        label={labels.fiveHour}
+        percent={binding.last_five_hour_percent}
+        resetAt={binding.last_five_hour_reset_at}
+        resetLabel={labels.reset}
+      />
+      <UsageLimitBar
+        label={labels.weekly}
+        percent={binding.last_weekly_percent}
+        resetAt={binding.last_weekly_reset_at}
+        resetLabel={labels.reset}
+      />
+      <UsageLimitBar
+        label={labels.codexFiveHour}
+        percent={binding.last_codex_five_hour_percent}
+        resetAt={binding.last_codex_five_hour_reset_at}
+        resetLabel={labels.reset}
+      />
+      <UsageLimitBar
+        label={labels.codexWeekly}
+        percent={binding.last_codex_weekly_percent}
+        resetAt={binding.last_codex_weekly_reset_at}
+        resetLabel={labels.reset}
+      />
+    </div>
   )
 }
 
@@ -804,12 +913,19 @@ function BindingTable({
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div>{formatTokens(binding.last_usage_tokens)}</div>
+                    <BindingUsageCell
+                      binding={binding}
+                      labels={{
+                        fiveHour: t('5-Hour Window'),
+                        weekly: t('Weekly Window'),
+                        codexFiveHour: `Codex ${t('5-Hour Window')}`,
+                        codexWeekly: `Codex ${t('Weekly Window')}`,
+                        reset: t('Reset'),
+                        quota: t('Quota:'),
+                      }}
+                    />
                     <div className='mt-1'>
                       <PlanLabel value={binding.last_plan_type} />
-                    </div>
-                    <div className='text-muted-foreground text-xs'>
-                      Quota: {binding.last_usage_quota || '-'}
                     </div>
                     {binding.last_error ? (
                       <div className='text-destructive max-w-56 truncate text-xs'>

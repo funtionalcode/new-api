@@ -160,7 +160,7 @@ function buildForm(binding?: QuotaBinding): QuotaBindingFormData {
     id: binding.id,
     name: binding.name || '',
     note: binding.note || '',
-    request_curl: '',
+    request_curl: binding.request_curl || '',
     proxy: binding.proxy || '',
     enabled: binding.enabled !== false,
     plan_type: isGLMBinding(binding) ? binding.plan_type || 'standard' : '',

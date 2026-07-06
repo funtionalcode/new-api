@@ -3,12 +3,13 @@ FROM oven/bun:1@sha256:0733e50325078969732ebe3b15ce4c4be5082f18c4ac1a0f0ca4839c2
 ARG http_proxy
 ARG https_proxy
 ARG no_proxy
+ARG NODE_TLS_REJECT_UNAUTHORIZED
 ENV http_proxy=${http_proxy} https_proxy=${https_proxy} no_proxy=${no_proxy}
 
 WORKDIR /build/web
 COPY web/package.json web/bun.lock ./
 COPY web/default/package.json ./default/package.json
-RUN bun install --filter ./default --frozen-lockfile
+RUN NODE_TLS_REJECT_UNAUTHORIZED=${NODE_TLS_REJECT_UNAUTHORIZED} bun install --filter ./default --frozen-lockfile
 COPY ./web/default ./default
 COPY ./VERSION /build/VERSION
 RUN cd default && DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION=$(cat /build/VERSION) bun run build

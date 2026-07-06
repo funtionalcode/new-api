@@ -227,6 +227,21 @@ func UpdateCliproxyAuthFileBindingUsage(id int, update CliproxyUsageRefreshUpdat
 	if err != nil {
 		return nil, err
 	}
+	if strings.TrimSpace(update.LastError) != "" {
+		update.LastUsageTokens = binding.LastUsageTokens
+		update.LastUsageQuota = binding.LastUsageQuota
+		update.LastPlanType = binding.LastPlanType
+		update.LastFiveHourPercent = binding.LastFiveHourPercent
+		update.LastFiveHourResetAt = binding.LastFiveHourResetAt
+		update.LastWeeklyPercent = binding.LastWeeklyPercent
+		update.LastWeeklyResetAt = binding.LastWeeklyResetAt
+		update.LastCodexFiveHourPercent = binding.LastCodexFiveHourPercent
+		update.LastCodexFiveHourResetAt = binding.LastCodexFiveHourResetAt
+		update.LastCodexWeeklyPercent = binding.LastCodexWeeklyPercent
+		update.LastCodexWeeklyResetAt = binding.LastCodexWeeklyResetAt
+	} else if strings.TrimSpace(update.LastPlanType) == "" {
+		update.LastPlanType = binding.LastPlanType
+	}
 	updatedBinding := &CliproxyAuthFileBinding{
 		Id:                       binding.Id,
 		UserId:                   binding.UserId,

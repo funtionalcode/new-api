@@ -112,3 +112,52 @@ func TestMigrateCliproxyAuthFileBindingNoteRenamesLegacyDescription(t *testing.T
 	require.NoError(t, err)
 	require.Equal(t, "旧备注", binding.Note)
 }
+
+func TestUpdateCliproxyAuthFileBindingUsagePreservesLastUsageOnError(t *testing.T) {
+	originalDB := DB
+	t.Cleanup(func() {
+		DB = originalDB
+	})
+
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&CliproxyAuthFileBinding{}))
+	DB = db
+
+	require.NoError(t, db.Create(&CliproxyAuthFileBinding{
+		Id:                       1,
+		UserId:                   1,
+		Username:                 "root",
+		AuthIndex:                "auth-index",
+		AuthName:                 "auth.json",
+		Enabled:                  true,
+		LastUsageTokens:          12345,
+		LastUsageQuota:           678,
+		LastPlanType:             "pro",
+		LastFiveHourPercent:      21,
+		LastFiveHourResetAt:      1783335000,
+		LastWeeklyPercent:        34,
+		LastWeeklyResetAt:        1783939800,
+		LastCodexFiveHourPercent: 55,
+		LastCodexFiveHourResetAt: 1783340000,
+		LastCodexWeeklyPercent:   67,
+		LastCodexWeeklyResetAt:   1783940000,
+	}).Error)
+
+	binding, err := UpdateCliproxyAuthFileBindingUsage(1, CliproxyUsageRefreshUpdate{
+		LastError: "network timeout",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "network timeout", binding.LastError)
+	require.Equal(t, 12345, binding.LastUsageTokens)
+	require.Equal(t, 678, binding.LastUsageQuota)
+	require.Equal(t, "pro", binding.LastPlanType)
+	require.Equal(t, 21, binding.LastFiveHourPercent)
+	require.Equal(t, int64(1783335000), binding.LastFiveHourResetAt)
+	require.Equal(t, 34, binding.LastWeeklyPercent)
+	require.Equal(t, int64(1783939800), binding.LastWeeklyResetAt)
+	require.Equal(t, 55, binding.LastCodexFiveHourPercent)
+	require.Equal(t, int64(1783340000), binding.LastCodexFiveHourResetAt)
+	require.Equal(t, 67, binding.LastCodexWeeklyPercent)
+	require.Equal(t, int64(1783940000), binding.LastCodexWeeklyResetAt)
+}
