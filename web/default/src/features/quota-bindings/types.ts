@@ -71,6 +71,14 @@ export type QuotaBindingFormData = {
   weekly_limit_tokens: number
 }
 
+export type QuotaBindingSavePayload = Omit<
+  QuotaBindingFormData,
+  'request_curl' | 'proxy'
+> & {
+  request_curl?: string
+  proxy?: string
+}
+
 export type ApiResponse<T> = {
   success: boolean
   message?: string

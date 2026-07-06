@@ -146,8 +146,8 @@ export function getResponseTimeColor(
   seconds: number,
   completionTokens: number
 ): 'success' | 'warning' | 'danger' {
-  if (completionTokens < 100 || seconds <= 0) return getTimeColor(seconds)
-  return getThroughputColor(completionTokens / seconds)
+  void completionTokens
+  return getTimeColor(seconds)
 }
 
 /**

@@ -23,7 +23,7 @@ import type {
   ApiResponse,
   PageData,
   QuotaBinding,
-  QuotaBindingFormData,
+  QuotaBindingSavePayload,
   QuotaProvider,
 } from './types'
 
@@ -46,7 +46,7 @@ export async function getQuotaBindings(
 
 export async function createQuotaBinding(
   provider: QuotaProvider,
-  data: QuotaBindingFormData
+  data: QuotaBindingSavePayload
 ): Promise<ApiResponse<QuotaBinding>> {
   const res = await api.post(pathFor(provider, '/bindings'), data)
   return res.data
@@ -55,7 +55,7 @@ export async function createQuotaBinding(
 export async function updateQuotaBinding(
   provider: QuotaProvider,
   id: number,
-  data: QuotaBindingFormData
+  data: QuotaBindingSavePayload
 ): Promise<ApiResponse<QuotaBinding>> {
   const res = await api.put(pathFor(provider, `/bindings/${id}`), data)
   return res.data

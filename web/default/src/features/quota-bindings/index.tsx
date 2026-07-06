@@ -83,11 +83,15 @@ import {
   updateQuotaBinding,
 } from './api'
 import { buildDeepSeekMoneyUsage } from './lib/deepseek-usage'
+import {
+  buildQuotaBindingSavePayload,
+  type QuotaBindingFormState,
+} from './lib/form-payload'
 import type {
   DeepSeekQuotaBinding,
   GLMQuotaBinding,
   QuotaBinding,
-  QuotaBindingFormData,
+  QuotaBindingSavePayload,
   QuotaProvider,
 } from './types'
 
@@ -134,11 +138,13 @@ function getGLMPlanLabelKey(value: string): string {
   )
 }
 
-const emptyForm: QuotaBindingFormData = {
+const emptyForm: QuotaBindingFormState = {
   name: '',
   note: '',
   request_curl: '',
   proxy: '',
+  request_curl_touched: false,
+  proxy_touched: false,
   enabled: true,
   plan_type: 'standard',
   five_hour_limit_tokens: 60_000_000,
@@ -155,7 +161,7 @@ function isDeepSeekBinding(
   return 'last_monthly_used_tokens' in binding
 }
 
-function buildForm(binding?: QuotaBinding): QuotaBindingFormData {
+function buildForm(binding?: QuotaBinding): QuotaBindingFormState {
   if (!binding) return emptyForm
   return {
     id: binding.id,
@@ -163,6 +169,9 @@ function buildForm(binding?: QuotaBinding): QuotaBindingFormData {
     note: binding.note || '',
     request_curl: binding.request_curl || '',
     proxy: binding.proxy || '',
+    has_curl: binding.has_curl,
+    request_curl_touched: false,
+    proxy_touched: false,
     enabled: binding.enabled !== false,
     plan_type: isGLMBinding(binding) ? binding.plan_type || 'standard' : '',
     five_hour_limit_tokens: isGLMBinding(binding)
@@ -326,7 +335,7 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
   const config = providerConfigs[provider]
   const [keyword, setKeyword] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [form, setForm] = useState<QuotaBindingFormData>(emptyForm)
+  const [form, setForm] = useState<QuotaBindingFormState>(emptyForm)
   const [deleteTarget, setDeleteTarget] = useState<QuotaBinding | null>(null)
   const [refreshingId, setRefreshingId] = useState<number | null>(null)
   const [refreshingAll, setRefreshingAll] = useState(false)
@@ -350,7 +359,7 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
     queryClient.invalidateQueries({ queryKey: ['quota-bindings', provider] })
 
   const saveMutation = useMutation({
-    mutationFn: async (data: QuotaBindingFormData) => {
+    mutationFn: async (data: QuotaBindingSavePayload) => {
       return data.id
         ? updateQuotaBinding(provider, data.id, data)
         : createQuotaBinding(provider, data)
@@ -398,7 +407,7 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
     setDialogOpen(true)
   }
 
-  const updateForm = (patch: Partial<QuotaBindingFormData>) => {
+  const updateForm = (patch: Partial<QuotaBindingFormState>) => {
     setForm((current) => ({ ...current, ...patch }))
   }
 
@@ -484,13 +493,7 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
         return
       }
     }
-    saveMutation.mutate({
-      ...form,
-      name: form.name.trim(),
-      note: form.note.trim(),
-      request_curl: form.request_curl.trim(),
-      proxy: form.proxy.trim(),
-    })
+    saveMutation.mutate(buildQuotaBindingSavePayload(form))
   }
 
   const applyGLMPlan = (value: string) => {
@@ -741,9 +744,16 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
               <Label>{t('Curl Command')}</Label>
               <Textarea
                 value={form.request_curl}
-                placeholder={t(config.curlPlaceholderKey)}
+                placeholder={
+                  form.id && form.has_curl
+                    ? t('Leave blank to keep unchanged')
+                    : t(config.curlPlaceholderKey)
+                }
                 onChange={(event) =>
-                  updateForm({ request_curl: event.target.value })
+                  updateForm({
+                    request_curl: event.target.value,
+                    request_curl_touched: true,
+                  })
                 }
               />
             </div>
@@ -753,7 +763,12 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
               <Input
                 value={form.proxy}
                 placeholder='http://127.0.0.1:7990'
-                onChange={(event) => updateForm({ proxy: event.target.value })}
+                onChange={(event) =>
+                  updateForm({
+                    proxy: event.target.value,
+                    proxy_touched: true,
+                  })
+                }
               />
             </div>
 

@@ -73,6 +73,12 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { SectionPageLayout } from '@/components/layout'
 import { useSystemOptions } from '@/features/system-settings/hooks/use-system-options'
 import { useUpdateOption } from '@/features/system-settings/hooks/use-update-option'
@@ -87,6 +93,10 @@ import {
   toBindingFormData,
   updateCliproxyAuthFileBinding,
 } from './api'
+import {
+  buildCliproxyUsageSummary,
+  type CliproxyUsageWindowKey,
+} from './lib/usage-summary'
 import type {
   CliproxyAuthFile,
   CliproxyAuthFileBinding,
@@ -232,18 +242,14 @@ function usageProgressColor(percent: number): string {
 function UsageLimitBar({
   label,
   percent,
-  resetAt,
-  resetLabel,
 }: {
   label: string
   percent: number
-  resetAt: number
-  resetLabel: string
 }) {
   const normalizedPercent = normalizeUsagePercent(percent)
 
   return (
-    <div className='min-w-[180px] space-y-1'>
+    <div className='min-w-[140px] space-y-1'>
       <div className='flex items-center justify-between gap-3 text-xs'>
         <span className='text-muted-foreground'>{label}</span>
         <span className='font-mono font-medium'>{normalizedPercent}%</span>
@@ -252,11 +258,23 @@ function UsageLimitBar({
         value={normalizedPercent}
         className={cn('h-1.5', usageProgressColor(normalizedPercent))}
       />
-      <div className='text-muted-foreground text-xs'>
-        {resetLabel}: {resetAt > 0 ? formatTimestampToDate(resetAt) : '-'}
-      </div>
     </div>
   )
+}
+
+function usageWindowLabel(
+  key: CliproxyUsageWindowKey,
+  labels: {
+    fiveHour: string
+    weekly: string
+    codexFiveHour: string
+    codexWeekly: string
+  }
+): string {
+  if (key === 'fiveHour') return labels.fiveHour
+  if (key === 'weekly') return labels.weekly
+  if (key === 'codexFiveHour') return labels.codexFiveHour
+  return labels.codexWeekly
 }
 
 function BindingUsageCell({
@@ -273,51 +291,102 @@ function BindingUsageCell({
     quota: string
   }
 }) {
-  const hasUsageWindow =
-    binding.last_refreshed_at > 0 ||
-    binding.last_five_hour_reset_at > 0 ||
-    binding.last_weekly_reset_at > 0 ||
-    binding.last_codex_five_hour_reset_at > 0 ||
-    binding.last_codex_weekly_reset_at > 0
+  const { t } = useTranslation()
+  const summary = buildCliproxyUsageSummary(binding)
 
-  if (!hasUsageWindow) {
+  if (!summary.hasUsageWindow) {
     return (
       <div>
         <div>{formatTokens(binding.last_usage_tokens)}</div>
         <div className='text-muted-foreground text-xs'>
           {labels.quota} {binding.last_usage_quota || '-'}
         </div>
+        {binding.last_plan_type ? (
+          <div className='mt-1'>
+            <PlanLabel value={binding.last_plan_type} />
+          </div>
+        ) : null}
       </div>
     )
   }
 
   return (
-    <div className='grid gap-3 xl:grid-cols-2'>
-      <UsageLimitBar
-        label={labels.fiveHour}
-        percent={binding.last_five_hour_percent}
-        resetAt={binding.last_five_hour_reset_at}
-        resetLabel={labels.reset}
-      />
-      <UsageLimitBar
-        label={labels.weekly}
-        percent={binding.last_weekly_percent}
-        resetAt={binding.last_weekly_reset_at}
-        resetLabel={labels.reset}
-      />
-      <UsageLimitBar
-        label={labels.codexFiveHour}
-        percent={binding.last_codex_five_hour_percent}
-        resetAt={binding.last_codex_five_hour_reset_at}
-        resetLabel={labels.reset}
-      />
-      <UsageLimitBar
-        label={labels.codexWeekly}
-        percent={binding.last_codex_weekly_percent}
-        resetAt={binding.last_codex_weekly_reset_at}
-        resetLabel={labels.reset}
-      />
-    </div>
+    <TooltipProvider delay={150}>
+      <Tooltip>
+        <TooltipTrigger
+          render={<div className='max-w-[460px] cursor-help space-y-2' />}
+        >
+          <div className='grid gap-2 sm:grid-cols-2'>
+            {summary.primaryWindows.map((window) => (
+              <UsageLimitBar
+                key={window.key}
+                label={usageWindowLabel(window.key, labels)}
+                percent={window.percent}
+              />
+            ))}
+          </div>
+          {binding.last_plan_type || binding.last_error ? (
+            <div className='flex items-center gap-2'>
+              {binding.last_plan_type ? (
+                <PlanLabel value={binding.last_plan_type} />
+              ) : null}
+              {binding.last_error ? (
+                <Badge
+                  variant='destructive'
+                  className='h-5 px-1.5 text-[11px]'
+                >
+                  {t('Error')}
+                </Badge>
+              ) : null}
+            </div>
+          ) : null}
+        </TooltipTrigger>
+        <TooltipContent
+          side='top'
+          align='start'
+          className='max-w-[min(34rem,calc(100vw-2rem))] whitespace-normal p-3'
+        >
+          <div className='grid gap-2'>
+            {summary.detailWindows.map((window) => (
+              <div
+                key={window.key}
+                className='grid grid-cols-[minmax(8rem,1fr)_auto] gap-x-4 gap-y-0.5'
+              >
+                <span>{usageWindowLabel(window.key, labels)}</span>
+                <span className='font-mono font-semibold'>
+                  {normalizeUsagePercent(window.percent)}%
+                </span>
+                <span className='text-background/70 col-span-2'>
+                  {labels.reset}:{' '}
+                  {window.resetAt > 0
+                    ? formatTimestampToDate(window.resetAt)
+                    : '-'}
+                </span>
+              </div>
+            ))}
+            <div className='border-background/15 grid gap-1 border-t pt-2'>
+              <div className='flex justify-between gap-4'>
+                <span className='text-background/70'>{labels.quota}</span>
+                <span className='font-mono'>
+                  {binding.last_usage_quota || '-'}
+                </span>
+              </div>
+              <div className='flex justify-between gap-4'>
+                <span className='text-background/70'>{t('Total Tokens')}</span>
+                <span className='font-mono'>
+                  {formatTokens(binding.last_usage_tokens)}
+                </span>
+              </div>
+              {binding.last_error ? (
+                <div className='text-background/80 whitespace-pre-wrap break-words'>
+                  {binding.last_error}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }
 
@@ -924,14 +993,6 @@ function BindingTable({
                         quota: t('Quota:'),
                       }}
                     />
-                    <div className='mt-1'>
-                      <PlanLabel value={binding.last_plan_type} />
-                    </div>
-                    {binding.last_error ? (
-                      <div className='text-destructive max-w-56 truncate text-xs'>
-                        {binding.last_error}
-                      </div>
-                    ) : null}
                   </TableCell>
                   <TableCell>
                     {formatTimestampToDate(binding.last_refreshed_at)}

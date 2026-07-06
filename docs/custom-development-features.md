@@ -1,6 +1,6 @@
 # 二开功能记录
 
-更新时间：2026-07-06
+更新时间：2026-07-07
 
 本文记录当前项目已做的二开功能，便于后续升级、排查和继续开发时快速确认改动范围。后续新增或调整二开功能时，需要同步更新本文。
 
@@ -18,6 +18,7 @@
 | GLM / DeepSeek 额度 | curl 解析支持 `-x`、`--proxy`、`--proxy=...` 代理，未单独配置代理时使用 curl 内代理，修复额度刷新请求外网超时 | `controller/quota_http_client.go`、`controller/deepseek_quota.go`、`controller/glm_quota.go` | 本次同步 |
 | GLM / DeepSeek 额度 | 在 `web/default` 实现额度管理页面，新增侧边栏入口、绑定列表、创建/编辑、删除、单个刷新和全部刷新 | `web/default/src/features/quota-bindings`、`web/default/src/routes/_authenticated/*-quota`、`web/default/src/hooks/use-sidebar-*` | 本次同步 |
 | GLM / DeepSeek 额度 | DeepSeek 额度改为剩余金额进度条，显示今日消费和本月消费；接口未返回今日消费时显示空值 | `controller/deepseek_quota.go`、`model/deepseek_quota.go`、`web/default/src/features/quota-bindings` | 本次同步 |
+| GLM / DeepSeek 额度 | 编辑额度配置时，未修改的 curl 和代理字段不提交，后端复用已保存配置，避免无回显或直接确认时清空代理 | `web/default/src/features/quota-bindings` | 本次同步 |
 | 渠道管理 | 渠道支持开放用户限制；未配置时默认开放给所有用户 | `controller/channel.go`、`model/channel.go`、`middleware/distributor.go`、`service/channel_select.go`、`web/default/src/features/channels` | `001cd50f` |
 | 渠道管理 | 在 `web/default` 实现渠道开放用户限制，支持编辑抽屉搜索选择用户、列表展示开放用户范围 | `web/default/src/features/channels` | 本次同步 |
 | 用户管理 | 新增每日、每周、每月可使用 Token 数量限制 | `model/user_token_limit.go`、`middleware/distributor.go`、`controller/user.go`、`web/default/src/features/users` | `ef3f665e` |
@@ -28,6 +29,7 @@
 | 使用日志 | 在 `web/default` 实现 IP 筛选和平均耗时统计，高级筛选支持 IP，统计卡展示平均耗时 | `web/default/src/features/usage-logs` | 本次同步 |
 | 使用日志 | 通用日志用户列显示用户备注、恢复 IP 列，并按日志 `use_time` 秒口径展示平均耗时 | `model/log.go`、`web/default/src/features/usage-logs` | 本次同步 |
 | 使用日志 | 通用日志统计卡 RPM/TPM 按当前筛选时间窗口计算每分钟平均值，无筛选区间时保留最近 60 秒实时口径 | `model/log.go`、`web/default/src/features/usage-logs` | 本次同步 |
+| 使用日志 | 通用日志耗时 badge 按实际耗时秒数阈值变色，不再受输出吞吐率影响 | `web/default/src/features/usage-logs` | 本次同步 |
 | 数据看板 | 用户消耗排行默认以 Tokens 为单位；数据看板显示用户备注 | `web/default/src/features/dashboard`、`web/default/src/features/dashboard/hooks`、`web/default/src/features/dashboard/lib` | `bed9fbd8`、`d3ebbbb8` |
 | 数据看板 | 数据看板新增令牌消耗排行 tab，按令牌聚合 Token 消耗并显示排行 | `web/default/src/features/dashboard`、`web/default/src/features/dashboard/hooks`、`web/default/src/features/dashboard/lib` | 本次同步提交 |
 | 数据看板 | 在 `web/default` 实现令牌消耗分析，包含令牌趋势、分布和排行图表，并提供 `/dashboard/tokens` 入口 | `web/default/src/features/dashboard`、`web/default/src/hooks/use-sidebar-data.ts` | 本次同步 |
@@ -38,6 +40,7 @@
 | 流式诊断 | 补充流式转发断开来源诊断日志，记录 request_id、model、elapsed、chunk_count 和请求上下文错误 | `relay` / stream forward 相关代码 | `26bafa7b` |
 | Cliproxy 认证文件 | 兼容认证文件额度、备注回显、备注字段统一为 note，并调整绑定刷新权限 | `controller/cliproxy*`、`model/cliproxy*`、`web/default/src/features/cliproxy-auth-files` | `f09f1beb`、`aef05809`、`9c6da6db`、`651370c0` |
 | Cliproxy 认证文件 | 认证文件和用户消耗相关菜单补齐 `web/default` i18n key，避免缺少语言包文案 | `web/default/src/i18n/locales` | 本次同步 |
+| Cliproxy 认证文件 | 认证文件绑定列表精简用量列，仅默认展示主窗口进度，Codex 窗口、重置时间、token/quota 和错误详情改为悬浮展示 | `web/default/src/features/cliproxy-auth-files` | 本次同步 |
 | 构建上下文 | Docker 构建忽略运行态文件，缩小构建上下文 | `.dockerignore` | `c6c55020` |
 
 ## 验证记录
