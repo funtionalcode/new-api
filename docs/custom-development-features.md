@@ -27,10 +27,12 @@
 | 使用日志 | 支持输入开始时间和结束时间后计算平均耗时，并改为点击查询按钮后触发 | `controller/log.go`、`model/log.go`、`web/default/src/features/usage-logs` | `0f2ce33f`、`81a499ab`、`6de8ec1f` |
 | 使用日志 | 在 `web/default` 实现 IP 筛选和平均耗时统计，高级筛选支持 IP，统计卡展示平均耗时 | `web/default/src/features/usage-logs` | 本次同步 |
 | 使用日志 | 通用日志用户列显示用户备注、恢复 IP 列，并按日志 `use_time` 秒口径展示平均耗时 | `model/log.go`、`web/default/src/features/usage-logs` | 本次同步 |
+| 使用日志 | 通用日志统计卡 RPM/TPM 按当前筛选时间窗口计算每分钟平均值，无筛选区间时保留最近 60 秒实时口径 | `model/log.go`、`web/default/src/features/usage-logs` | 本次同步 |
 | 数据看板 | 用户消耗排行默认以 Tokens 为单位；数据看板显示用户备注 | `web/default/src/features/dashboard`、`web/default/src/features/dashboard/hooks`、`web/default/src/features/dashboard/lib` | `bed9fbd8`、`d3ebbbb8` |
 | 数据看板 | 数据看板新增令牌消耗排行 tab，按令牌聚合 Token 消耗并显示排行 | `web/default/src/features/dashboard`、`web/default/src/features/dashboard/hooks`、`web/default/src/features/dashboard/lib` | 本次同步提交 |
 | 数据看板 | 在 `web/default` 实现令牌消耗分析，包含令牌趋势、分布和排行图表，并提供 `/dashboard/tokens` 入口 | `web/default/src/features/dashboard`、`web/default/src/hooks/use-sidebar-data.ts` | 本次同步 |
 | 数据看板 | 用户统计显示当前统计时间区间，并支持自定义开始/结束时间筛选计算数据 | `web/default/src/features/dashboard/components/users`、`web/default/src/features/dashboard/lib` | 本次同步 |
+| 数据看板 | 用户统计快捷区间会同步填充开始/结束时间控件，时间控件独立显示在筛选行上方，避免横向挤满筛选条 | `web/default/src/features/dashboard/components/users`、`web/default/src/features/dashboard/lib` | 本次同步 |
 | 用户消耗 | 修复 ClickHouse 日志库与主库分离时用户消耗查询跨库 JOIN 主库 `users` 表导致报错的问题，改为日志库聚合后回主库补充用户、渠道和认证文件信息 | `model/cliproxy_auth_file.go`、`model/cliproxy_user_consumption_test.go` | 本次同步 |
 | 真实 IP / 反代 | 支持 nginx 反代真实 IP 记录，并补充 host 3000 反代示例配置 | `middleware`、`setting`、`docs/installation/nginx-new-api-3000.conf` | `d5233257`、`333c84b1` |
 | 流式诊断 | 补充流式转发断开来源诊断日志，记录 request_id、model、elapsed、chunk_count 和请求上下文错误 | `relay` / stream forward 相关代码 | `26bafa7b` |

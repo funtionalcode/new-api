@@ -37,6 +37,7 @@ import {
   processUserChartData,
 } from '@/features/dashboard/lib'
 import {
+  buildUserChartTimeRangeDates,
   buildUserChartTimeRange,
   formatUserChartTimeRangeLabel,
 } from '@/features/dashboard/lib/user-chart-time-range'
@@ -92,6 +93,10 @@ export function UserCharts(props: UserChartsProps) {
   const metric = props.filters.metric
   const onFiltersChange = props.onFiltersChange
 
+  const timeRangeDates = useMemo(() => {
+    return buildUserChartTimeRangeDates(props.filters)
+  }, [props.filters])
+
   const timeRange = useMemo(() => {
     return buildUserChartTimeRange(props.filters)
   }, [props.filters])
@@ -120,6 +125,8 @@ export function UserCharts(props: UserChartsProps) {
         ...props.filters,
         timeGranularity: g,
         selectedRange: getDefaultDays(g),
+        customStartTime: undefined,
+        customEndTime: undefined,
       })
     },
     [onFiltersChange, props.filters]
@@ -127,16 +134,28 @@ export function UserCharts(props: UserChartsProps) {
 
   const handleCustomStartChange = useCallback(
     (date: Date | undefined) => {
-      onFiltersChange({ ...props.filters, customStartTime: date })
+      onFiltersChange({
+        ...props.filters,
+        customStartTime: date,
+        customEndTime: date
+          ? (props.filters.customEndTime ?? timeRangeDates.end)
+          : props.filters.customEndTime,
+      })
     },
-    [onFiltersChange, props.filters]
+    [onFiltersChange, props.filters, timeRangeDates.end]
   )
 
   const handleCustomEndChange = useCallback(
     (date: Date | undefined) => {
-      onFiltersChange({ ...props.filters, customEndTime: date })
+      onFiltersChange({
+        ...props.filters,
+        customStartTime: date
+          ? (props.filters.customStartTime ?? timeRangeDates.start)
+          : props.filters.customStartTime,
+        customEndTime: date,
+      })
     },
-    [onFiltersChange, props.filters]
+    [onFiltersChange, props.filters, timeRangeDates.start]
   )
 
   const handleTopUserLimitChange = useCallback(
@@ -190,6 +209,32 @@ export function UserCharts(props: UserChartsProps) {
 
   return (
     <div className='space-y-3'>
+      <div className='flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between'>
+        <div className='text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs'>
+          <CalendarRange className='size-3.5 shrink-0' />
+          <span>{t('Date Range')}:</span>
+          <span className='truncate font-mono tabular-nums'>
+            {timeRangeLabel}
+          </span>
+        </div>
+
+        <div className='border-border/60 bg-muted/20 flex max-w-full flex-wrap items-center gap-2 rounded-md border px-2 py-1'>
+          <CalendarRange className='text-muted-foreground size-4 shrink-0' />
+          <DateTimePicker
+            value={timeRangeDates.start}
+            onChange={handleCustomStartChange}
+            placeholder={t('Select start time')}
+            className='w-[280px]'
+          />
+          <DateTimePicker
+            value={timeRangeDates.end}
+            onChange={handleCustomEndChange}
+            placeholder={t('Select end time')}
+            className='w-[280px]'
+          />
+        </div>
+      </div>
+
       <div className='flex items-center gap-1.5 overflow-x-auto pb-1 sm:gap-2'>
         <Tabs
           value={String(selectedRange)}
@@ -267,31 +312,9 @@ export function UserCharts(props: UserChartsProps) {
           </TabsList>
         </Tabs>
 
-        <div className='border-border/60 bg-muted/20 flex shrink-0 items-center gap-2 rounded-md border px-2 py-1'>
-          <CalendarRange className='text-muted-foreground size-4' />
-          <DateTimePicker
-            value={props.filters.customStartTime}
-            onChange={handleCustomStartChange}
-            placeholder={t('Select start time')}
-            className='w-[250px]'
-          />
-          <DateTimePicker
-            value={props.filters.customEndTime}
-            onChange={handleCustomEndChange}
-            placeholder={t('Select end time')}
-            className='w-[250px]'
-          />
-        </div>
-
         {isLoading && (
           <Loader2 className='text-muted-foreground size-4 animate-spin' />
         )}
-      </div>
-
-      <div className='text-muted-foreground flex items-center gap-1.5 text-xs'>
-        <CalendarRange className='size-3.5' />
-        <span>{t('Date Range')}:</span>
-        <span className='font-mono tabular-nums'>{timeRangeLabel}</span>
       </div>
 
       <div className='grid gap-3'>

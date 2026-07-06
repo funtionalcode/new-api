@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -629,6 +630,27 @@ type Stat struct {
 	AvgUseTimeCount int64   `json:"avg_use_time_count"`
 }
 
+type rpmTpmStat struct {
+	RequestCount int64 `gorm:"column:request_count"`
+	TokenCount   int64 `gorm:"column:token_count"`
+}
+
+func perMinuteAverage(value int64, startTimestamp int64, endTimestamp int64) int {
+	if value <= 0 {
+		return 0
+	}
+	durationSeconds := endTimestamp - startTimestamp
+	if durationSeconds <= 0 {
+		durationSeconds = 60
+	}
+	minutes := math.Max(1, float64(durationSeconds)/60)
+	rate := int(math.Round(float64(value) / minutes))
+	if rate == 0 {
+		return 1
+	}
+	return rate
+}
+
 func applyLogSearchFilter(tx *gorm.DB, column string, value string) (*gorm.DB, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -649,7 +671,7 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
 
 	// 为rpm和tpm创建单独的查询
-	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) tpm")
+	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) request_count, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) token_count")
 	avgUseTimeQuery := LOG_DB.Table("logs").Select("coalesce(avg(use_time), 0) avg_use_time, count(*) avg_use_time_count")
 
 	if tx, err = applyLogSearchFilter(tx, "username", username); err != nil {
@@ -681,9 +703,11 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	}
 	if startTimestamp != 0 {
 		tx = tx.Where("created_at >= ?", startTimestamp)
+		rpmTpmQuery = rpmTpmQuery.Where("created_at >= ?", startTimestamp)
 	}
 	if endTimestamp != 0 {
 		tx = tx.Where("created_at <= ?", endTimestamp)
+		rpmTpmQuery = rpmTpmQuery.Where("created_at <= ?", endTimestamp)
 	}
 	if tx, err = applyLogSearchFilter(tx, "model_name", modelName); err != nil {
 		return stat, err
@@ -709,8 +733,16 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	rpmTpmQuery = rpmTpmQuery.Where("type = ?", LogTypeConsume)
 	avgUseTimeQuery = avgUseTimeQuery.Where("type = ? and use_time > ?", LogTypeConsume, 0)
 
-	// 只统计最近60秒的rpm和tpm
-	rpmTpmQuery = rpmTpmQuery.Where("created_at >= ?", time.Now().Add(-60*time.Second).Unix())
+	rpmTpmStartTimestamp := startTimestamp
+	rpmTpmEndTimestamp := endTimestamp
+	if rpmTpmStartTimestamp == 0 && rpmTpmEndTimestamp == 0 {
+		rpmTpmEndTimestamp = time.Now().Unix()
+		rpmTpmStartTimestamp = rpmTpmEndTimestamp - 60
+		rpmTpmQuery = rpmTpmQuery.Where("created_at >= ?", rpmTpmStartTimestamp)
+	}
+	if rpmTpmEndTimestamp == 0 {
+		rpmTpmEndTimestamp = time.Now().Unix()
+	}
 	if avgStartTimestamp == 0 {
 		avgStartTimestamp = startTimestamp
 	}
@@ -729,10 +761,13 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 		common.SysError("failed to query log stat: " + err.Error())
 		return stat, errors.New("查询统计数据失败")
 	}
-	if err := rpmTpmQuery.Scan(&stat).Error; err != nil {
+	var rpmTpm rpmTpmStat
+	if err := rpmTpmQuery.Scan(&rpmTpm).Error; err != nil {
 		common.SysError("failed to query rpm/tpm stat: " + err.Error())
 		return stat, errors.New("查询统计数据失败")
 	}
+	stat.Rpm = perMinuteAverage(rpmTpm.RequestCount, rpmTpmStartTimestamp, rpmTpmEndTimestamp)
+	stat.Tpm = perMinuteAverage(rpmTpm.TokenCount, rpmTpmStartTimestamp, rpmTpmEndTimestamp)
 	if err := avgUseTimeQuery.Scan(&stat).Error; err != nil {
 		common.SysError("failed to query average use time stat: " + err.Error())
 		return stat, errors.New("查询统计数据失败")

@@ -61,6 +61,8 @@ func TestSumUsedQuotaReturnsAverageUseTimeForConfiguredWindow(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, 1000, stat.Quota)
+	require.Equal(t, 1, stat.Rpm)
+	require.Equal(t, 80, stat.Tpm)
 	require.InDelta(t, 3.0, stat.AvgUseTime, 0.001)
 	require.Equal(t, int64(2), stat.AvgUseTimeCount)
 }

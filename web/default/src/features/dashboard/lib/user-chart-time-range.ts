@@ -26,6 +26,12 @@ export type UserChartUnixTimeRange = {
   end_timestamp: number
 }
 
+export type UserChartDateTimeRange = {
+  start: Date
+  end: Date
+  isCustom: boolean
+}
+
 function toUnixSeconds(date: Date): number {
   return Math.floor(date.getTime() / 1000)
 }
@@ -39,18 +45,27 @@ export function buildUserChartTimeRange(
   filters: UserChartsFilters,
   now: Date = new Date()
 ): UserChartUnixTimeRange {
+  const range = buildUserChartTimeRangeDates(filters, now)
+  return {
+    start_timestamp: toUnixSeconds(range.start),
+    end_timestamp: toUnixSeconds(range.end),
+  }
+}
+
+export function buildUserChartTimeRangeDates(
+  filters: UserChartsFilters,
+  now: Date = new Date()
+): UserChartDateTimeRange {
   if (hasValidCustomRange(filters)) {
     return {
-      start_timestamp: toUnixSeconds(filters.customStartTime!),
-      end_timestamp: toUnixSeconds(filters.customEndTime!),
+      start: new Date(filters.customStartTime!),
+      end: new Date(filters.customEndTime!),
+      isCustom: true,
     }
   }
 
   const { start, end } = getRollingDateRange(filters.selectedRange, now)
-  return {
-    start_timestamp: toUnixSeconds(start),
-    end_timestamp: toUnixSeconds(end),
-  }
+  return { start, end, isCustom: false }
 }
 
 export function formatUserChartTimeRangeLabel(

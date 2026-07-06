@@ -3,6 +3,7 @@ import { describe, test } from 'node:test'
 
 import {
   buildUserChartTimeRange,
+  buildUserChartTimeRangeDates,
   formatUserChartTimeRangeLabel,
 } from './user-chart-time-range'
 import type { UserChartsFilters } from '../types'
@@ -25,6 +26,41 @@ describe('user chart time range helpers', () => {
       start_timestamp: 1782705600,
       end_timestamp: 1783310400,
     })
+  })
+
+  test('resolves preset range into dates for the visible picker values', () => {
+    const range = buildUserChartTimeRangeDates(
+      baseFilters,
+      new Date('2026-07-06T12:00:00+08:00')
+    )
+
+    assert.equal(
+      range.start.getTime(),
+      new Date('2026-06-29T12:00:00+08:00').getTime()
+    )
+    assert.equal(
+      range.end.getTime(),
+      new Date('2026-07-06T12:00:00+08:00').getTime()
+    )
+    assert.equal(range.isCustom, false)
+  })
+
+  test('uses custom range dates when both boundaries are selected', () => {
+    const range = buildUserChartTimeRangeDates({
+      ...baseFilters,
+      customStartTime: new Date('2026-07-01T00:00:00+08:00'),
+      customEndTime: new Date('2026-07-06T23:59:59+08:00'),
+    })
+
+    assert.equal(
+      range.start.getTime(),
+      new Date('2026-07-01T00:00:00+08:00').getTime()
+    )
+    assert.equal(
+      range.end.getTime(),
+      new Date('2026-07-06T23:59:59+08:00').getTime()
+    )
+    assert.equal(range.isCustom, true)
   })
 
   test('uses custom dates when both boundaries are selected', () => {
