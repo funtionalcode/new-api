@@ -1,6 +1,6 @@
 # 二开功能记录
 
-更新时间：2026-07-03
+更新时间：2026-07-06
 
 本文记录当前项目已做的二开功能，便于后续升级、排查和继续开发时快速确认改动范围。后续新增或调整二开功能时，需要同步更新本文。
 
@@ -21,6 +21,7 @@
 | 使用日志 | 支持 IP 模糊搜索，并在用户名称下显示用户备注 | `controller/log.go`、`model/log.go`、`web/classic/src/components/table/usage-logs` | `7a9077cf` |
 | 使用日志 | 支持输入开始时间和结束时间后计算平均耗时，并改为点击查询按钮后触发 | `controller/log.go`、`model/log.go`、`web/classic/src/components/table/usage-logs`、`web/classic/src/hooks/usage-logs` | `0f2ce33f`、`81a499ab`、`6de8ec1f` |
 | 数据看板 | 用户消耗排行默认以 Tokens 为单位；数据看板显示用户备注 | `web/classic/src/components/dashboard`、`web/classic/src/helpers/dashboard.jsx`、`web/classic/src/hooks/dashboard` | `bed9fbd8`、`d3ebbbb8` |
+| 数据看板 | classic 数据看板新增令牌消耗排行 tab，按令牌聚合 Token 消耗并显示排行 | `web/classic/src/components/dashboard`、`web/classic/src/hooks/dashboard/useDashboardCharts.jsx`、`web/classic/src/helpers/dashboardTokenData.js` | 本次同步提交 |
 | 真实 IP / 反代 | 支持 nginx 反代真实 IP 记录，并补充 host 3000 反代示例配置 | `middleware`、`setting`、`docs/installation/nginx-new-api-3000.conf` | `d5233257`、`333c84b1` |
 | 流式诊断 | 补充流式转发断开来源诊断日志，记录 request_id、model、elapsed、chunk_count 和请求上下文错误 | `relay` / stream forward 相关代码 | `26bafa7b` |
 | Cliproxy 认证文件 | 兼容认证文件额度、备注回显、备注字段统一为 note，并调整绑定刷新权限 | `controller/cliproxy*`、`model/cliproxy*`、`web/classic/src/pages/CliproxyAuthFiles` | `f09f1beb`、`aef05809`、`9c6da6db`、`651370c0` |

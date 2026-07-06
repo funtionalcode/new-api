@@ -23,12 +23,12 @@ func TestGetChannelForUserSkipsRestrictedHigherPriorityChannel(t *testing.T) {
 	seedOpenUserChannel(t, 1001, "restricted", 20, ChannelOpenUserIds{2})
 	seedOpenUserChannel(t, 1002, "open", 10, nil)
 
-	channel, err := GetChannelForUser("default", "gpt-5", 0, 1)
+	channel, err := GetChannelForUser("default", "gpt-5", 0, "", 1)
 	require.NoError(t, err)
 	require.NotNil(t, channel)
 	require.Equal(t, 1002, channel.Id)
 
-	channel, err = GetChannelForUser("default", "gpt-5", 0, 2)
+	channel, err = GetChannelForUser("default", "gpt-5", 0, "", 2)
 	require.NoError(t, err)
 	require.NotNil(t, channel)
 	require.Equal(t, 1001, channel.Id)
@@ -47,12 +47,12 @@ func TestGetRandomSatisfiedChannelForUserSkipsRestrictedHigherPriorityCache(t *t
 		InitChannelCache()
 	})
 
-	channel, err := GetRandomSatisfiedChannelForUser("default", "gpt-5", 0, 1)
+	channel, err := GetRandomSatisfiedChannelForUser("default", "gpt-5", 0, "", 1)
 	require.NoError(t, err)
 	require.NotNil(t, channel)
 	require.Equal(t, 2002, channel.Id)
 
-	channel, err = GetRandomSatisfiedChannelForUser("default", "gpt-5", 0, 2)
+	channel, err = GetRandomSatisfiedChannelForUser("default", "gpt-5", 0, "", 2)
 	require.NoError(t, err)
 	require.NotNil(t, channel)
 	require.Equal(t, 2001, channel.Id)

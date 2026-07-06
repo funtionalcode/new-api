@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { getRollingDateRange, type TimeGranularity } from '@/lib/time'
 import {
   DASHBOARD_CHART_PREFERENCES_STORAGE_KEY,
   DEFAULT_DASHBOARD_CHART_PREFERENCES,
@@ -33,6 +32,7 @@ import type {
   ModelAnalyticsChartTab,
   TokenAnalyticsChartTab,
 } from '@/features/dashboard/types'
+import { getRollingDateRange, type TimeGranularity } from '@/lib/time'
 
 function isTimeGranularity(value: unknown): value is TimeGranularity {
   return value === 'hour' || value === 'day' || value === 'week'
@@ -53,7 +53,12 @@ function isConsumptionDistributionChartType(
 function isModelAnalyticsChartTab(
   value: unknown
 ): value is ModelAnalyticsChartTab {
-  return value === 'trend' || value === 'proportion' || value === 'top'
+  return (
+    value === 'trend' ||
+    value === 'proportion' ||
+    value === 'top' ||
+    value === 'token'
+  )
 }
 
 function isTokenAnalyticsChartTab(

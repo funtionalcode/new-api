@@ -15,6 +15,7 @@ type RetryParam struct {
 	Ctx          *gin.Context
 	TokenGroup   string
 	ModelName    string
+	RequestPath  string
 	Retry        *int
 	resetNextTry bool
 }
@@ -116,7 +117,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			}
 			logger.LogDebug(param.Ctx, "Auto selecting group: %s, priorityRetry: %d", autoGroup, priorityRetry)
 
-			channel, _ = model.GetRandomSatisfiedChannelForUser(autoGroup, param.ModelName, priorityRetry, userId)
+			channel, _ = model.GetRandomSatisfiedChannelForUser(autoGroup, param.ModelName, priorityRetry, param.RequestPath, userId)
 			if channel == nil {
 				// Current group has no available channel for this model, try next group
 				// 当前分组没有该模型的可用渠道，尝试下一个分组
@@ -154,7 +155,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			break
 		}
 	} else {
-		channel, err = model.GetRandomSatisfiedChannelForUser(param.TokenGroup, param.ModelName, param.GetRetry(), userId)
+		channel, err = model.GetRandomSatisfiedChannelForUser(param.TokenGroup, param.ModelName, param.GetRetry(), param.RequestPath, userId)
 		if err != nil {
 			return nil, param.TokenGroup, err
 		}

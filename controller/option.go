@@ -124,7 +124,7 @@ func GetOptions(c *gin.Context) {
 			strings.HasSuffix(k, "Password") ||
 			strings.HasSuffix(k, "secret") ||
 			strings.HasSuffix(k, "api_key")
-		if isSensitiveKey && !isVisiblePublicKeyOption(k) {
+		if isSensitiveKey {
 			continue
 		}
 		options = append(options, &model.Option{
@@ -392,6 +392,10 @@ func UpdateOption(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	// 出于安全考虑只记录被修改的配置项名称，不记录配置值（可能含密钥等敏感信息）。
+	recordManageAudit(c, "option.update", map[string]interface{}{
+		"key": option.Key,
+	})
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

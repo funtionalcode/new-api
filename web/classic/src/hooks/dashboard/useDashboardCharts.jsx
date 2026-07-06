@@ -37,6 +37,7 @@ import {
   processUserData,
 } from '../../helpers/dashboard';
 import { createDashboardDimensionTooltipUpdater } from '../../helpers/dashboardTooltip';
+import { processTokenData } from '../../helpers/dashboardTokenData';
 
 const USER_COLORS = [
   '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6',
@@ -401,6 +402,48 @@ export const useDashboardCharts = (
     color: { type: 'ordinal', range: USER_COLORS },
   });
 
+  // ========== Token 消耗排行 ==========
+  const [spec_token_rank, setSpecTokenRank] = useState({
+    type: 'bar',
+    data: [{ id: 'tokenRankData', values: [] }],
+    xField: 'Tokens',
+    yField: 'Token',
+    seriesField: 'Token',
+    direction: 'horizontal',
+    legends: { visible: false },
+    title: {
+      visible: true,
+      text: t('令牌消耗排行'),
+      subtext: '',
+    },
+    bar: {
+      state: { hover: { stroke: '#000', lineWidth: 1 } },
+    },
+    label: {
+      visible: true,
+      position: 'outside',
+      formatMethod: (value, datum) => renderNumber(datum['Tokens'] || 0),
+    },
+    axes: [{
+      orient: 'left',
+      type: 'band',
+      label: { visible: true },
+    }, {
+      orient: 'bottom',
+      type: 'linear',
+      visible: false,
+    }],
+    tooltip: {
+      mark: {
+        content: [{
+          key: (datum) => datum['Token'],
+          value: (datum) => renderNumber(datum['Tokens'] || 0),
+        }],
+      },
+    },
+    color: { type: 'ordinal', range: USER_COLORS },
+  });
+
   // ========== 数据处理函数 ==========
   const generateModelColors = useCallback((uniqueModels, modelColors) => {
     const newModelColors = {};
@@ -631,6 +674,24 @@ export const useDashboardCharts = (
         'rankData',
       );
 
+      const tokenRankData = processTokenData(data, {
+        limit: 20,
+        unknownLabel: t('未知令牌'),
+        otherLabel: t('其他'),
+      });
+      const tokenRankTotal = tokenRankData.reduce(
+        (sum, item) => sum + Number(item.Tokens || 0),
+        0,
+      );
+      setSpecTokenRank((prev) => ({
+        ...prev,
+        data: [{ id: 'tokenRankData', values: tokenRankData }],
+        title: {
+          ...prev.title,
+          subtext: `${t('总计')}：${renderNumber(tokenRankTotal)}`,
+        },
+      }));
+
       setPieData(newPieData);
       setLineData(newLineData);
       setConsumeQuota(totalQuota);
@@ -784,6 +845,7 @@ export const useDashboardCharts = (
     spec_line,
     spec_model_line,
     spec_rank_bar,
+    spec_token_rank,
     spec_user_rank,
     spec_user_trend,
     updateChartData,
