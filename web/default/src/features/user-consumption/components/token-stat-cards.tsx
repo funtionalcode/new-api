@@ -19,7 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 import { useMemo } from 'react'
 import { Layers, Hash, Zap, Coins } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { formatNumber } from '@/lib/format'
+import { formatNumber, formatTokenDetails, formatTokens } from '@/lib/format'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import type { UserConsumptionSummary } from '../types'
 
 interface TokenStatCardsProps {
@@ -56,25 +62,29 @@ export function TokenStatCards({ data, loading }: TokenStatCardsProps) {
   const items = [
     {
       title: t('Total Tokens'),
-      value: formatNumber(stats.totalTokens),
+      value: formatTokens(stats.totalTokens),
+      detail: formatTokenDetails(stats.totalTokens),
       desc: t('All tokens consumed'),
       icon: Layers,
     },
     {
       title: t('Total Requests'),
       value: formatNumber(stats.totalCount),
+      detail: undefined,
       desc: t('API calls made'),
       icon: Hash,
     },
     {
       title: t('Average Tokens'),
-      value: formatNumber(stats.avgTokens),
+      value: formatTokens(stats.avgTokens),
+      detail: formatTokenDetails(stats.avgTokens),
       desc: t('Tokens per request'),
       icon: Zap,
     },
     {
       title: t('Total Quota'),
       value: formatNumber(stats.totalQuota),
+      detail: undefined,
       desc: t('Quota consumed'),
       icon: Coins,
     },
@@ -109,7 +119,18 @@ export function TokenStatCards({ data, loading }: TokenStatCardsProps) {
                 </div>
               </div>
               <div className='text-foreground mt-1.5 font-mono text-lg font-bold tracking-tight tabular-nums sm:mt-2 sm:text-2xl'>
-                {it.value}
+                {it.detail ? (
+                  <TooltipProvider delay={150}>
+                    <Tooltip>
+                      <TooltipTrigger render={<span className='cursor-default' />}>
+                        {it.value}
+                      </TooltipTrigger>
+                      <TooltipContent>{it.detail}</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : (
+                  it.value
+                )}
               </div>
               <div className='text-muted-foreground/60 mt-1 hidden text-xs md:block'>
                 {it.desc}

@@ -43,6 +43,7 @@ export interface CliproxyAuthFileBinding {
   id: number
   user_id: number
   username: string
+  remark: string
   auth_index: string
   auth_name: string
   auth_file: string

@@ -66,6 +66,9 @@ export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
     log: true,
     midjourney: true,
     task: true,
+    authFiles: true,
+    glmQuota: true,
+    deepseekQuota: true,
   },
   personal: {
     enabled: true,
@@ -78,7 +81,6 @@ export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
     models: true,
     redemption: true,
     user: true,
-    authFiles: true,
     userConsumption: true,
     setting: true,
     subscription: true,

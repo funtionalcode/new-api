@@ -29,7 +29,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { formatTimestampToDate, formatTokens } from '@/lib/format'
+import {
+  formatTimestampToDate,
+  formatTokenDetails,
+} from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { formatDuration } from '../../lib/format'
@@ -57,7 +60,7 @@ export function CacheTooltip({
         ></TooltipTrigger>
         <TooltipContent side='top'>
           <p className='text-xs'>
-            {label}: {formatTokens(tokens)}
+            {label}: {formatTokenDetails(tokens)}
           </p>
         </TooltipContent>
       </Tooltip>

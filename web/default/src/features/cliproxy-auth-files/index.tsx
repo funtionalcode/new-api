@@ -29,7 +29,11 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { formatTimestampToDate, formatTokens } from '@/lib/format'
+import {
+  formatTimestampToDate,
+  formatTokenDetails,
+  formatTokens,
+} from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -84,6 +88,7 @@ import { useSystemOptions } from '@/features/system-settings/hooks/use-system-op
 import { useUpdateOption } from '@/features/system-settings/hooks/use-update-option'
 import { searchUsers } from '@/features/users/api'
 import type { User } from '@/features/users/types'
+import { useIsAdmin } from '@/hooks/use-admin'
 import {
   createCliproxyAuthFileBinding,
   deleteCliproxyAuthFileBinding,
@@ -145,7 +150,7 @@ const normalizePlanKey = (value: unknown): string => {
   return value
     .trim()
     .toLowerCase()
-    .replace(/[-_\s]/g, '')
+    .replaceAll(/[-_\s]/g, '')
 }
 
 const getPlanLabelConfig = (value: unknown): PlanLabelConfig | null => {
@@ -297,7 +302,16 @@ function BindingUsageCell({
   if (!summary.hasUsageWindow) {
     return (
       <div>
-        <div>{formatTokens(binding.last_usage_tokens)}</div>
+        <TooltipProvider delay={150}>
+          <Tooltip>
+            <TooltipTrigger render={<div className='cursor-default' />}>
+              {formatTokens(binding.last_usage_tokens)}
+            </TooltipTrigger>
+            <TooltipContent>
+              {formatTokenDetails(binding.last_usage_tokens)}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         <div className='text-muted-foreground text-xs'>
           {labels.quota} {binding.last_usage_quota || '-'}
         </div>
@@ -374,7 +388,7 @@ function BindingUsageCell({
               <div className='flex justify-between gap-4'>
                 <span className='text-background/70'>{t('Total Tokens')}</span>
                 <span className='font-mono'>
-                  {formatTokens(binding.last_usage_tokens)}
+                  {formatTokenDetails(binding.last_usage_tokens)}
                 </span>
               </div>
               {binding.last_error ? (
@@ -846,8 +860,10 @@ function RemoteAuthFilesTable({
 
 function BindingTable({
   onEdit,
+  isAdmin,
 }: {
   onEdit: (binding: CliproxyAuthFileBinding) => void
+  isAdmin: boolean
 }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -970,10 +986,45 @@ function BindingTable({
               bindings.map((binding) => (
                 <TableRow key={binding.id}>
                   <TableCell>
-                    <div className='font-medium'>{binding.username || '-'}</div>
-                    <div className='text-muted-foreground text-xs'>
-                      ID: {binding.user_id}
-                    </div>
+                    <TooltipProvider delay={200}>
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <div className='max-w-[180px] cursor-default' />
+                          }
+                        >
+                          <div className='truncate font-medium'>
+                            {binding.username || '-'}
+                          </div>
+                          {binding.remark ? (
+                            <div className='text-muted-foreground truncate text-xs'>
+                              {binding.remark}
+                            </div>
+                          ) : (
+                            <div className='text-muted-foreground text-xs'>
+                              ID: {binding.user_id}
+                            </div>
+                          )}
+                        </TooltipTrigger>
+                        <TooltipContent
+                          side='top'
+                          align='start'
+                          className='max-w-xs whitespace-pre-wrap break-words'
+                        >
+                          <div className='space-y-1'>
+                            <div>{binding.username || '-'}</div>
+                            {binding.remark ? (
+                              <div className='text-muted-foreground text-xs'>
+                                {t('Remark')}: {binding.remark}
+                              </div>
+                            ) : null}
+                            <div className='text-muted-foreground text-xs'>
+                              ID: {binding.user_id}
+                            </div>
+                          </div>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </TableCell>
                   <TableCell>
                     <div>{binding.auth_name || '-'}</div>
@@ -1018,20 +1069,24 @@ function BindingTable({
                           }
                         />
                       </Button>
-                      <Button
-                        size='icon-sm'
-                        variant='outline'
-                        onClick={() => onEdit(binding)}
-                      >
-                        <Edit />
-                      </Button>
-                      <Button
-                        size='icon-sm'
-                        variant='destructive'
-                        onClick={() => setDeleteTarget(binding)}
-                      >
-                        <Trash2 />
-                      </Button>
+                      {isAdmin ? (
+                        <>
+                          <Button
+                            size='icon-sm'
+                            variant='outline'
+                            onClick={() => onEdit(binding)}
+                          >
+                            <Edit />
+                          </Button>
+                          <Button
+                            size='icon-sm'
+                            variant='destructive'
+                            onClick={() => setDeleteTarget(binding)}
+                          >
+                            <Trash2 />
+                          </Button>
+                        </>
+                      ) : null}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -1083,6 +1138,7 @@ function BindingTable({
 
 export function CliproxyAuthFiles() {
   const { t } = useTranslation()
+  const isAdmin = useIsAdmin()
   const [dialogState, setDialogState] = useState<BindingDialogState>({
     open: false,
     mode: 'create',
@@ -1091,43 +1147,52 @@ export function CliproxyAuthFiles() {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t('Auth Files')}</SectionPageLayout.Title>
-      <SectionPageLayout.Actions>
-        <Button
-          variant='outline'
-          onClick={() =>
-            setDialogState({
-              open: true,
-              mode: 'create',
-              authFile: { authIndex: '', name: '', enabled: true },
-            })
-          }
-        >
-          <Plus />
-          {t('Create Binding')}
-        </Button>
-      </SectionPageLayout.Actions>
+      {isAdmin ? (
+        <SectionPageLayout.Actions>
+          <Button
+            variant='outline'
+            onClick={() =>
+              setDialogState({
+                open: true,
+                mode: 'create',
+                authFile: { authIndex: '', name: '', enabled: true },
+              })
+            }
+          >
+            <Plus />
+            {t('Create Binding')}
+          </Button>
+        </SectionPageLayout.Actions>
+      ) : null}
       <SectionPageLayout.Content>
         <div className='space-y-4'>
-          <ConfigCard />
-          <RemoteAuthFilesTable
-            onCreate={(authFile) =>
-              setDialogState({ open: true, mode: 'create', authFile })
-            }
-          />
+          {isAdmin ? (
+            <>
+              <ConfigCard />
+              <RemoteAuthFilesTable
+                onCreate={(authFile) =>
+                  setDialogState({ open: true, mode: 'create', authFile })
+                }
+              />
+            </>
+          ) : null}
           <BindingTable
+            isAdmin={isAdmin}
             onEdit={(binding) =>
               setDialogState({ open: true, mode: 'edit', binding })
             }
           />
         </div>
-        <BindingDialog
-          state={dialogState}
-          onOpenChange={(open) => {
-            if (!open) {
-              setDialogState({ open: false, mode: 'create' })
-            }
-          }}
-        />
+        {isAdmin ? (
+          <BindingDialog
+            state={dialogState}
+            onOpenChange={(open) => {
+              if (!open) {
+                setDialogState({ open: false, mode: 'create' })
+              }
+            }}
+          />
+        ) : null}
       </SectionPageLayout.Content>
     </SectionPageLayout>
   )

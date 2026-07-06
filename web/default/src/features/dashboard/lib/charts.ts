@@ -961,7 +961,7 @@ export function processChartData(
 
     totalQuotaDisplay: formatQuotaTotal(totalQuotaRaw),
     totalCountDisplay: formatInt(totalTimes),
-    totalTokenDisplay: formatInt(
+    totalTokenDisplay: formatTokens(
       Array.from(modelTotalsMap.values()).reduce(
         (sum, x) => sum + (Number(x.tokens) || 0),
         0

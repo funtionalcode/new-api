@@ -21,6 +21,7 @@ import { VChart } from '@visactor/react-vchart'
 import { Activity, PieChart, BarChart3 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from '@/context/theme-provider'
+import { formatTokens } from '@/lib/format'
 import { VCHART_OPTION } from '@/lib/vchart'
 import type { UserConsumptionSummary } from '../types'
 
@@ -64,7 +65,7 @@ export function TokenConsumptionCharts({ data, loading }: TokenConsumptionCharts
       totalTokens += item.total_tokens
     }
 
-    const byToken = Array.from(tokenMap.entries())
+    const byToken = [...tokenMap.entries()]
       .map(([name, stats]) => ({ name, ...stats }))
       .sort((a, b) => b.tokens - a.tokens)
 
@@ -93,12 +94,12 @@ export function TokenConsumptionCharts({ data, loading }: TokenConsumptionCharts
         point: { visible: false },
         axes: [
           { orient: 'bottom', label: { visible: true, style: { angle: -45, textAlign: 'right' } } },
-          { orient: 'left', label: { visible: true, formatMethod: (val: number) => val.toLocaleString() } },
+          { orient: 'left', label: { visible: true, formatMethod: (val: number) => formatTokens(val) } },
         ],
         tooltip: {
           mark: {
             content: [
-              { key: t('Tokens'), value: (datum: Record<string, number>) => datum.y?.toLocaleString() },
+              { key: t('Tokens'), value: (datum: Record<string, number>) => Number(datum.y || 0).toLocaleString() },
             ],
           },
         },
@@ -115,7 +116,7 @@ export function TokenConsumptionCharts({ data, loading }: TokenConsumptionCharts
         tooltip: {
           mark: {
             content: [
-              { key: t('Tokens'), value: (datum: Record<string, number>) => datum.value?.toLocaleString() },
+              { key: t('Tokens'), value: (datum: Record<string, number>) => Number(datum.value || 0).toLocaleString() },
             ],
           },
         },
@@ -129,14 +130,14 @@ export function TokenConsumptionCharts({ data, loading }: TokenConsumptionCharts
       yField: 'y',
       color: ['var(--chart-2)'],
       bar: { style: { cornerRadius: [4, 4, 0, 0] } },
-      axes: [
-        { orient: 'bottom', label: { visible: true, style: { angle: -45, textAlign: 'right' } } },
-        { orient: 'left', label: { visible: true, formatMethod: (val: number) => val.toLocaleString() } },
-      ],
+        axes: [
+          { orient: 'bottom', label: { visible: true, style: { angle: -45, textAlign: 'right' } } },
+          { orient: 'left', label: { visible: true, formatMethod: (val: number) => formatTokens(val) } },
+        ],
       tooltip: {
         mark: {
           content: [
-            { key: t('Tokens'), value: (datum: Record<string, number>) => datum.y?.toLocaleString() },
+              { key: t('Tokens'), value: (datum: Record<string, number>) => Number(datum.y || 0).toLocaleString() },
           ],
         },
       },
@@ -160,7 +161,7 @@ export function TokenConsumptionCharts({ data, loading }: TokenConsumptionCharts
             {t('Token Consumption')}
           </div>
           <span className='text-muted-foreground text-xs'>
-            {t('Total:')} {aggregatedData.totalTokens.toLocaleString()}
+            {t('Total:')} {formatTokens(aggregatedData.totalTokens)}
           </span>
         </div>
 

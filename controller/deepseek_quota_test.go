@@ -45,7 +45,8 @@ func TestExtractDeepSeekQuotaUsageParsesSummary(t *testing.T) {
 						"amount": "0.0010000000000000"
 					}
 				],
-				"monthly_token_usage": "4354"
+				"monthly_token_usage": "4354",
+				"daily_token_usage": "123456"
 			}
 		}
 	}`)
@@ -59,6 +60,9 @@ func TestExtractDeepSeekQuotaUsageParsesSummary(t *testing.T) {
 	}
 	if usage.MonthlyUsedTokens != 4354 {
 		t.Fatalf("MonthlyUsedTokens = %d, want 4354", usage.MonthlyUsedTokens)
+	}
+	if usage.TodayUsedTokens != 123456 {
+		t.Fatalf("TodayUsedTokens = %d, want 123456", usage.TodayUsedTokens)
 	}
 	if usage.MonthlyRemainingTokens != 9995646 {
 		t.Fatalf("MonthlyRemainingTokens = %d, want 9995646", usage.MonthlyRemainingTokens)

@@ -35,7 +35,7 @@ func TestGetCliproxyAuthFileBindingsSortsByPlanRank(t *testing.T) {
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&CliproxyAuthFileBinding{}))
+	require.NoError(t, db.AutoMigrate(&User{}, &CliproxyAuthFileBinding{}))
 	DB = db
 
 	for _, binding := range []*CliproxyAuthFileBinding{
@@ -72,6 +72,36 @@ func TestGetCliproxyAuthFileBindingsSortsByPlanRank(t *testing.T) {
 		"unknown.json",
 		"empty.json",
 	}, names)
+}
+
+func TestGetCliproxyAuthFileBindingsIncludesUserRemark(t *testing.T) {
+	originalDB := DB
+	t.Cleanup(func() {
+		DB = originalDB
+	})
+
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&User{}, &CliproxyAuthFileBinding{}))
+	DB = db
+
+	require.NoError(t, db.Create(&User{
+		Id:       7,
+		Username: "demo",
+		Remark:   "重点用户",
+	}).Error)
+	require.NoError(t, db.Create(&CliproxyAuthFileBinding{
+		UserId:    7,
+		Username:  "demo",
+		AuthIndex: "auth-demo",
+		AuthName:  "auth-demo.json",
+		Enabled:   true,
+	}).Error)
+
+	bindings, total, err := GetCliproxyAuthFileBindings(CliproxyAuthFileBindingQuery{}, 0, 20)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Equal(t, "重点用户", bindings[0].Remark)
 }
 
 func TestMigrateCliproxyAuthFileBindingNoteRenamesLegacyDescription(t *testing.T) {

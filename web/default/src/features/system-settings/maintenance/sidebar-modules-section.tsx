@@ -118,6 +118,18 @@ export function SidebarModulesSection({
         title: t('Task logs'),
         description: t('Background job tracker for queued work.'),
       },
+      authFiles: {
+        title: t('Auth Files'),
+        description: t('Manage Cliproxy auth files and user bindings.'),
+      },
+      glmQuota: {
+        title: t('GLM Quota'),
+        description: t('Track GLM account quota usage.'),
+      },
+      deepseekQuota: {
+        title: t('DeepSeek Quota'),
+        description: t('Track DeepSeek account quota usage.'),
+      },
     },
     personal: {
       topup: {
@@ -145,10 +157,6 @@ export function SidebarModulesSection({
       user: {
         title: t('Users'),
         description: t('Administer user accounts and roles.'),
-      },
-      authFiles: {
-        title: t('Auth Files'),
-        description: t('Manage Cliproxy auth files and user bindings.'),
       },
       userConsumption: {
         title: t('User Consumption'),

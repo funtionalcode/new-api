@@ -55,6 +55,8 @@ type deepSeekQuotaSummaryBizData struct {
 	TodayCosts                    []deepSeekQuotaCurrencyCost `json:"today_costs"`
 	DailyCosts                    []deepSeekQuotaCurrencyCost `json:"daily_costs"`
 	MonthlyTokenUsage             string                      `json:"monthly_token_usage"`
+	TodayTokenUsage               any                         `json:"today_token_usage"`
+	DailyTokenUsage               any                         `json:"daily_token_usage"`
 }
 
 type deepSeekQuotaWallet struct {
@@ -74,6 +76,7 @@ type deepSeekQuotaUsageRefreshBody struct {
 	MonthlyRemainingTokens int64
 	MonthlyPercent         int
 	TotalAvailableTokens   int64
+	TodayUsedTokens        int64
 	NormalWallets          []deepSeekQuotaWallet
 	BonusWallets           []deepSeekQuotaWallet
 	MonthlyCosts           []deepSeekQuotaCurrencyCost
@@ -202,6 +205,7 @@ func RefreshDeepSeekQuotaBindingUsage(c *gin.Context) {
 		LastMonthlyRemainingTokens: usage.MonthlyRemainingTokens,
 		LastMonthlyPercent:         usage.MonthlyPercent,
 		LastTotalAvailableTokens:   usage.TotalAvailableTokens,
+		LastTodayUsedTokens:        usage.TodayUsedTokens,
 		LastNormalWallets:          string(normalWallets),
 		LastBonusWallets:           string(bonusWallets),
 		LastMonthlyCosts:           string(monthlyCosts),
@@ -490,6 +494,7 @@ func extractDeepSeekQuotaUsage(body []byte) (deepSeekQuotaUsageRefreshBody, erro
 		MonthlyRemainingTokens: remainingTokens,
 		MonthlyPercent:         deepSeekQuotaUsagePercent(monthlyUsedTokens, data.CurrentToken),
 		TotalAvailableTokens:   int64FromNumericString(data.TotalAvailableTokenEstimation),
+		TodayUsedTokens:        firstPositiveInt64FromNumericValues(data.TodayTokenUsage, data.DailyTokenUsage),
 		NormalWallets:          data.NormalWallets,
 		BonusWallets:           data.BonusWallets,
 		MonthlyCosts:           data.MonthlyCosts,
@@ -514,6 +519,46 @@ func int64FromNumericString(value string) int64 {
 	}
 	parsedFloatValue, _ := strconv.ParseFloat(trimmedValue, 64)
 	return int64(math.Round(parsedFloatValue))
+}
+
+func int64FromNumericValue(value any) int64 {
+	switch typedValue := value.(type) {
+	case nil:
+		return 0
+	case string:
+		return int64FromNumericString(typedValue)
+	case float64:
+		return int64(math.Round(typedValue))
+	case float32:
+		return int64(math.Round(float64(typedValue)))
+	case int:
+		return int64(typedValue)
+	case int64:
+		return typedValue
+	case int32:
+		return int64(typedValue)
+	case uint:
+		return int64(typedValue)
+	case uint64:
+		if typedValue > uint64(1<<63-1) {
+			return 1<<63 - 1
+		}
+		return int64(typedValue)
+	case uint32:
+		return int64(typedValue)
+	default:
+		return 0
+	}
+}
+
+func firstPositiveInt64FromNumericValues(values ...any) int64 {
+	for _, value := range values {
+		parsedValue := int64FromNumericValue(value)
+		if parsedValue > 0 {
+			return parsedValue
+		}
+	}
+	return 0
 }
 
 func deepSeekQuotaUsagePercent(usedTokens int64, limitTokens int64) int {

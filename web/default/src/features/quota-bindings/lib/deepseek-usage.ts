@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { formatTokenDetails, formatTokens } from '@/lib/format'
+
 type JsonObject = Record<string, unknown>
 
 type DeepSeekMoneyUsageInput = {
@@ -23,6 +25,7 @@ type DeepSeekMoneyUsageInput = {
   bonusWallets?: string
   monthlyCosts?: string
   todayCosts?: string
+  todayUsedTokens?: number
 }
 
 export type DeepSeekMoneyUsage = {
@@ -30,11 +33,14 @@ export type DeepSeekMoneyUsage = {
   remainingAmount: number
   monthlyCostAmount: number
   todayCostAmount: number
+  todayUsedTokens: number
   totalAmount: number
   remainingPercent: number
   remainingLabel: string
   monthlyCostLabel: string
   todayCostLabel: string
+  todayTokenLabel: string
+  todayTokenDetail: string
 }
 
 function parseJsonList(value: string | undefined): JsonObject[] {
@@ -90,6 +96,7 @@ export function buildDeepSeekMoneyUsage(
   const remainingAmount = sumField(wallets, 'balance')
   const monthlyCostAmount = sumField(monthlyCosts, 'amount')
   const todayCostAmount = sumField(todayCosts, 'amount')
+  const todayUsedTokens = Math.max(0, Number(input.todayUsedTokens || 0))
   const totalAmount = remainingAmount + monthlyCostAmount
   const remainingPercent =
     totalAmount > 0
@@ -101,10 +108,14 @@ export function buildDeepSeekMoneyUsage(
     remainingAmount,
     monthlyCostAmount,
     todayCostAmount,
+    todayUsedTokens,
     totalAmount,
     remainingPercent,
     remainingLabel: formatCurrencyAmount(currency, remainingAmount),
     monthlyCostLabel: formatCurrencyAmount(currency, monthlyCostAmount),
     todayCostLabel: formatCurrencyAmount(currency, todayCostAmount),
+    todayTokenLabel: todayUsedTokens > 0 ? formatTokens(todayUsedTokens) : '-',
+    todayTokenDetail:
+      todayUsedTokens > 0 ? formatTokenDetails(todayUsedTokens) : '-',
   }
 }

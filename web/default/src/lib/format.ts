@@ -213,14 +213,51 @@ export function formatLogQuota(quota: number): string {
   })
 }
 
+const exactTokenUnitLabels = new Map<number, string>([
+  [100, '百'],
+  [1000, '千'],
+  [10_000, '万'],
+  [1_000_000, '百万'],
+  [10_000_000, '千万'],
+  [100_000_000, '亿'],
+])
+
+function formatTokenScaledValue(value: number): string {
+  const floored = Math.floor(value * 10) / 10
+  return Number.isInteger(floored) ? String(floored) : floored.toFixed(1)
+}
+
 /**
- * Format tokens count with K/M suffixes
+ * Format token counts with compact Chinese units.
  */
 export function formatTokens(tokens: number): string {
-  if (tokens === 0) return '-'
-  if (tokens < 1000) return tokens.toString()
-  if (tokens < 1000000) return `${(tokens / 1000).toFixed(1)}K`
-  return `${(tokens / 1000000).toFixed(2)}M`
+  if (!Number.isFinite(tokens) || tokens <= 0) return '0'
+
+  const normalizedTokens = Math.floor(tokens)
+  const exactLabel = exactTokenUnitLabels.get(normalizedTokens)
+  if (exactLabel) return exactLabel
+
+  if (normalizedTokens >= 100_000_000) {
+    return `${formatTokenScaledValue(normalizedTokens / 100_000_000)}亿`
+  }
+  if (normalizedTokens >= 10_000) {
+    return `${formatTokenScaledValue(normalizedTokens / 10_000)}万`
+  }
+  if (normalizedTokens >= 1000) {
+    return `${formatTokenScaledValue(normalizedTokens / 1000)}千`
+  }
+  if (normalizedTokens >= 100 && normalizedTokens % 100 === 0) {
+    return `${normalizedTokens / 100}百`
+  }
+  return normalizedTokens.toString()
+}
+
+/**
+ * Format exact token counts for tooltip details.
+ */
+export function formatTokenDetails(tokens: number): string {
+  if (!Number.isFinite(tokens) || tokens <= 0) return '0 token'
+  return `${Math.floor(tokens).toLocaleString()} token`
 }
 
 /**

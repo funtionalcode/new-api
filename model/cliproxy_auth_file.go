@@ -14,6 +14,7 @@ type CliproxyAuthFileBinding struct {
 	Id                       int    `json:"id" gorm:"primaryKey"`
 	UserId                   int    `json:"user_id" gorm:"index;not null"`
 	Username                 string `json:"username" gorm:"size:64;index;default:''"`
+	Remark                   string `json:"remark" gorm:"-"`
 	AuthIndex                string `json:"auth_index" gorm:"size:128;uniqueIndex;not null"`
 	AuthName                 string `json:"auth_name" gorm:"size:255;default:''"`
 	AuthFile                 string `json:"auth_file" gorm:"type:text"`
@@ -155,7 +156,44 @@ func GetCliproxyAuthFileBindings(query CliproxyAuthFileBindingQuery, startIdx in
 		return nil, 0, err
 	}
 	err := dbQuery.Order(cliproxyAuthFileBindingOrderClause()).Limit(num).Offset(startIdx).Find(&bindings).Error
-	return bindings, total, err
+	if err != nil {
+		return nil, 0, err
+	}
+	return bindings, total, enrichCliproxyAuthFileBindingRemarks(bindings)
+}
+
+func enrichCliproxyAuthFileBindingRemarks(bindings []*CliproxyAuthFileBinding) error {
+	if len(bindings) == 0 {
+		return nil
+	}
+	userIDs := make([]int, 0, len(bindings))
+	seenUserIDs := make(map[int]bool, len(bindings))
+	for _, binding := range bindings {
+		if binding.UserId <= 0 || seenUserIDs[binding.UserId] {
+			continue
+		}
+		seenUserIDs[binding.UserId] = true
+		userIDs = append(userIDs, binding.UserId)
+	}
+	if len(userIDs) == 0 {
+		return nil
+	}
+
+	var users []struct {
+		Id     int    `gorm:"column:id"`
+		Remark string `gorm:"column:remark"`
+	}
+	if err := DB.Unscoped().Model(&User{}).Select("id, remark").Where("id IN ?", userIDs).Find(&users).Error; err != nil {
+		return err
+	}
+	remarks := make(map[int]string, len(users))
+	for _, user := range users {
+		remarks[user.Id] = user.Remark
+	}
+	for _, binding := range bindings {
+		binding.Remark = remarks[binding.UserId]
+	}
+	return nil
 }
 
 func cliproxyAuthFileBindingOrderClause() string {

@@ -63,11 +63,11 @@ func GetCliproxyRemoteAuthFiles(c *gin.Context) {
 
 func GetCliproxyAuthFileBindings(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
-	query := model.CliproxyAuthFileBindingQuery{
+	query := cliproxyBindingQueryForRole(model.CliproxyAuthFileBindingQuery{
 		Username:  c.Query("username"),
 		AuthIndex: c.Query("auth_index"),
 		Enabled:   parseOptionalBool(c.Query("enabled")),
-	}
+	}, c.GetInt("id"), c.GetInt("role"))
 	bindings, total, err := model.GetCliproxyAuthFileBindings(query, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
@@ -76,6 +76,19 @@ func GetCliproxyAuthFileBindings(c *gin.Context) {
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(bindings)
 	common.ApiSuccess(c, pageInfo)
+}
+
+func cliproxyBindingQueryForRole(query model.CliproxyAuthFileBindingQuery, userID int, role int) model.CliproxyAuthFileBindingQuery {
+	if role >= common.RoleAdminUser {
+		return query
+	}
+	query.UserId = userID
+	query.Username = ""
+	return query
+}
+
+func canAccessCliproxyBindingForRole(binding *model.CliproxyAuthFileBinding, userID int, role int) bool {
+	return binding != nil && (role >= common.RoleAdminUser || binding.UserId == userID)
 }
 
 func CreateCliproxyAuthFileBinding(c *gin.Context) {
@@ -143,6 +156,10 @@ func RefreshCliproxyAuthFileBindingUsage(c *gin.Context) {
 	binding, err := model.GetCliproxyAuthFileBindingById(id)
 	if err != nil {
 		common.ApiError(c, err)
+		return
+	}
+	if !canAccessCliproxyBindingForRole(binding, c.GetInt("id"), c.GetInt("role")) {
+		common.ApiError(c, fmt.Errorf("无权刷新该认证文件绑定"))
 		return
 	}
 	client, err := newCliproxyClientFromOptions()

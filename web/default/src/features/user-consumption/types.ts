@@ -33,6 +33,7 @@ export interface PageResponse<T> {
 export interface UserConsumptionSummary {
   user_id: number
   username: string
+  remark: string
   token_id: number
   token_name: string
   auth_index: string

@@ -72,7 +72,11 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useIsAdmin } from '@/hooks/use-admin'
-import { formatTimestampToDate, formatTokens } from '@/lib/format'
+import {
+  formatTimestampToDate,
+  formatTokenDetails,
+  formatTokens,
+} from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import {
@@ -199,6 +203,42 @@ function progressColor(percent: number): string {
   return '[&_[data-slot=progress-indicator]]:bg-emerald-500'
 }
 
+function remainingBalanceColor(percent: number): string {
+  if (percent <= 10) {
+    return '[&_[data-slot=progress-indicator]]:bg-rose-500'
+  }
+  if (percent <= 30) {
+    return '[&_[data-slot=progress-indicator]]:bg-amber-500'
+  }
+  return '[&_[data-slot=progress-indicator]]:bg-emerald-500'
+}
+
+function TokenValue({
+  value,
+  className,
+}: {
+  value: number
+  className?: string
+}) {
+  const tokenValue = Number(value || 0)
+  if (tokenValue <= 0) {
+    return <span className={className}>-</span>
+  }
+
+  return (
+    <TooltipProvider delay={100}>
+      <Tooltip>
+        <TooltipTrigger
+          render={<span className={cn('cursor-default', className)} />}
+        >
+          {formatTokens(tokenValue)}
+        </TooltipTrigger>
+        <TooltipContent>{formatTokenDetails(tokenValue)}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
 function TokenUsageBar(props: {
   used: number
   limit: number
@@ -210,9 +250,9 @@ function TokenUsageBar(props: {
   return (
     <div className='min-w-[150px] space-y-1'>
       <div className='flex justify-between gap-2 text-xs'>
-        <span className='font-mono'>{formatTokens(props.used || 0)}</span>
+        <TokenValue value={props.used || 0} className='font-mono' />
         <span className='text-muted-foreground font-mono'>
-          {hasLimit ? formatTokens(props.limit) : '-'}
+          {hasLimit ? <TokenValue value={props.limit} /> : '-'}
         </span>
       </div>
       <Progress
@@ -256,14 +296,10 @@ function DeepSeekUsageCells({ binding }: { binding: DeepSeekQuotaBinding }) {
     bonusWallets: binding.last_bonus_wallets,
     monthlyCosts: binding.last_monthly_costs,
     todayCosts: binding.last_today_costs,
+    todayUsedTokens: binding.last_today_used_tokens,
   })
   const remainingPercent = normalizePercent(usage.remainingPercent)
-  const remainingColor =
-    remainingPercent <= 10
-      ? '[&_[data-slot=progress-indicator]]:bg-rose-500'
-      : remainingPercent <= 30
-        ? '[&_[data-slot=progress-indicator]]:bg-amber-500'
-        : '[&_[data-slot=progress-indicator]]:bg-emerald-500'
+  const remainingColor = remainingBalanceColor(remainingPercent)
 
   return (
     <>
@@ -286,12 +322,35 @@ function DeepSeekUsageCells({ binding }: { binding: DeepSeekQuotaBinding }) {
           </div>
         </div>
       </TableCell>
-      <TableCell className='font-mono'>
-        {usage.todayCostLabel}
+      <TableCell>
+        {usage.todayUsedTokens > 0 ? (
+          <TooltipProvider delay={100}>
+            <Tooltip>
+              <TooltipTrigger
+                render={<span className='cursor-default font-mono' />}
+              >
+                {usage.todayTokenLabel}
+              </TooltipTrigger>
+              <TooltipContent>{usage.todayTokenDetail}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : (
+          <span className='text-muted-foreground'>-</span>
+        )}
       </TableCell>
       <TableCell className='font-mono'>{usage.monthlyCostLabel}</TableCell>
     </>
   )
+}
+
+function QuotaUsageCells({ binding }: { binding: QuotaBinding }) {
+  if (isGLMBinding(binding)) {
+    return <GLMUsageCells binding={binding} />
+  }
+  if (isDeepSeekBinding(binding)) {
+    return <DeepSeekUsageCells binding={binding} />
+  }
+  return null
 }
 
 function ErrorMessageCell({ error }: { error?: string }) {
@@ -564,7 +623,7 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
                     ) : (
                       <>
                         <TableHead>{t('Remaining Balance')}</TableHead>
-                        <TableHead>{t('Today Cost')}</TableHead>
+                        <TableHead>{t('Today Tokens')}</TableHead>
                         <TableHead>{t('Monthly Cost')}</TableHead>
                       </>
                     )}
@@ -600,11 +659,7 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
                           {binding.enabled ? t('Enabled') : t('Disabled')}
                         </Badge>
                       </TableCell>
-                      {isGLMBinding(binding) ? (
-                        <GLMUsageCells binding={binding} />
-                      ) : isDeepSeekBinding(binding) ? (
-                        <DeepSeekUsageCells binding={binding} />
-                      ) : null}
+                      <QuotaUsageCells binding={binding} />
                       <TableCell>
                         {binding.last_refreshed_at
                           ? formatTimestampToDate(binding.last_refreshed_at)

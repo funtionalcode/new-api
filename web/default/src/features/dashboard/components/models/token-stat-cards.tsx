@@ -20,7 +20,7 @@ import { useEffect, useState } from 'react'
 import { Layers, Hash, Zap } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth-store'
-import { formatNumber } from '@/lib/format'
+import { formatTokenDetails, formatTokens } from '@/lib/format'
 import { computeTimeRange } from '@/lib/time'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getUserQuotaDates } from '@/features/dashboard/api'
@@ -68,8 +68,9 @@ export function TokenStatCards(props: TokenStatCardsProps) {
     const timeDiff = (timeRange.end_timestamp - timeRange.start_timestamp) / 60
     setTimeRangeMinutes(timeDiff)
 
-    getUserQuotaDates(buildQueryParams(timeRange, filters), isAdmin)
-      .then((res) => {
+    void (async () => {
+      try {
+        const res = await getUserQuotaDates(buildQueryParams(timeRange, filters), isAdmin)
         if (abortController.signal.aborted) return
         const data = res?.data || []
         const result = calculateDashboardStats(data)
@@ -78,18 +79,17 @@ export function TokenStatCards(props: TokenStatCardsProps) {
           totalCount: result.totalCount,
         })
         onDataUpdate?.(data, false)
-      })
-      .catch(() => {
+      } catch {
         if (abortController.signal.aborted) return
         setStats(null)
         setError(true)
         onDataUpdate?.([], false)
-      })
-      .finally(() => {
+      } finally {
         if (!abortController.signal.aborted) {
           setLoading(false)
         }
-      })
+      }
+    })()
 
     return () => {
       abortController.abort()
@@ -105,19 +105,22 @@ export function TokenStatCards(props: TokenStatCardsProps) {
   const items = [
     {
       title: t('Total Tokens'),
-      value: formatNumber(totalTokens),
+      value: formatTokens(totalTokens),
+      fullValue: formatTokenDetails(totalTokens),
       desc: t('Statistical tokens'),
       icon: Layers,
     },
     {
       title: t('Average Tokens'),
-      value: formatNumber(avgTokensPerCall),
+      value: formatTokens(avgTokensPerCall),
+      fullValue: formatTokenDetails(avgTokensPerCall),
       desc: t('Tokens per request'),
       icon: Hash,
     },
     {
       title: t('Tokens per minute'),
-      value: formatNumber(Math.round(tpm)),
+      value: formatTokens(Math.round(tpm)),
+      fullValue: formatTokenDetails(Math.round(tpm)),
       desc: t('Tokens per minute'),
       icon: Zap,
     },
@@ -128,6 +131,37 @@ export function TokenStatCards(props: TokenStatCardsProps) {
       <div className='divide-border/60 grid grid-cols-3 divide-x'>
         {items.map((it) => {
           const Icon = it.icon
+          let content = (
+            <>
+              <div className='text-foreground mt-1.5 font-mono text-lg font-bold tracking-tight tabular-nums sm:mt-2 sm:text-2xl'>
+                <span title={it.fullValue}>{it.value}</span>
+              </div>
+              <div className='text-muted-foreground/60 mt-1 hidden text-xs md:block'>
+                {it.desc}
+              </div>
+            </>
+          )
+
+          if (loading) {
+            content = (
+              <div className='mt-2 space-y-1.5'>
+                <Skeleton className='h-7 w-20' />
+                <Skeleton className='h-3.5 w-28' />
+              </div>
+            )
+          } else if (error) {
+            content = (
+              <>
+                <div className='text-muted-foreground mt-1.5 font-mono text-lg font-bold tracking-tight tabular-nums sm:mt-2 sm:text-2xl'>
+                  --
+                </div>
+                <div className='text-muted-foreground/40 mt-1 hidden text-xs md:block'>
+                  {it.desc}
+                </div>
+              </>
+            )
+          }
+
           return (
             <div key={it.title} className='px-3 py-2.5 sm:px-5 sm:py-4'>
               <div className='flex items-center gap-2'>
@@ -137,30 +171,7 @@ export function TokenStatCards(props: TokenStatCardsProps) {
                 </div>
               </div>
 
-              {loading ? (
-                <div className='mt-2 space-y-1.5'>
-                  <Skeleton className='h-7 w-20' />
-                  <Skeleton className='h-3.5 w-28' />
-                </div>
-              ) : error ? (
-                <>
-                  <div className='text-muted-foreground mt-1.5 font-mono text-lg font-bold tracking-tight tabular-nums sm:mt-2 sm:text-2xl'>
-                    --
-                  </div>
-                  <div className='text-muted-foreground/40 mt-1 hidden text-xs md:block'>
-                    {it.desc}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className='text-foreground mt-1.5 font-mono text-lg font-bold tracking-tight tabular-nums sm:mt-2 sm:text-2xl'>
-                    {it.value}
-                  </div>
-                  <div className='text-muted-foreground/60 mt-1 hidden text-xs md:block'>
-                    {it.desc}
-                  </div>
-                </>
-              )}
+              {content}
             </div>
           )
         })}

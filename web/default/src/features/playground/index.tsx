@@ -16,6 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useCallback, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
+
+import { sendImageGeneration, sendSpeechGeneration } from './api'
 import { PlaygroundChat } from './components/chat/playground-chat'
 import { PlaygroundInput } from './components/input/playground-input'
 import {
@@ -24,8 +29,23 @@ import {
   usePlaygroundOptions,
   usePlaygroundState,
 } from './hooks'
+import {
+  appendUserMessagePair,
+  buildImageGenerationMarkdown,
+  buildSpeechGenerationMarkdown,
+  completeAssistantMessage,
+  parseRequestErrorDetails,
+  updateAssistantMessageWithError,
+  updateCurrentVersionContent,
+  updateLastAssistantMessage,
+} from './lib'
+import type { PlaygroundMode } from './types'
 
 export function Playground() {
+  const { t } = useTranslation()
+  const [mode, setMode] = useState<PlaygroundMode>('chat')
+  const [isTaskGenerating, setIsTaskGenerating] = useState(false)
+  const taskAbortControllerRef = useRef<AbortController | null>(null)
   const {
     config,
     parameterEnabled,
@@ -45,6 +65,76 @@ export function Playground() {
     parameterEnabled,
     onMessageUpdate: updateMessages,
   })
+
+  const handleTaskSubmit = useCallback(
+    async (text: string) => {
+      const nextMessages = appendUserMessagePair(messages, text)
+      const abortController = new AbortController()
+      taskAbortControllerRef.current = abortController
+
+      updateMessages(nextMessages)
+      setIsTaskGenerating(true)
+
+      try {
+        const content =
+          mode === 'image'
+            ? buildImageGenerationMarkdown(
+                await sendImageGeneration(
+                  {
+                    model: config.model,
+                    group: config.group,
+                    prompt: text,
+                    n: 1,
+                    size: '1024x1024',
+                  },
+                  abortController.signal
+                )
+              )
+            : buildSpeechGenerationMarkdown(
+                URL.createObjectURL(
+                  await sendSpeechGeneration(
+                    {
+                      model: config.model,
+                      group: config.group,
+                      input: text,
+                      voice: 'alloy',
+                    },
+                    abortController.signal
+                  )
+                )
+              )
+
+        if (abortController.signal.aborted) return
+
+        updateMessages((previousMessages) =>
+          updateLastAssistantMessage(previousMessages, (message) =>
+            completeAssistantMessage(updateCurrentVersionContent(message, content))
+          )
+        )
+      } catch (error) {
+        if (abortController.signal.aborted) return
+
+        const { errorCode, errorMessage } = parseRequestErrorDetails(error)
+        toast.error(errorMessage)
+        updateMessages((previousMessages) =>
+          updateAssistantMessageWithError(
+            previousMessages,
+            errorMessage,
+            errorCode,
+            t('Request error occurred')
+          )
+        )
+      } finally {
+        if (taskAbortControllerRef.current === abortController) {
+          taskAbortControllerRef.current = null
+        }
+        if (!abortController.signal.aborted) {
+          setIsTaskGenerating(false)
+        }
+      }
+    },
+    [config.group, config.model, messages, mode, t, updateMessages]
+  )
 
   const {
     editingMessageKey,
@@ -73,6 +163,8 @@ export function Playground() {
     updateConfig,
   })
 
+  const isBusy = isGenerating || isTaskGenerating
+
   return (
     <div className='relative flex size-full min-h-0 flex-col overflow-hidden'>
       {/* Full-width scroll container: scrolling works even over side whitespace */}
@@ -84,7 +176,7 @@ export function Playground() {
           onEditMessage={handleEditMessage}
           onDeleteMessage={handleDeleteMessage}
           onSelectPrompt={handleSendMessage}
-          isGenerating={isGenerating}
+          isGenerating={isBusy}
           editingKey={editingMessageKey}
           onCancelEdit={handleEditOpenChange}
           onSaveEdit={(newContent) => applyEdit(newContent, false)}
@@ -95,18 +187,20 @@ export function Playground() {
       {/* Input area: center content and constrain to the same container width */}
       <div className='mx-auto w-full max-w-4xl'>
         <PlaygroundInput
-          disabled={isGenerating}
+          disabled={isBusy}
           groups={groups}
           groupValue={config.group}
-          isGenerating={isGenerating}
+          isGenerating={isBusy}
           isModelLoading={isLoadingModels}
+          mode={mode}
           modelValue={config.model}
           models={models}
           onGroupChange={(value) => updateConfig('group', value)}
           onClearMessages={handleClearMessages}
+          onModeChange={setMode}
           onModelChange={(value) => updateConfig('model', value)}
-          onStop={stopGeneration}
-          onSubmit={handleSendMessage}
+          onStop={mode === 'chat' ? stopGeneration : undefined}
+          onSubmit={mode === 'chat' ? handleSendMessage : handleTaskSubmit}
           hasMessages={messages.length > 0}
         />
       </div>

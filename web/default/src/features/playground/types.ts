@@ -23,6 +23,8 @@ export type MessageStatus = 'loading' | 'streaming' | 'complete' | 'error'
 
 export type PlaygroundMessageLayoutMode = 'alternating' | 'left'
 
+export type PlaygroundMode = 'chat' | 'image' | 'speech'
+
 export interface MessageVersion {
   id: string
   content: string
@@ -113,6 +115,30 @@ export interface ChatCompletionResponse {
     completion_tokens: number
     total_tokens: number
   }
+}
+
+export interface ImageGenerationRequest {
+  model: string
+  group?: string
+  prompt: string
+  n?: number
+  size?: string
+}
+
+export interface ImageGenerationResponse {
+  created?: number
+  data?: Array<{
+    url?: string
+    b64_json?: string
+    revised_prompt?: string
+  }>
+}
+
+export interface SpeechGenerationRequest {
+  model: string
+  group?: string
+  input: string
+  voice: string
 }
 
 // Configuration types

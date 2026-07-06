@@ -40,7 +40,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { type SidebarData } from '@/components/layout/types'
+import type { SidebarData } from '@/components/layout/types'
 import { ROLE } from '@/lib/roles'
 
 /**
@@ -106,6 +106,21 @@ export function useSidebarData(): SidebarData {
             configUrls: ['/usage-logs/drawing', '/usage-logs/task'],
             icon: ListTodo,
           },
+          {
+            title: t('Auth Files'),
+            url: '/cliproxy-auth-files',
+            icon: Files,
+          },
+          {
+            title: t('GLM Quota'),
+            url: '/glm-quota',
+            icon: Gauge,
+          },
+          {
+            title: t('DeepSeek Quota'),
+            url: '/deepseek-quota',
+            icon: Gauge,
+          },
         ],
       },
       {
@@ -142,21 +157,6 @@ export function useSidebarData(): SidebarData {
             title: t('Users'),
             url: '/users',
             icon: Users,
-          },
-          {
-            title: t('Auth Files'),
-            url: '/cliproxy-auth-files',
-            icon: Files,
-          },
-          {
-            title: t('GLM Quota'),
-            url: '/glm-quota',
-            icon: Gauge,
-          },
-          {
-            title: t('DeepSeek Quota'),
-            url: '/deepseek-quota',
-            icon: Gauge,
           },
           {
             title: t('User Consumption'),

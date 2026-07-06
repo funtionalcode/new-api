@@ -40,7 +40,12 @@ import { Label } from '@/components/ui/label'
 import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-pricing-breakdown'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
-import { formatLogQuota, formatTokens, formatUseTime } from '@/lib/format'
+import {
+  formatLogQuota,
+  formatTokenDetails,
+  formatTokens,
+  formatUseTime,
+} from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import type { UsageLog } from '../../data/schema'
@@ -870,28 +875,28 @@ export function DetailsDialog(props: DetailsDialogProps) {
             {other.audio_input != null && other.audio_input > 0 && (
               <DetailRow
                 label={t('Audio Input')}
-                value={formatTokens(other.audio_input)}
+                value={`${formatTokens(other.audio_input)} (${formatTokenDetails(other.audio_input)})`}
                 mono
               />
             )}
             {other.audio_output != null && other.audio_output > 0 && (
               <DetailRow
                 label={t('Audio Output')}
-                value={formatTokens(other.audio_output)}
+                value={`${formatTokens(other.audio_output)} (${formatTokenDetails(other.audio_output)})`}
                 mono
               />
             )}
             {other.text_input != null && other.text_input > 0 && (
               <DetailRow
                 label={t('Text Input')}
-                value={formatTokens(other.text_input)}
+                value={`${formatTokens(other.text_input)} (${formatTokenDetails(other.text_input)})`}
                 mono
               />
             )}
             {other.text_output != null && other.text_output > 0 && (
               <DetailRow
                 label={t('Text Output')}
-                value={formatTokens(other.text_output)}
+                value={`${formatTokens(other.text_output)} (${formatTokenDetails(other.text_output)})`}
                 mono
               />
             )}

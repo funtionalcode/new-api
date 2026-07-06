@@ -19,6 +19,7 @@ type DeepSeekQuotaBinding struct {
 	LastMonthlyRemainingTokens int64  `json:"last_monthly_remaining_tokens" gorm:"bigint;default:0"`
 	LastMonthlyPercent         int    `json:"last_monthly_percent" gorm:"default:0"`
 	LastTotalAvailableTokens   int64  `json:"last_total_available_tokens" gorm:"bigint;default:0"`
+	LastTodayUsedTokens        int64  `json:"last_today_used_tokens" gorm:"bigint;default:0"`
 	LastNormalWallets          string `json:"last_normal_wallets" gorm:"type:text"`
 	LastBonusWallets           string `json:"last_bonus_wallets" gorm:"type:text"`
 	LastMonthlyCosts           string `json:"last_monthly_costs" gorm:"type:text"`
@@ -52,6 +53,7 @@ type DeepSeekQuotaUsageRefreshUpdate struct {
 	LastMonthlyRemainingTokens int64
 	LastMonthlyPercent         int
 	LastTotalAvailableTokens   int64
+	LastTodayUsedTokens        int64
 	LastNormalWallets          string
 	LastBonusWallets           string
 	LastMonthlyCosts           string
@@ -144,6 +146,7 @@ func UpdateDeepSeekQuotaBindingUsage(id int, update DeepSeekQuotaUsageRefreshUpd
 		updates["last_monthly_remaining_tokens"] = update.LastMonthlyRemainingTokens
 		updates["last_monthly_percent"] = update.LastMonthlyPercent
 		updates["last_total_available_tokens"] = update.LastTotalAvailableTokens
+		updates["last_today_used_tokens"] = update.LastTodayUsedTokens
 		updates["last_normal_wallets"] = update.LastNormalWallets
 		updates["last_bonus_wallets"] = update.LastBonusWallets
 		updates["last_monthly_costs"] = update.LastMonthlyCosts

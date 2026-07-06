@@ -22,8 +22,11 @@ import { API_ENDPOINTS } from './constants'
 import type {
   ChatCompletionRequest,
   ChatCompletionResponse,
+  ImageGenerationRequest,
+  ImageGenerationResponse,
   ModelOption,
   GroupOption,
+  SpeechGenerationRequest,
 } from './types'
 
 /**
@@ -34,6 +37,29 @@ export async function sendChatCompletion(
   signal?: AbortSignal
 ): Promise<ChatCompletionResponse> {
   const res = await api.post(API_ENDPOINTS.CHAT_COMPLETIONS, payload, {
+    signal,
+    skipErrorHandler: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+export async function sendImageGeneration(
+  payload: ImageGenerationRequest,
+  signal?: AbortSignal
+): Promise<ImageGenerationResponse> {
+  const res = await api.post(API_ENDPOINTS.IMAGE_GENERATIONS, payload, {
+    signal,
+    skipErrorHandler: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+export async function sendSpeechGeneration(
+  payload: SpeechGenerationRequest,
+  signal?: AbortSignal
+): Promise<Blob> {
+  const res = await api.post(API_ENDPOINTS.AUDIO_SPEECH, payload, {
+    responseType: 'blob',
     signal,
     skipErrorHandler: true,
   } as Record<string, unknown>)

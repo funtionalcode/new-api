@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { ImageIcon, MessageSquareIcon, Volume2Icon } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -25,9 +26,10 @@ import {
   PromptInputTextarea,
   type PromptInputMessage,
 } from '@/components/ai-elements/prompt-input'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import { getSubmittableInputText } from '../../lib'
-import type { ModelOption, GroupOption } from '../../types'
+import type { ModelOption, GroupOption, PlaygroundMode } from '../../types'
 import { PlaygroundInputControls } from './playground-input-controls'
 import { PlaygroundInputTools } from './playground-input-tools'
 
@@ -43,6 +45,8 @@ interface PlaygroundInputProps {
   groups: GroupOption[]
   groupValue: string
   onGroupChange: (value: string) => void
+  mode: PlaygroundMode
+  onModeChange: (value: PlaygroundMode) => void
   hasMessages?: boolean
   onClearMessages?: () => void
 }
@@ -59,6 +63,8 @@ export function PlaygroundInput({
   groups,
   groupValue,
   onGroupChange,
+  mode,
+  onModeChange,
   hasMessages = false,
   onClearMessages,
 }: PlaygroundInputProps) {
@@ -73,8 +79,40 @@ export function PlaygroundInput({
     setText('')
   }
 
+  const getPlaceholder = () => {
+    if (mode === 'image') {
+      return t('Describe the image to generate')
+    }
+    if (mode === 'speech') {
+      return t('Enter text to synthesize')
+    }
+    return t('Ask anything')
+  }
+
+  const placeholder = getPlaceholder()
+
   return (
     <div className='grid shrink-0 gap-4 px-1 md:pb-4'>
+      <Tabs
+        value={mode}
+        onValueChange={(value) => onModeChange(value as PlaygroundMode)}
+        className='px-1'
+      >
+        <TabsList>
+          <TabsTrigger value='chat'>
+            <MessageSquareIcon />
+            {t('Chat')}
+          </TabsTrigger>
+          <TabsTrigger value='image'>
+            <ImageIcon />
+            {t('Image')}
+          </TabsTrigger>
+          <TabsTrigger value='speech'>
+            <Volume2Icon />
+            {t('TTS')}
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
       <PromptInput
         className='relative'
         groupClassName='bg-background/95 dark:bg-background/80 border-border/70 shadow-[0_18px_60px_-32px_rgba(0,0,0,0.65)] ring-1 ring-foreground/5 rounded-xl overflow-hidden transition-all duration-200 focus-within:border-primary/45 focus-within:ring-primary/15 focus-within:shadow-[0_22px_70px_-34px_rgba(0,0,0,0.75)]'
@@ -88,7 +126,7 @@ export function PlaygroundInput({
           className='min-h-20 px-5 pt-4 pb-3 leading-7 md:min-h-24 md:text-base'
           disabled={disabled}
           onChange={(event) => setText(event.target.value)}
-          placeholder={t('Ask anything')}
+          placeholder={placeholder}
           value={text}
         />
 

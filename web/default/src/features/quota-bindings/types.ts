@@ -51,6 +51,7 @@ export type DeepSeekQuotaBinding = QuotaBindingBase & {
   last_monthly_remaining_tokens: number
   last_monthly_percent: number
   last_total_available_tokens: number
+  last_today_used_tokens: number
   last_normal_wallets: string
   last_bonus_wallets: string
   last_monthly_costs: string

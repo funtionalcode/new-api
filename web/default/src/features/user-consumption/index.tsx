@@ -42,11 +42,19 @@ import {
 import {
   formatLogQuota,
   formatTimestampToDate,
+  formatTokenDetails,
   formatTokens,
   parseTimestampFromInput,
 } from '@/lib/format'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { getUserConsumption } from './api'
 import { TokenStatCards, TokenConsumptionCharts } from './components'
+import type { UserConsumptionSummary } from './types'
 
 const daySeconds = 24 * 60 * 60
 
@@ -62,6 +70,74 @@ function formatDatetimeInput(timestamp: number) {
   const date = new Date(timestamp * 1000)
   const timezoneOffset = date.getTimezoneOffset() * 60 * 1000
   return new Date(date.getTime() - timezoneOffset).toISOString().slice(0, 16)
+}
+
+function TokenAmount({ value }: { value: number }) {
+  const tokenValue = Number(value || 0)
+  return (
+    <TooltipProvider delay={150}>
+      <Tooltip>
+        <TooltipTrigger render={<span className='cursor-default font-mono' />}>
+          {formatTokens(tokenValue)}
+        </TooltipTrigger>
+        <TooltipContent>{formatTokenDetails(tokenValue)}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
+function UserSummaryCell({
+  users,
+}: {
+  users: Array<Pick<UserConsumptionSummary, 'username' | 'remark'>>
+}) {
+  const { t } = useTranslation()
+  const visibleUsers = users.slice(0, 3)
+
+  return (
+    <div className='space-y-1'>
+      <div className='text-sm'>{users.length}</div>
+      <TooltipProvider delay={200}>
+        <Tooltip>
+          <TooltipTrigger
+            render={<div className='max-w-[220px] cursor-default' />}
+          >
+            <div className='text-muted-foreground space-y-0.5 text-xs'>
+              {visibleUsers.map((user) => (
+                <div key={user.username} className='min-w-0'>
+                  <div className='truncate'>{user.username}</div>
+                  {user.remark ? (
+                    <div className='text-muted-foreground/70 truncate'>
+                      {user.remark}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+              {users.length > 3 ? <div>+{users.length - 3}</div> : null}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent
+            side='top'
+            align='start'
+            className='max-w-xs whitespace-pre-wrap break-words'
+          >
+            <div className='space-y-2'>
+              {users.map((user) => (
+                <div key={user.username}>
+                  <div>{user.username}</div>
+                  {user.remark ? (
+                    <div className='text-muted-foreground text-xs'>
+                      {t('Remark')}: {user.remark}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
+  )
 }
 
 export function UserConsumption() {
@@ -94,7 +170,10 @@ export function UserConsumption() {
     queryFn: () => getUserConsumption(filters),
   })
 
-  const rows = query.data?.data?.items ?? []
+  const rows = useMemo(
+    () => query.data?.data?.items ?? [],
+    [query.data?.data?.items]
+  )
 
   const tokenGroupedData = useMemo(() => {
     const tokenMap = new Map<number, {
@@ -105,7 +184,7 @@ export function UserConsumption() {
       completion_tokens: number
       request_count: number
       quota: number
-      users: Set<string>
+      users: Map<string, Pick<UserConsumptionSummary, 'username' | 'remark'>>
       last_called_at: number
     }>()
 
@@ -118,7 +197,7 @@ export function UserConsumption() {
         completion_tokens: 0,
         request_count: 0,
         quota: 0,
-        users: new Set(),
+        users: new Map(),
         last_called_at: 0,
       }
 
@@ -127,13 +206,18 @@ export function UserConsumption() {
       existing.completion_tokens += row.completion_tokens
       existing.request_count += row.request_count
       existing.quota += row.quota
-      if (row.username) existing.users.add(row.username)
+      if (row.username && !existing.users.has(row.username)) {
+        existing.users.set(row.username, {
+          username: row.username,
+          remark: row.remark || '',
+        })
+      }
       existing.last_called_at = Math.max(existing.last_called_at, row.last_called_at)
 
       tokenMap.set(row.token_id, existing)
     }
 
-    return Array.from(tokenMap.values()).sort((a, b) => b.total_tokens - a.total_tokens)
+    return [...tokenMap.values()].sort((a, b) => b.total_tokens - a.total_tokens)
   }, [rows])
 
   return (
@@ -227,16 +311,12 @@ export function UserConsumption() {
                           <div className='text-muted-foreground text-xs'>ID: {row.token_id}</div>
                         </TableCell>
                         <TableCell>
-                          <div className='text-sm'>{row.users.size}</div>
-                          <div className='text-muted-foreground text-xs'>
-                            {Array.from(row.users).slice(0, 3).join(', ')}
-                            {row.users.size > 3 && ` +${row.users.size - 3}`}
-                          </div>
+                          <UserSummaryCell users={[...row.users.values()]} />
                         </TableCell>
                         <TableCell>{row.request_count}</TableCell>
-                        <TableCell>{formatTokens(row.prompt_tokens)}</TableCell>
-                        <TableCell>{formatTokens(row.completion_tokens)}</TableCell>
-                        <TableCell>{formatTokens(row.total_tokens)}</TableCell>
+                        <TableCell><TokenAmount value={row.prompt_tokens} /></TableCell>
+                        <TableCell><TokenAmount value={row.completion_tokens} /></TableCell>
+                        <TableCell><TokenAmount value={row.total_tokens} /></TableCell>
                         <TableCell>{formatLogQuota(row.quota)}</TableCell>
                         <TableCell>{formatTimestampToDate(row.last_called_at)}</TableCell>
                       </TableRow>
