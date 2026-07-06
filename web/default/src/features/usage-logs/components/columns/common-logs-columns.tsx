@@ -477,13 +477,14 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
           const { sensitiveVisible, setSelectedUserId, setUserInfoDialogOpen } =
             useUsageLogsContext()
           const log = row.original
+          const remark = log.remark?.trim()
 
           if (!log.username) return null
 
           return (
             <button
               type='button'
-              className='flex items-center gap-1.5 text-left'
+              className='flex max-w-[180px] items-center gap-1.5 text-left'
               onClick={(e) => {
                 e.stopPropagation()
                 setSelectedUserId(log.user_id)
@@ -509,19 +510,67 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                 <Tooltip>
                   <TooltipTrigger
                     render={
-                      <span className='text-muted-foreground max-w-[100px] truncate text-sm hover:underline' />
+                      <span className='flex min-w-0 flex-col gap-0.5' />
                     }
                   >
-                    {sensitiveVisible ? log.username : '••••'}
+                    <span className='text-muted-foreground max-w-[120px] truncate text-sm hover:underline'>
+                      {sensitiveVisible ? log.username : '••••'}
+                    </span>
+                    {remark ? (
+                      <span className='text-muted-foreground/60 max-w-[120px] truncate text-xs'>
+                        {sensitiveVisible ? remark : '••••'}
+                      </span>
+                    ) : null}
                   </TooltipTrigger>
-                  {sensitiveVisible && log.username.length > 12 && (
-                    <TooltipContent side='top'>{log.username}</TooltipContent>
+                  {sensitiveVisible && (log.username.length > 12 || remark) && (
+                    <TooltipContent side='top' className='max-w-xs break-words'>
+                      <div className='space-y-1'>
+                        <p>{log.username}</p>
+                        {remark ? (
+                          <p className='text-muted-foreground text-xs'>
+                            {t('Remark')}: {remark}
+                          </p>
+                        ) : null}
+                      </div>
+                    </TooltipContent>
                   )}
                 </Tooltip>
               </TooltipProvider>
             </button>
           )
         },
+      },
+      {
+        accessorKey: 'ip',
+        header: t('IP'),
+        cell: function IPCell({ row }) {
+          const { sensitiveVisible } = useUsageLogsContext()
+          const log = row.original
+          if (!isDisplayableLogType(log.type)) return null
+
+          const ip = log.ip?.trim()
+          if (!ip) return <span className='text-muted-foreground text-xs'>-</span>
+
+          return (
+            <TooltipProvider delay={300}>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span className='text-muted-foreground block max-w-[130px] truncate font-mono text-xs' />
+                  }
+                >
+                  {sensitiveVisible ? ip : '••••'}
+                </TooltipTrigger>
+                {sensitiveVisible && ip.length > 12 && (
+                  <TooltipContent side='top' className='max-w-xs break-all'>
+                    {ip}
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
+          )
+        },
+        size: 130,
       }
     )
   }

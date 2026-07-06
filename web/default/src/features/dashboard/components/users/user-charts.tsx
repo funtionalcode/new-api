@@ -18,10 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { VChart } from '@visactor/react-vchart'
-import { Users, Loader2 } from 'lucide-react'
+import { CalendarRange, Users, Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { DateTimePicker } from '@/components/datetime-picker'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useTheme } from '@/context/theme-provider'
@@ -35,12 +36,16 @@ import {
   saveGranularity,
   processUserChartData,
 } from '@/features/dashboard/lib'
+import {
+  buildUserChartTimeRange,
+  formatUserChartTimeRangeLabel,
+} from '@/features/dashboard/lib/user-chart-time-range'
 import type {
   ProcessedUserChartData,
   UserChartMetric,
   UserChartsFilters,
 } from '@/features/dashboard/types'
-import { getRollingDateRange, type TimeGranularity } from '@/lib/time'
+import type { TimeGranularity } from '@/lib/time'
 import { VCHART_OPTION } from '@/lib/vchart'
 
 let themeManagerPromise: Promise<
@@ -88,16 +93,22 @@ export function UserCharts(props: UserChartsProps) {
   const onFiltersChange = props.onFiltersChange
 
   const timeRange = useMemo(() => {
-    const { start, end } = getRollingDateRange(selectedRange)
-    return {
-      start_timestamp: Math.floor(start.getTime() / 1000),
-      end_timestamp: Math.floor(end.getTime() / 1000),
-    }
-  }, [selectedRange])
+    return buildUserChartTimeRange(props.filters)
+  }, [props.filters])
+
+  const timeRangeLabel = useMemo(
+    () => formatUserChartTimeRangeLabel(timeRange),
+    [timeRange]
+  )
 
   const handleRangeChange = useCallback(
     (days: number) => {
-      onFiltersChange({ ...props.filters, selectedRange: days })
+      onFiltersChange({
+        ...props.filters,
+        selectedRange: days,
+        customStartTime: undefined,
+        customEndTime: undefined,
+      })
     },
     [onFiltersChange, props.filters]
   )
@@ -110,6 +121,20 @@ export function UserCharts(props: UserChartsProps) {
         timeGranularity: g,
         selectedRange: getDefaultDays(g),
       })
+    },
+    [onFiltersChange, props.filters]
+  )
+
+  const handleCustomStartChange = useCallback(
+    (date: Date | undefined) => {
+      onFiltersChange({ ...props.filters, customStartTime: date })
+    },
+    [onFiltersChange, props.filters]
+  )
+
+  const handleCustomEndChange = useCallback(
+    (date: Date | undefined) => {
+      onFiltersChange({ ...props.filters, customEndTime: date })
     },
     [onFiltersChange, props.filters]
   )
@@ -242,9 +267,31 @@ export function UserCharts(props: UserChartsProps) {
           </TabsList>
         </Tabs>
 
+        <div className='border-border/60 bg-muted/20 flex shrink-0 items-center gap-2 rounded-md border px-2 py-1'>
+          <CalendarRange className='text-muted-foreground size-4' />
+          <DateTimePicker
+            value={props.filters.customStartTime}
+            onChange={handleCustomStartChange}
+            placeholder={t('Select start time')}
+            className='w-[250px]'
+          />
+          <DateTimePicker
+            value={props.filters.customEndTime}
+            onChange={handleCustomEndChange}
+            placeholder={t('Select end time')}
+            className='w-[250px]'
+          />
+        </div>
+
         {isLoading && (
           <Loader2 className='text-muted-foreground size-4 animate-spin' />
         )}
+      </div>
+
+      <div className='text-muted-foreground flex items-center gap-1.5 text-xs'>
+        <CalendarRange className='size-3.5' />
+        <span>{t('Date Range')}:</span>
+        <span className='font-mono tabular-nums'>{timeRangeLabel}</span>
       </div>
 
       <div className='grid gap-3'>

@@ -54,6 +54,7 @@ export type DeepSeekQuotaBinding = QuotaBindingBase & {
   last_normal_wallets: string
   last_bonus_wallets: string
   last_monthly_costs: string
+  last_today_costs: string
 }
 
 export type QuotaBinding = GLMQuotaBinding | DeepSeekQuotaBinding

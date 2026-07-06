@@ -22,6 +22,7 @@ type DeepSeekQuotaBinding struct {
 	LastNormalWallets          string `json:"last_normal_wallets" gorm:"type:text"`
 	LastBonusWallets           string `json:"last_bonus_wallets" gorm:"type:text"`
 	LastMonthlyCosts           string `json:"last_monthly_costs" gorm:"type:text"`
+	LastTodayCosts             string `json:"last_today_costs" gorm:"type:text"`
 	LastRefreshedAt            int64  `json:"last_refreshed_at" gorm:"bigint;default:0"`
 	LastError                  string `json:"last_error" gorm:"type:text"`
 	Enabled                    bool   `json:"enabled" gorm:"default:true"`
@@ -54,6 +55,7 @@ type DeepSeekQuotaUsageRefreshUpdate struct {
 	LastNormalWallets          string
 	LastBonusWallets           string
 	LastMonthlyCosts           string
+	LastTodayCosts             string
 	LastError                  string
 }
 
@@ -145,6 +147,7 @@ func UpdateDeepSeekQuotaBindingUsage(id int, update DeepSeekQuotaUsageRefreshUpd
 		updates["last_normal_wallets"] = update.LastNormalWallets
 		updates["last_bonus_wallets"] = update.LastBonusWallets
 		updates["last_monthly_costs"] = update.LastMonthlyCosts
+		updates["last_today_costs"] = update.LastTodayCosts
 	}
 	if err := DB.Model(&DeepSeekQuotaBinding{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 		return nil, err

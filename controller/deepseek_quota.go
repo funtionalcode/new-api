@@ -52,6 +52,8 @@ type deepSeekQuotaSummaryBizData struct {
 	BonusWallets                  []deepSeekQuotaWallet       `json:"bonus_wallets"`
 	TotalAvailableTokenEstimation string                      `json:"total_available_token_estimation"`
 	MonthlyCosts                  []deepSeekQuotaCurrencyCost `json:"monthly_costs"`
+	TodayCosts                    []deepSeekQuotaCurrencyCost `json:"today_costs"`
+	DailyCosts                    []deepSeekQuotaCurrencyCost `json:"daily_costs"`
 	MonthlyTokenUsage             string                      `json:"monthly_token_usage"`
 }
 
@@ -75,6 +77,7 @@ type deepSeekQuotaUsageRefreshBody struct {
 	NormalWallets          []deepSeekQuotaWallet
 	BonusWallets           []deepSeekQuotaWallet
 	MonthlyCosts           []deepSeekQuotaCurrencyCost
+	TodayCosts             []deepSeekQuotaCurrencyCost
 }
 
 func GetDeepSeekQuotaBindings(c *gin.Context) {
@@ -188,6 +191,11 @@ func RefreshDeepSeekQuotaBindingUsage(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	todayCosts, err := common.Marshal(usage.TodayCosts)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	updatedBinding, err := model.UpdateDeepSeekQuotaBindingUsage(id, model.DeepSeekQuotaUsageRefreshUpdate{
 		LastMonthlyLimitTokens:     usage.MonthlyLimitTokens,
 		LastMonthlyUsedTokens:      usage.MonthlyUsedTokens,
@@ -197,6 +205,7 @@ func RefreshDeepSeekQuotaBindingUsage(c *gin.Context) {
 		LastNormalWallets:          string(normalWallets),
 		LastBonusWallets:           string(bonusWallets),
 		LastMonthlyCosts:           string(monthlyCosts),
+		LastTodayCosts:             string(todayCosts),
 		LastError:                  "",
 	})
 	if err != nil {
@@ -484,7 +493,17 @@ func extractDeepSeekQuotaUsage(body []byte) (deepSeekQuotaUsageRefreshBody, erro
 		NormalWallets:          data.NormalWallets,
 		BonusWallets:           data.BonusWallets,
 		MonthlyCosts:           data.MonthlyCosts,
+		TodayCosts:             firstDeepSeekQuotaCostList(data.TodayCosts, data.DailyCosts),
 	}, nil
+}
+
+func firstDeepSeekQuotaCostList(values ...[]deepSeekQuotaCurrencyCost) []deepSeekQuotaCurrencyCost {
+	for _, value := range values {
+		if len(value) > 0 {
+			return value
+		}
+	}
+	return nil
 }
 
 func int64FromNumericString(value string) int64 {

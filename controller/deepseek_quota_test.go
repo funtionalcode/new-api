@@ -39,6 +39,12 @@ func TestExtractDeepSeekQuotaUsageParsesSummary(t *testing.T) {
 						"amount": "0.0091050000000000"
 					}
 				],
+				"today_costs": [
+					{
+						"currency": "CNY",
+						"amount": "0.0010000000000000"
+					}
+				],
 				"monthly_token_usage": "4354"
 			}
 		}
@@ -65,6 +71,9 @@ func TestExtractDeepSeekQuotaUsageParsesSummary(t *testing.T) {
 	}
 	if len(usage.MonthlyCosts) != 1 || usage.MonthlyCosts[0].Amount != "0.0091050000000000" {
 		t.Fatalf("MonthlyCosts = %#v", usage.MonthlyCosts)
+	}
+	if len(usage.TodayCosts) != 1 || usage.TodayCosts[0].Amount != "0.0010000000000000" {
+		t.Fatalf("TodayCosts = %#v", usage.TodayCosts)
 	}
 }
 

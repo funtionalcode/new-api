@@ -82,6 +82,7 @@ import {
   refreshQuotaBindingUsage,
   updateQuotaBinding,
 } from './api'
+import { buildDeepSeekMoneyUsage } from './lib/deepseek-usage'
 import type {
   DeepSeekQuotaBinding,
   GLMQuotaBinding,
@@ -216,26 +217,6 @@ function TokenUsageBar(props: {
   )
 }
 
-function parseJsonList(value: string | undefined): Array<Record<string, unknown>> {
-  if (!value?.trim()) return []
-  try {
-    const parsed = JSON.parse(value)
-    return Array.isArray(parsed)
-      ? parsed.filter((item) => item && typeof item === 'object')
-      : []
-  } catch {
-    return []
-  }
-}
-
-function formatAmount(value: unknown): string {
-  const numberValue = Number(value || 0)
-  if (!Number.isFinite(numberValue)) return String(value || '0')
-  return numberValue.toLocaleString(undefined, {
-    maximumFractionDigits: 4,
-  })
-}
-
 function GLMUsageCells({ binding }: { binding: GLMQuotaBinding }) {
   return (
     <>
@@ -261,28 +242,45 @@ function GLMUsageCells({ binding }: { binding: GLMQuotaBinding }) {
 }
 
 function DeepSeekUsageCells({ binding }: { binding: DeepSeekQuotaBinding }) {
-  const wallets = [
-    ...parseJsonList(binding.last_normal_wallets),
-    ...parseJsonList(binding.last_bonus_wallets),
-  ]
-  const primaryWallet = wallets[0]
-  const walletLabel = primaryWallet
-    ? `${String(primaryWallet.currency || '-')} ${formatAmount(primaryWallet.balance)}`
-    : '-'
+  const usage = buildDeepSeekMoneyUsage({
+    normalWallets: binding.last_normal_wallets,
+    bonusWallets: binding.last_bonus_wallets,
+    monthlyCosts: binding.last_monthly_costs,
+    todayCosts: binding.last_today_costs,
+  })
+  const remainingPercent = normalizePercent(usage.remainingPercent)
+  const remainingColor =
+    remainingPercent <= 10
+      ? '[&_[data-slot=progress-indicator]]:bg-rose-500'
+      : remainingPercent <= 30
+        ? '[&_[data-slot=progress-indicator]]:bg-amber-500'
+        : '[&_[data-slot=progress-indicator]]:bg-emerald-500'
 
   return (
     <>
       <TableCell>
-        <TokenUsageBar
-          used={binding.last_monthly_used_tokens}
-          limit={binding.last_monthly_limit_tokens}
-          percent={binding.last_monthly_percent}
-        />
+        <div className='min-w-[150px] space-y-1'>
+          <div className='flex justify-between gap-2 text-xs'>
+            <span className='font-mono'>{usage.remainingLabel}</span>
+            <span className='text-muted-foreground font-mono'>
+              {usage.totalAmount > 0
+                ? `${usage.currency || '-'} ${usage.totalAmount.toLocaleString(undefined, { maximumFractionDigits: 4 })}`
+                : '-'}
+            </span>
+          </div>
+          <Progress
+            value={remainingPercent}
+            className={cn('h-1.5', remainingColor)}
+          />
+          <div className='text-muted-foreground text-xs'>
+            {usage.totalAmount > 0 ? `${remainingPercent}%` : '-'}
+          </div>
+        </div>
       </TableCell>
       <TableCell className='font-mono'>
-        {formatTokens(binding.last_monthly_remaining_tokens || 0)}
+        {usage.todayCostLabel}
       </TableCell>
-      <TableCell>{walletLabel}</TableCell>
+      <TableCell className='font-mono'>{usage.monthlyCostLabel}</TableCell>
     </>
   )
 }
@@ -562,9 +560,9 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
                       </>
                     ) : (
                       <>
-                        <TableHead>{t('Monthly Tokens')}</TableHead>
-                        <TableHead>{t('Remaining Tokens')}</TableHead>
-                        <TableHead>{t('Wallet')}</TableHead>
+                        <TableHead>{t('Remaining Balance')}</TableHead>
+                        <TableHead>{t('Today Cost')}</TableHead>
+                        <TableHead>{t('Monthly Cost')}</TableHead>
                       </>
                     )}
                     <TableHead>{t('Last Refreshed')}</TableHead>

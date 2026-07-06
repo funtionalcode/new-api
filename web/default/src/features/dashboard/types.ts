@@ -213,6 +213,8 @@ export interface DashboardChartPreferences {
 export interface UserChartsFilters {
   timeGranularity: TimeGranularity
   selectedRange: number
+  customStartTime?: Date
+  customEndTime?: Date
   topUserLimit: number
   metric: UserChartMetric
 }

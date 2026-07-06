@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils'
 
 import { getLogStats, getUserLogStats } from '../api'
 import { DEFAULT_LOG_STATS } from '../constants'
+import { formatAverageUseTimeSeconds } from '../lib/stat-format'
 import { buildApiParams } from '../lib/utils'
 import { useUsageLogsContext } from './usage-logs-provider'
 
@@ -46,13 +47,6 @@ function StatBadge(props: {
       </span>
     </span>
   )
-}
-
-function formatAverageUseTime(value: number | undefined): string {
-  const ms = Number(value || 0)
-  if (!Number.isFinite(ms) || ms <= 0) return '-'
-  if (ms < 1000) return `${ms.toFixed(0)} ms`
-  return `${(ms / 1000).toFixed(2)} s`
 }
 
 export function CommonLogsStats() {
@@ -113,7 +107,9 @@ export function CommonLogsStats() {
       <StatBadge
         label={t('Average Time')}
         value={
-          sensitiveVisible ? formatAverageUseTime(stats?.avg_use_time) : '••••'
+          sensitiveVisible
+            ? formatAverageUseTimeSeconds(stats?.avg_use_time)
+            : '••••'
         }
         accent='bg-emerald-500/70'
       />
