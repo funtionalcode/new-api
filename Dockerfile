@@ -8,7 +8,6 @@ ENV http_proxy=${http_proxy} https_proxy=${https_proxy} no_proxy=${no_proxy}
 WORKDIR /build/web
 COPY web/package.json web/bun.lock ./
 COPY web/default/package.json ./default/package.json
-COPY web/classic/package.json ./classic/package.json
 RUN bun install --filter ./default --frozen-lockfile
 COPY ./web/default ./default
 COPY ./VERSION /build/VERSION
