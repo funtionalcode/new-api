@@ -563,14 +563,14 @@ func renameCliproxyAuthFileBindingDescriptionToNote() error {
 	tableName := quoteDBIdentifier("cliproxy_auth_file_bindings")
 	noteColumn := quoteDBIdentifier("note")
 	descriptionColumn := quoteDBIdentifier("description")
-	if common.UsingMySQL {
+	if common.UsingMainDatabase(common.DatabaseTypeMySQL) {
 		return DB.Exec(fmt.Sprintf("ALTER TABLE %s CHANGE %s %s text", tableName, descriptionColumn, noteColumn)).Error
 	}
 	return DB.Exec(fmt.Sprintf("ALTER TABLE %s RENAME COLUMN %s TO %s", tableName, descriptionColumn, noteColumn)).Error
 }
 
 func quoteDBIdentifier(identifier string) string {
-	if common.UsingPostgreSQL {
+	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
 		return `"` + identifier + `"`
 	}
 	return "`" + identifier + "`"

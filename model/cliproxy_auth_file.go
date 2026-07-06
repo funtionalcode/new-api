@@ -317,7 +317,7 @@ func GetUserTokenUsageByDay(query UserTokenUsageQuery, startIdx int, num int) ([
 }
 
 func userTokenUsageDayExpr() string {
-	if common.UsingMySQL {
+	if common.UsingMainDatabase(common.DatabaseTypeMySQL) {
 		return "FLOOR(logs.created_at / 86400) * 86400"
 	}
 	return "(logs.created_at / 86400) * 86400"
