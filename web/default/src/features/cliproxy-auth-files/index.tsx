@@ -46,6 +46,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -554,12 +555,21 @@ function RemoteAuthFilesTable({
   onCreate: (authFile: CliproxyAuthFile) => void
 }) {
   const { t } = useTranslation()
+  const [hasFetched, setHasFetched] = useState(false)
   const query = useQuery({
     queryKey: ['cliproxy-remote-auth-files'],
     queryFn: getCliproxyRemoteAuthFiles,
+    enabled: hasFetched,
   })
 
   const authFiles = query.data?.data ?? []
+  const handleFetch = () => {
+    if (!hasFetched) {
+      setHasFetched(true)
+      return
+    }
+    query.refetch()
+  }
 
   return (
     <Card>
@@ -568,6 +578,20 @@ function RemoteAuthFilesTable({
         <CardDescription>
           {t('Auth files fetched from the configured Cliproxy API service.')}
         </CardDescription>
+        <CardAction>
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            onClick={handleFetch}
+            disabled={query.isFetching}
+          >
+            <RefreshCw
+              className={query.isFetching ? 'animate-spin' : undefined}
+            />
+            {t('Refresh')}
+          </Button>
+        </CardAction>
       </CardHeader>
       <CardContent>
         {query.data && !query.data.success ? (
@@ -577,60 +601,66 @@ function RemoteAuthFilesTable({
             </AlertDescription>
           </Alert>
         ) : null}
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t('Auth Index')}</TableHead>
-              <TableHead>{t('Auth Name')}</TableHead>
-              <TableHead>{t('Account ID')}</TableHead>
-              <TableHead>{t('Plan')}</TableHead>
-              <TableHead>{t('Status')}</TableHead>
-              <TableHead className='text-right'>{t('Actions')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {authFiles.length > 0 ? (
-              authFiles.map((authFile) => (
-                <TableRow key={authFile.authIndex}>
-                  <TableCell className='font-mono text-xs'>
-                    {authFile.authIndex}
-                  </TableCell>
-                  <TableCell>{authFile.name || '-'}</TableCell>
-                  <TableCell className='font-mono text-xs'>
-                    {authFile.accountId || '-'}
-                  </TableCell>
-                  <TableCell>
-                    <PlanLabel value={authFile.planType} />
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={authFile.enabled ? 'default' : 'secondary'}>
-                      {authFile.enabled ? t('Enabled') : t('Disabled')}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className='text-right'>
-                    <Button
-                      size='sm'
-                      variant='outline'
-                      onClick={() => onCreate(authFile)}
-                    >
-                      <Plus />
-                      {t('Bind User')}
-                    </Button>
+        {hasFetched ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('Auth Index')}</TableHead>
+                <TableHead>{t('Auth Name')}</TableHead>
+                <TableHead>{t('Account ID')}</TableHead>
+                <TableHead>{t('Plan')}</TableHead>
+                <TableHead>{t('Status')}</TableHead>
+                <TableHead className='text-right'>{t('Actions')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {authFiles.length > 0 ? (
+                authFiles.map((authFile) => (
+                  <TableRow key={authFile.authIndex}>
+                    <TableCell className='font-mono text-xs'>
+                      {authFile.authIndex}
+                    </TableCell>
+                    <TableCell>{authFile.name || '-'}</TableCell>
+                    <TableCell className='font-mono text-xs'>
+                      {authFile.accountId || '-'}
+                    </TableCell>
+                    <TableCell>
+                      <PlanLabel value={authFile.planType} />
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={authFile.enabled ? 'default' : 'secondary'}
+                      >
+                        {authFile.enabled ? t('Enabled') : t('Disabled')}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className='text-right'>
+                      <Button
+                        size='sm'
+                        variant='outline'
+                        onClick={() => onCreate(authFile)}
+                      >
+                        <Plus />
+                        {t('Bind User')}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell
+                    colSpan={6}
+                    className='text-muted-foreground py-8 text-center'
+                  >
+                    {query.isLoading
+                      ? t('Loading...')
+                      : t('No auth files found')}
                   </TableCell>
                 </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={6}
-                  className='text-muted-foreground py-8 text-center'
-                >
-                  {query.isLoading ? t('Loading...') : t('No auth files found')}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
+              )}
+            </TableBody>
+          </Table>
+        ) : null}
       </CardContent>
     </Card>
   )

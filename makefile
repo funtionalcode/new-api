@@ -24,7 +24,7 @@ build-web-classic:
 	@cd ./web && bun install --frozen-lockfile
 	@cd $(WEB_CLASSIC_DIR) && VITE_REACT_APP_VERSION=$(cat ../../VERSION) bun run build
 
-build-all-web: build-web build-web-classic
+build-all-web: build-web
 
 start-api:
 	@echo "Starting api dev server..."

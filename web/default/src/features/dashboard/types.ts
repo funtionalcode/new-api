@@ -26,6 +26,7 @@ export interface QuotaDataItem {
   id?: number
   user_id?: number
   username?: string
+  remark?: string
   model_name?: string
   created_at: number
   token_used?: number
@@ -197,6 +198,8 @@ export type ModelAnalyticsChartTab = 'trend' | 'proportion' | 'top' | 'token'
 
 export type TokenAnalyticsChartTab = 'trend' | 'proportion' | 'top'
 
+export type UserChartMetric = 'tokens' | 'amount'
+
 export interface DashboardChartPreferences {
   consumptionDistributionChart: ConsumptionDistributionChartType
   modelAnalyticsChart: ModelAnalyticsChartTab
@@ -211,6 +214,7 @@ export interface UserChartsFilters {
   timeGranularity: TimeGranularity
   selectedRange: number
   topUserLimit: number
+  metric: UserChartMetric
 }
 
 // ============================================================================

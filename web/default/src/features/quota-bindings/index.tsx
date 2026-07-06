@@ -65,6 +65,12 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { useIsAdmin } from '@/hooks/use-admin'
 import { formatTimestampToDate, formatTokens } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -278,6 +284,33 @@ function DeepSeekUsageCells({ binding }: { binding: DeepSeekQuotaBinding }) {
       </TableCell>
       <TableCell>{walletLabel}</TableCell>
     </>
+  )
+}
+
+function ErrorMessageCell({ error }: { error?: string }) {
+  if (!error) {
+    return <span className='text-muted-foreground'>-</span>
+  }
+
+  return (
+    <TooltipProvider delay={100}>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <span className='text-destructive block max-w-[280px] min-w-0 cursor-default truncate text-xs' />
+          }
+        >
+          {error}
+        </TooltipTrigger>
+        <TooltipContent
+          side='top'
+          align='start'
+          className='max-w-[min(36rem,calc(100vw-2rem))] whitespace-pre-wrap break-words [overflow-wrap:anywhere]'
+        >
+          {error}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }
 
@@ -532,7 +565,9 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
                     </>
                   )}
                   <TableHead>{t('Last Refreshed')}</TableHead>
-                  <TableHead>{t('Error')}</TableHead>
+                  <TableHead className='w-[300px] max-w-[300px]'>
+                    {t('Error')}
+                  </TableHead>
                   <TableHead className='text-right'>{t('Actions')}</TableHead>
                 </TableRow>
               </TableHeader>
@@ -569,14 +604,8 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
                         ? formatTimestampToDate(binding.last_refreshed_at)
                         : '-'}
                     </TableCell>
-                    <TableCell>
-                      {binding.last_error ? (
-                        <span className='text-destructive max-w-[240px] truncate text-xs'>
-                          {binding.last_error}
-                        </span>
-                      ) : (
-                        <span className='text-muted-foreground'>-</span>
-                      )}
+                    <TableCell className='w-[300px] max-w-[300px] min-w-0'>
+                      <ErrorMessageCell error={binding.last_error} />
                     </TableCell>
                     <TableCell>
                       <div className='flex justify-end gap-1'>
