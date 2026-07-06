@@ -38,6 +38,7 @@ type glmQuotaUsageRequest struct {
 	Method  string
 	URL     string
 	Headers map[string]string
+	Proxy   string
 }
 
 type glmQuotaUsageRefreshBody struct {
@@ -310,7 +311,7 @@ func refreshGLMQuotaUsage(ctx context.Context, binding *model.GLMQuotaBinding, n
 	if request.Header.Get("User-Agent") == "" {
 		request.Header.Set("User-Agent", "Mozilla/5.0")
 	}
-	client, err := quotaHTTPClient(binding.Proxy)
+	client, err := quotaHTTPClient(resolveQuotaProxy(binding.Proxy, requestConfig.Proxy))
 	if err != nil {
 		return glmQuotaUsageRefreshBody{}, err
 	}
@@ -368,7 +369,17 @@ func buildGLMQuotaUsageRequest(rawCurl string, now time.Time) (glmQuotaUsageRequ
 				return glmQuotaUsageRequest{}, fmt.Errorf("curl url 参数缺少值")
 			}
 			requestConfig.URL = tokens[index]
+		case "-x", "--proxy":
+			index++
+			if index >= len(tokens) {
+				return glmQuotaUsageRequest{}, fmt.Errorf("curl proxy 参数缺少值")
+			}
+			requestConfig.Proxy = strings.TrimSpace(tokens[index])
 		default:
+			if proxyURL, ok := quotaCurlInlineProxy(token); ok {
+				requestConfig.Proxy = proxyURL
+				continue
+			}
 			if requestConfig.URL == "" && strings.HasPrefix(token, "http") {
 				requestConfig.URL = token
 			}

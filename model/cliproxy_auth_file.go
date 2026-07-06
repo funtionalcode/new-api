@@ -261,6 +261,10 @@ func DeleteCliproxyAuthFileBindingById(id int) error {
 }
 
 func GetUserTokenUsageSummary(query UserTokenUsageQuery, startIdx int, num int) ([]*UserTokenUsageSummary, int64, error) {
+	if userTokenUsageNeedsMainDBEnrichment() {
+		return getUserTokenUsageSummaryFromSeparatedLogDB(query, startIdx, num)
+	}
+
 	groupClause := "logs.user_id, logs.token_id, logs.token_name, logs.channel_id, channels.name, logs.model_name"
 	baseQuery := buildUserTokenUsageBaseQuery(query)
 	var groups []struct {
@@ -288,6 +292,10 @@ func GetUserTokenUsageSummary(query UserTokenUsageQuery, startIdx int, num int) 
 }
 
 func GetUserTokenUsageByDay(query UserTokenUsageQuery, startIdx int, num int) ([]*UserTokenDailyUsage, int64, error) {
+	if userTokenUsageNeedsMainDBEnrichment() {
+		return getUserTokenUsageByDayFromSeparatedLogDB(query, startIdx, num)
+	}
+
 	dayExpr := userTokenUsageDayExpr()
 	baseQuery := buildUserTokenUsageBaseQuery(query)
 	var groups []struct {
@@ -317,10 +325,123 @@ func GetUserTokenUsageByDay(query UserTokenUsageQuery, startIdx int, num int) ([
 }
 
 func userTokenUsageDayExpr() string {
-	if common.UsingMainDatabase(common.DatabaseTypeMySQL) {
+	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		return "intDiv(logs.created_at, 86400) * 86400"
+	}
+	if common.UsingLogDatabase(common.DatabaseTypeMySQL) {
 		return "FLOOR(logs.created_at / 86400) * 86400"
 	}
 	return "(logs.created_at / 86400) * 86400"
+}
+
+func userTokenUsageNeedsMainDBEnrichment() bool {
+	return DB != nil && LOG_DB != nil && LOG_DB != DB
+}
+
+func getUserTokenUsageSummaryFromSeparatedLogDB(query UserTokenUsageQuery, startIdx int, num int) ([]*UserTokenUsageSummary, int64, error) {
+	groupClause := "logs.user_id, logs.token_id, logs.token_name, logs.channel_id, logs.model_name"
+	baseQuery, err := buildUserTokenUsageLogBaseQuery(query)
+	if err != nil {
+		return nil, 0, err
+	}
+	var groups []struct {
+		UserId    int
+		TokenId   int
+		TokenName string
+		ChannelId int
+		ModelName string
+	}
+	if err := baseQuery.Select("logs.user_id, logs.token_id, logs.token_name, logs.channel_id, logs.model_name").Group(groupClause).Scan(&groups).Error; err != nil {
+		return nil, 0, err
+	}
+
+	total := int64(len(groups))
+	var summaries []*UserTokenUsageSummary
+	selectClause := "logs.user_id, MAX(logs.username) AS username, logs.token_id, logs.token_name, logs.channel_id, logs.model_name, count(*) as request_count, coalesce(sum(logs.prompt_tokens), 0) as prompt_tokens, coalesce(sum(logs.completion_tokens), 0) as completion_tokens, coalesce(sum(logs.prompt_tokens), 0) + coalesce(sum(logs.completion_tokens), 0) as total_tokens, coalesce(sum(logs.quota), 0) as quota, coalesce(max(logs.created_at), 0) as last_called_at"
+	queryDB, err := buildUserTokenUsageLogBaseQuery(query)
+	if err != nil {
+		return nil, 0, err
+	}
+	err = queryDB.
+		Select(selectClause).
+		Group(groupClause).
+		Order(resolveUserTokenUsageOrder(query)).
+		Limit(num).
+		Offset(startIdx).
+		Scan(&summaries).Error
+	if err != nil {
+		return nil, 0, err
+	}
+	return summaries, total, enrichUserTokenUsageSummaries(summaries)
+}
+
+func getUserTokenUsageByDayFromSeparatedLogDB(query UserTokenUsageQuery, startIdx int, num int) ([]*UserTokenDailyUsage, int64, error) {
+	dayExpr := userTokenUsageDayExpr()
+	groupClause := fmt.Sprintf("%s, logs.user_id, logs.token_id, logs.token_name, logs.channel_id, logs.model_name", dayExpr)
+	baseQuery, err := buildUserTokenUsageLogBaseQuery(query)
+	if err != nil {
+		return nil, 0, err
+	}
+	var groups []struct {
+		Day       int64
+		UserId    int
+		TokenId   int
+		TokenName string
+		ChannelId int
+		ModelName string
+	}
+	if err := baseQuery.Select(fmt.Sprintf("%s as day, logs.user_id, logs.token_id, logs.token_name, logs.channel_id, logs.model_name", dayExpr)).Group(groupClause).Scan(&groups).Error; err != nil {
+		return nil, 0, err
+	}
+
+	total := int64(len(groups))
+	var summaries []*UserTokenDailyUsage
+	selectClause := fmt.Sprintf("%s as day, logs.user_id, MAX(logs.username) AS username, logs.token_id, logs.token_name, logs.channel_id, logs.model_name, count(*) as request_count, coalesce(sum(logs.prompt_tokens), 0) as prompt_tokens, coalesce(sum(logs.completion_tokens), 0) as completion_tokens, coalesce(sum(logs.prompt_tokens), 0) + coalesce(sum(logs.completion_tokens), 0) as total_tokens, coalesce(sum(logs.quota), 0) as quota, coalesce(max(logs.created_at), 0) as last_called_at", dayExpr)
+	queryDB, err := buildUserTokenUsageLogBaseQuery(query)
+	if err != nil {
+		return nil, 0, err
+	}
+	err = queryDB.
+		Select(selectClause).
+		Group(groupClause).
+		Order(resolveUserTokenDailyUsageOrder(query)).
+		Limit(num).
+		Offset(startIdx).
+		Scan(&summaries).Error
+	if err != nil {
+		return nil, 0, err
+	}
+	return summaries, total, enrichUserTokenDailyUsageSummaries(summaries)
+}
+
+func buildUserTokenUsageLogBaseQuery(query UserTokenUsageQuery) (*gorm.DB, error) {
+	dbQuery := LOG_DB.Table("logs").Where("logs.type = ?", LogTypeConsume)
+	if query.StartTimestamp > 0 {
+		dbQuery = dbQuery.Where("logs.created_at >= ?", query.StartTimestamp)
+	}
+	if query.EndTimestamp > 0 {
+		dbQuery = dbQuery.Where("logs.created_at <= ?", query.EndTimestamp)
+	}
+	if query.UserId > 0 {
+		dbQuery = dbQuery.Where("logs.user_id = ?", query.UserId)
+	}
+	var err error
+	if dbQuery, err = applyLogSearchFilter(dbQuery, "logs.username", query.Username); err != nil {
+		return nil, err
+	}
+	if dbQuery, err = applyLogSearchFilter(dbQuery, "logs.token_name", query.TokenName); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(query.AuthIndex) != "" {
+		dbQuery = dbQuery.Where("logs.token_name = ?", strings.TrimSpace(query.AuthIndex))
+	}
+	if query.ChannelId > 0 {
+		dbQuery = dbQuery.Where("logs.channel_id = ?", query.ChannelId)
+	}
+	if dbQuery, err = applyLogSearchFilter(dbQuery, "logs.model_name", query.ModelName); err != nil {
+		return nil, err
+	}
+	return dbQuery, nil
 }
 
 func buildUserTokenUsageBaseQuery(query UserTokenUsageQuery) *gorm.DB {
@@ -350,6 +471,147 @@ func buildUserTokenUsageBaseQuery(query UserTokenUsageQuery) *gorm.DB {
 		dbQuery = dbQuery.Where("logs.model_name LIKE ?", "%"+strings.TrimSpace(query.ModelName)+"%")
 	}
 	return dbQuery
+}
+
+func enrichUserTokenUsageSummaries(rows []*UserTokenUsageSummary) error {
+	userRemarks, channelNames, bindingNames, err := loadUserTokenUsageEnrichment(rows, nil)
+	if err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if row == nil {
+			continue
+		}
+		row.Remark = userRemarks[row.UserId]
+		row.ChannelName = channelNames[row.ChannelId]
+		if authName, ok := bindingNames[userTokenUsageBindingKey(row.UserId, row.TokenName)]; ok {
+			row.AuthIndex = row.TokenName
+			row.AuthName = authName
+		}
+	}
+	return nil
+}
+
+func enrichUserTokenDailyUsageSummaries(rows []*UserTokenDailyUsage) error {
+	userRemarks, channelNames, _, err := loadUserTokenUsageEnrichment(nil, rows)
+	if err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if row == nil {
+			continue
+		}
+		row.Remark = userRemarks[row.UserId]
+		row.ChannelName = channelNames[row.ChannelId]
+	}
+	return nil
+}
+
+func loadUserTokenUsageEnrichment(summaryRows []*UserTokenUsageSummary, dailyRows []*UserTokenDailyUsage) (map[int]string, map[int]string, map[string]string, error) {
+	userIDSet := make(map[int]struct{})
+	channelIDSet := make(map[int]struct{})
+	tokenNameSet := make(map[string]struct{})
+
+	for _, row := range summaryRows {
+		if row == nil {
+			continue
+		}
+		if row.UserId > 0 {
+			userIDSet[row.UserId] = struct{}{}
+		}
+		if row.ChannelId > 0 {
+			channelIDSet[row.ChannelId] = struct{}{}
+		}
+		if strings.TrimSpace(row.TokenName) != "" {
+			tokenNameSet[row.TokenName] = struct{}{}
+		}
+	}
+	for _, row := range dailyRows {
+		if row == nil {
+			continue
+		}
+		if row.UserId > 0 {
+			userIDSet[row.UserId] = struct{}{}
+		}
+		if row.ChannelId > 0 {
+			channelIDSet[row.ChannelId] = struct{}{}
+		}
+		if strings.TrimSpace(row.TokenName) != "" {
+			tokenNameSet[row.TokenName] = struct{}{}
+		}
+	}
+
+	userIDs := intSetToSlice(userIDSet)
+	channelIDs := intSetToSlice(channelIDSet)
+	tokenNames := stringSetToSlice(tokenNameSet)
+
+	userRemarks := make(map[int]string, len(userIDs))
+	if len(userIDs) > 0 {
+		var users []struct {
+			Id     int    `gorm:"column:id"`
+			Remark string `gorm:"column:remark"`
+		}
+		if err := DB.Unscoped().Table("users").Select("id, remark").Where("id IN ?", userIDs).Find(&users).Error; err != nil {
+			return nil, nil, nil, err
+		}
+		for _, user := range users {
+			userRemarks[user.Id] = user.Remark
+		}
+	}
+
+	channelNames := make(map[int]string, len(channelIDs))
+	if len(channelIDs) > 0 {
+		var channels []struct {
+			Id   int    `gorm:"column:id"`
+			Name string `gorm:"column:name"`
+		}
+		if err := DB.Table("channels").Select("id, name").Where("id IN ?", channelIDs).Find(&channels).Error; err != nil {
+			return nil, nil, nil, err
+		}
+		for _, channel := range channels {
+			channelNames[channel.Id] = channel.Name
+		}
+	}
+
+	bindingNames := make(map[string]string)
+	if len(userIDs) > 0 && len(tokenNames) > 0 {
+		var bindings []struct {
+			UserId    int    `gorm:"column:user_id"`
+			AuthIndex string `gorm:"column:auth_index"`
+			AuthName  string `gorm:"column:auth_name"`
+		}
+		if err := DB.Table("cliproxy_auth_file_bindings").
+			Select("user_id, auth_index, auth_name").
+			Where("user_id IN ? AND auth_index IN ?", userIDs, tokenNames).
+			Find(&bindings).Error; err != nil {
+			return nil, nil, nil, err
+		}
+		for _, binding := range bindings {
+			bindingNames[userTokenUsageBindingKey(binding.UserId, binding.AuthIndex)] = binding.AuthName
+		}
+	}
+
+	return userRemarks, channelNames, bindingNames, nil
+}
+
+func userTokenUsageBindingKey(userID int, authIndex string) string {
+	return fmt.Sprintf("%d\x00%s", userID, authIndex)
+}
+
+func intSetToSlice(set map[int]struct{}) []int {
+	values := make([]int, 0, len(set))
+	for value := range set {
+		values = append(values, value)
+	}
+	return values
+}
+
+func stringSetToSlice(set map[string]struct{}) []string {
+	values := make([]string, 0, len(set))
+	for value := range set {
+		values = append(values, value)
+	}
+	return values
 }
 
 func resolveUserTokenUsageOrder(query UserTokenUsageQuery) string {

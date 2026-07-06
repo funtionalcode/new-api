@@ -203,6 +203,7 @@ export function buildApiParams(config: {
     ...(searchParams.model ? { model_name: String(searchParams.model) } : {}),
     ...(searchParams.token ? { token_name: String(searchParams.token) } : {}),
     ...(searchParams.group ? { group: String(searchParams.group) } : {}),
+    ...(searchParams.ip ? { ip: String(searchParams.ip) } : {}),
     ...(isAdmin && searchParams.channel
       ? { channel: Number(searchParams.channel) || 0 }
       : {}),
@@ -235,6 +236,9 @@ export function buildApiParams(config: {
           break
         case 'group':
           params.group = String(value)
+          break
+        case 'ip':
+          params.ip = String(value)
           break
         case 'channel':
           if (isAdmin) params.channel = Number(value) || 0

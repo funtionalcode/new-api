@@ -48,6 +48,13 @@ function StatBadge(props: {
   )
 }
 
+function formatAverageUseTime(value: number | undefined): string {
+  const ms = Number(value || 0)
+  if (!Number.isFinite(ms) || ms <= 0) return '-'
+  if (ms < 1000) return `${ms.toFixed(0)} ms`
+  return `${(ms / 1000).toFixed(2)} s`
+}
+
 export function CommonLogsStats() {
   const { t } = useTranslation()
   const isAdmin = useIsAdmin()
@@ -102,6 +109,13 @@ export function CommonLogsStats() {
         label={t('TPM')}
         value={stats?.tpm || 0}
         accent='bg-slate-400/70'
+      />
+      <StatBadge
+        label={t('Average Time')}
+        value={
+          sensitiveVisible ? formatAverageUseTime(stats?.avg_use_time) : '••••'
+        }
+        accent='bg-emerald-500/70'
       />
     </div>
   )

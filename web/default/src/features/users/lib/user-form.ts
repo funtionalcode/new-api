@@ -41,6 +41,9 @@ export const userFormSchema = z.object({
   quota_dollars: z.number().min(0).optional(),
   group: z.string().optional(),
   remark: z.string().optional(),
+  daily_token_limit: z.number().min(0).optional(),
+  weekly_token_limit: z.number().min(0).optional(),
+  monthly_token_limit: z.number().min(0).optional(),
   admin_permissions: z
     .record(z.string(), z.record(z.string(), z.boolean()))
     .optional(),
@@ -60,6 +63,9 @@ export const USER_FORM_DEFAULT_VALUES: UserFormValues = {
   quota_dollars: 0,
   group: DEFAULT_GROUP,
   remark: '',
+  daily_token_limit: 0,
+  weekly_token_limit: 0,
+  monthly_token_limit: 0,
   // Filled against the backend catalog at render time; see UsersMutateDrawer.
   admin_permissions: {},
 }
@@ -97,10 +103,16 @@ export function transformFormDataToPayload(
   // For create: only send required fields
   if (userId === undefined) {
     payload.role = role
+    payload.daily_token_limit = data.daily_token_limit ?? 0
+    payload.weekly_token_limit = data.weekly_token_limit ?? 0
+    payload.monthly_token_limit = data.monthly_token_limit ?? 0
   } else {
     // For update: quota is adjusted atomically via /api/user/manage, not sent here
     payload.group = data.group
     payload.remark = data.remark || undefined
+    payload.daily_token_limit = data.daily_token_limit ?? 0
+    payload.weekly_token_limit = data.weekly_token_limit ?? 0
+    payload.monthly_token_limit = data.monthly_token_limit ?? 0
     payload.id = userId
   }
 
@@ -121,6 +133,9 @@ export function transformUserToFormDefaults(user: User): UserFormValues {
     quota_dollars: quotaUnitsToDollars(user.quota),
     group: user.group || DEFAULT_GROUP,
     remark: user.remark || '',
+    daily_token_limit: user.daily_token_limit || 0,
+    weekly_token_limit: user.weekly_token_limit || 0,
+    monthly_token_limit: user.monthly_token_limit || 0,
     admin_permissions: user.admin_permissions ?? {},
   }
 }

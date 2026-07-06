@@ -137,6 +137,7 @@ export const channelFormSchema = z
     openai_organization: z.string().optional(),
     models: z.string().min(1, ERROR_MESSAGES.REQUIRED_MODELS),
     group: z.array(z.string()).min(1, ERROR_MESSAGES.REQUIRED_GROUP),
+    open_user_ids: z.array(z.string()).optional(),
     model_mapping: z
       .string()
       .optional()
@@ -306,6 +307,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   openai_organization: '',
   models: '',
   group: ['default'],
+  open_user_ids: [],
   model_mapping: '',
   priority: 0,
   weight: 0,
@@ -447,6 +449,7 @@ export function transformChannelToFormDefaults(
     openai_organization: channel.openai_organization || '',
     models: channel.models || '',
     group: parseGroups(channel.group || 'default'),
+    open_user_ids: normalizeOpenUserIds(channel.open_user_ids).map(String),
     model_mapping: channel.model_mapping || '',
     priority: channel.priority || 0,
     weight: channel.weight || 0,
@@ -631,6 +634,20 @@ function normalizeBaseUrl(value: string | undefined): string {
     .replace(/\/+$/, '')
 }
 
+function normalizeOpenUserIds(values: Array<number | string> | undefined): number[] {
+  return Array.from(
+    new Set(
+      (values || [])
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0)
+    )
+  ).sort((a, b) => a - b)
+}
+
+function parseOpenUserIds(values: string[] | undefined): number[] {
+  return normalizeOpenUserIds(values)
+}
+
 /**
  * Transform form data to API payload for creating channel
  */
@@ -650,6 +667,7 @@ export function transformFormDataToCreatePayload(formData: ChannelFormValues): {
     openai_organization: formData.openai_organization || null,
     models: formData.models,
     group: formatGroups(formData.group),
+    open_user_ids: parseOpenUserIds(formData.open_user_ids),
     model_mapping: formData.model_mapping || null,
     priority: formData.priority || null,
     weight: formData.weight || null,
@@ -698,6 +716,7 @@ export function transformFormDataToUpdatePayload(
     openai_organization: formData.openai_organization || null,
     models: formData.models,
     group: formatGroups(formData.group),
+    open_user_ids: parseOpenUserIds(formData.open_user_ids),
     model_mapping: formData.model_mapping || null,
     priority: formData.priority ?? 0,
     weight: formData.weight ?? 0,

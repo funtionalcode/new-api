@@ -510,6 +510,91 @@ function BalanceCell({ channel }: { channel: Channel }) {
   )
 }
 
+function OpenUsersCell(props: {
+  channel: Channel
+  sensitiveVisible: boolean
+  t: (key: string, options?: Record<string, unknown>) => string
+}) {
+  const { channel, sensitiveVisible, t } = props
+  if (isTagAggregateRow(channel)) {
+    return <span className='text-muted-foreground text-xs'>-</span>
+  }
+
+  const openUserIds = Array.isArray(channel.open_user_ids)
+    ? channel.open_user_ids
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0)
+    : []
+
+  if (openUserIds.length === 0) {
+    return (
+      <StatusBadge
+        label={t('All Users')}
+        variant='success'
+        size='sm'
+        copyable={false}
+        className='-ml-1.5'
+      />
+    )
+  }
+
+  const infoMap = new Map(
+    (channel.open_user_infos || []).map((info) => [Number(info.id), info])
+  )
+  const labels = openUserIds.map((id) => {
+    const info = infoMap.get(id)
+    const name = info?.username || info?.display_name || `ID: ${id}`
+    const remark = info?.remark ? ` / ${info.remark}` : ''
+    return `${name} (ID: ${id})${remark}`
+  })
+
+  if (!sensitiveVisible) {
+    return (
+      <StatusBadge
+        label={SENSITIVE_MASK}
+        variant='neutral'
+        size='sm'
+        copyable={false}
+        className='-ml-1.5'
+      />
+    )
+  }
+
+  return (
+    <TooltipProvider delay={200}>
+      <Tooltip>
+        <TooltipTrigger render={<div className='max-w-[220px] cursor-help' />}>
+          <BadgeListCell
+            items={labels.slice(0, 3).map((label) => (
+              <StatusBadge
+                key={label}
+                label={label}
+                variant='neutral'
+                size='sm'
+                copyable={false}
+              />
+            ))}
+          />
+          {labels.length > 3 && (
+            <span className='text-muted-foreground ml-1 text-xs'>
+              {t('+{{count}} more', { count: labels.length - 3 })}
+            </span>
+          )}
+        </TooltipTrigger>
+        <TooltipContent className='max-w-sm'>
+          <div className='space-y-1'>
+            {labels.map((label) => (
+              <div key={label} className='text-xs'>
+                {label}
+              </div>
+            ))}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
 /**
  * Generate channels columns configuration
  */
@@ -1010,6 +1095,22 @@ export function useChannelsColumns(
           return groupArray.some((g) => value.includes(g))
         },
         size: 150,
+        enableSorting: false,
+      },
+
+      // Open users column
+      {
+        accessorKey: 'open_user_ids',
+        header: t('Open Users'),
+        meta: { mobileHidden: true },
+        cell: ({ row }) => (
+          <OpenUsersCell
+            channel={row.original}
+            sensitiveVisible={sensitiveVisible}
+            t={t}
+          />
+        ),
+        size: 190,
         enableSorting: false,
       },
 

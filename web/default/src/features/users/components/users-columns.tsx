@@ -49,6 +49,11 @@ function getQuotaProgressColor(percentage: number): string {
   return '[&_[data-slot=progress-indicator]]:bg-emerald-500'
 }
 
+function formatTokenLimit(value: number | undefined): string {
+  const limit = Number(value || 0)
+  return limit > 0 ? limit.toLocaleString() : 'Unlimited'
+}
+
 export function useUsersColumns(): ColumnDef<User>[] {
   const { t } = useTranslation()
   return [
@@ -247,6 +252,59 @@ export function useUsersColumns(): ColumnDef<User>[] {
       },
       size: 140,
       meta: { mobileOrder: 30 },
+    },
+    {
+      id: 'token_limits',
+      header: t('Token Limits'),
+      cell: ({ row }) => {
+        const user = row.original
+        const limits = [
+          {
+            label: t('Day'),
+            title: t('Daily Tokens'),
+            value: formatTokenLimit(user.daily_token_limit),
+          },
+          {
+            label: t('Week'),
+            title: t('Weekly Tokens'),
+            value: formatTokenLimit(user.weekly_token_limit),
+          },
+          {
+            label: t('Month'),
+            title: t('Monthly Tokens'),
+            value: formatTokenLimit(user.monthly_token_limit),
+          },
+        ]
+
+        return (
+          <Tooltip>
+            <TooltipTrigger render={<div className='cursor-help' />}>
+              <div className='flex flex-col gap-1 text-xs'>
+                {limits.map((item) => (
+                  <div key={item.label} className='flex gap-1'>
+                    <span className='text-muted-foreground'>{item.label}</span>
+                    <span className='font-mono tabular-nums'>
+                      {item.value === 'Unlimited' ? t('Unlimited') : item.value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <div className='space-y-1 text-xs'>
+                {limits.map((item) => (
+                  <div key={item.title}>
+                    {item.title}:{' '}
+                    {item.value === 'Unlimited' ? t('Unlimited') : item.value}
+                  </div>
+                ))}
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        )
+      },
+      size: 150,
+      meta: { mobileOrder: 45 },
     },
     {
       accessorKey: 'role',

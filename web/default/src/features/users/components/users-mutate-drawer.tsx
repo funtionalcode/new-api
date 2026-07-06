@@ -211,6 +211,49 @@ export function UsersMutateDrawer({
     triggerRefresh()
   }
 
+  const tokenLimitFields = [
+    { name: 'daily_token_limit', label: 'Daily Tokens' },
+    { name: 'weekly_token_limit', label: 'Weekly Tokens' },
+    { name: 'monthly_token_limit', label: 'Monthly Tokens' },
+  ] as const
+
+  const renderTokenLimitFields = () => (
+    <div className='space-y-3'>
+      <div>
+        <h4 className='text-sm font-medium'>{t('Token Cycle Limits')}</h4>
+        <p className='text-muted-foreground text-xs'>
+          {t('Set to 0 for unlimited token usage in that period.')}
+        </p>
+      </div>
+      <div className='grid gap-3 sm:grid-cols-3'>
+        {tokenLimitFields.map((item) => (
+          <FormField
+            key={item.name}
+            control={form.control}
+            name={item.name}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t(item.label)}</FormLabel>
+                <FormControl>
+                  <Input
+                    type='number'
+                    min={0}
+                    step={1000}
+                    value={field.value ?? 0}
+                    onChange={(event) =>
+                      field.onChange(Number(event.target.value || 0))
+                    }
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        ))}
+      </div>
+    </div>
+  )
+
   return (
     <>
       <Sheet
@@ -346,6 +389,8 @@ export function UsersMutateDrawer({
                     </FormItem>
                   )}
                 />
+
+                {!isUpdate && renderTokenLimitFields()}
               </SideDrawerSection>
 
               {/* Group & Quota Settings (Update only) */}
@@ -427,6 +472,8 @@ export function UsersMutateDrawer({
                       </FormItem>
                     )}
                   />
+
+                  {renderTokenLimitFields()}
 
                   <FormField
                     control={form.control}

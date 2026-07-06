@@ -51,6 +51,7 @@ export interface CommonLogFilters extends CommonFilters {
   token?: string
   group?: string
   username?: string
+  ip?: string
   requestId?: string
   upstreamRequestId?: string
 }
@@ -218,6 +219,8 @@ export interface LogStatistics {
   quota: number
   rpm: number
   tpm: number
+  avg_use_time?: number
+  avg_use_time_count?: number
 }
 
 // ============================================================================
@@ -287,6 +290,7 @@ export interface GetLogsParams {
   end_timestamp?: number
   channel?: number
   group?: string
+  ip?: string
   request_id?: string
   upstream_request_id?: string
 }
@@ -311,6 +315,9 @@ export interface GetLogStatsParams {
   end_timestamp?: number
   channel?: number
   group?: string
+  ip?: string
+  avg_start_timestamp?: number
+  avg_end_timestamp?: number
   request_id?: string
   upstream_request_id?: string
 }

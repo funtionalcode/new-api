@@ -34,6 +34,15 @@ export const channelInfoSchema = z.object({
 
 export type ChannelInfo = z.infer<typeof channelInfoSchema>
 
+export const channelOpenUserInfoSchema = z.object({
+  id: z.number(),
+  username: z.string().default(''),
+  display_name: z.string().optional(),
+  remark: z.string().optional(),
+})
+
+export type ChannelOpenUserInfo = z.infer<typeof channelOpenUserInfoSchema>
+
 export const channelSchema = z.object({
   id: z.number(),
   type: z.number(),
@@ -63,6 +72,8 @@ export const channelSchema = z.object({
   param_override: z.string().nullish(),
   header_override: z.string().nullish(),
   remark: z.string().default(''),
+  open_user_ids: z.array(z.number()).default([]),
+  open_user_infos: z.array(channelOpenUserInfoSchema).optional().default([]),
   max_input_tokens: z.number().default(0),
   channel_info: channelInfoSchema.default({
     is_multi_key: false,
@@ -357,6 +368,7 @@ export interface ChannelFormData {
   header_override?: string
   settings?: string
   other?: string
+  open_user_ids?: number[]
   // Multi-key specific
   multi_key_mode?: 'single' | 'batch' | 'multi_to_single'
   multi_key_type?: 'random' | 'polling'

@@ -15,7 +15,8 @@ func TestBuildGLMQuotaUsageRequestParsesCurlAndRewritesWindow(t *testing.T) {
   -H 'accept: application/json, text/plain, */*' \
   -H 'authorization: token-value' \
   -H 'bigmodel-project: proj_1' \
-  -b 'session=abc; token=def'`
+  -b 'session=abc; token=def' \
+  --proxy=http://127.0.0.1:7990`
 
 	requestConfig, err := buildGLMQuotaUsageRequest(rawCurl, now)
 	if err != nil {
@@ -43,6 +44,22 @@ func TestBuildGLMQuotaUsageRequestParsesCurlAndRewritesWindow(t *testing.T) {
 	}
 	if query.Get("type") != "3" || query.Get("refer__1090") != "abc" {
 		t.Fatalf("query was not preserved: %s", parsedURL.RawQuery)
+	}
+	if requestConfig.Proxy != "http://127.0.0.1:7990" {
+		t.Fatalf("proxy = %q", requestConfig.Proxy)
+	}
+}
+
+func TestBuildGLMQuotaUsageRequestParsesInlineProxy(t *testing.T) {
+	now := time.Date(2026, 7, 3, 12, 30, 0, 0, time.FixedZone("CST", 8*60*60))
+	rawCurl := `curl -xsocks5h://127.0.0.1:7990 'https://bigmodel.cn/api/monitor/usage/model-usage?type=3'`
+
+	requestConfig, err := buildGLMQuotaUsageRequest(rawCurl, now)
+	if err != nil {
+		t.Fatalf("buildGLMQuotaUsageRequest returned error: %v", err)
+	}
+	if requestConfig.Proxy != "socks5h://127.0.0.1:7990" {
+		t.Fatalf("proxy = %q", requestConfig.Proxy)
 	}
 }
 

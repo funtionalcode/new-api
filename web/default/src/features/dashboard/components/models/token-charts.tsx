@@ -104,17 +104,9 @@ export function TokenCharts(props: TokenChartsProps) {
         props.loading ? [] : props.data,
         timeGranularity,
         t,
-        customization.preset,
         chartRadius
       ),
-    [
-      props.data,
-      props.loading,
-      timeGranularity,
-      t,
-      customization.preset,
-      chartRadius,
-    ]
+    [props.data, props.loading, timeGranularity, t, chartRadius]
   )
 
   const spec = chartData[TOKEN_CHART_SPEC_KEYS[activeTab]]

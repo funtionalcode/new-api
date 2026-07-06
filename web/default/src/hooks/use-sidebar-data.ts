@@ -25,6 +25,7 @@ import {
   FileText,
   Files,
   FlaskConical,
+  Gauge,
   Key,
   LayoutDashboard,
   ListTodo,
@@ -146,6 +147,16 @@ export function useSidebarData(): SidebarData {
             title: t('Auth Files'),
             url: '/cliproxy-auth-files',
             icon: Files,
+          },
+          {
+            title: t('GLM Quota'),
+            url: '/glm-quota',
+            icon: Gauge,
+          },
+          {
+            title: t('DeepSeek Quota'),
+            url: '/deepseek-quota',
+            icon: Gauge,
           },
           {
             title: t('User Consumption'),

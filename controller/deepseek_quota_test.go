@@ -73,7 +73,8 @@ func TestBuildDeepSeekQuotaCurlRequestParsesHeadersAndCookie(t *testing.T) {
   -H 'accept: */*' \
   -H 'authorization: Bearer token-value' \
   -H 'x-client-platform: web' \
-  -b 'HWWAFSESID=abc; HWWAFSESTIME=123'`
+  -b 'HWWAFSESID=abc; HWWAFSESTIME=123' \
+  --proxy 'http://127.0.0.1:7990'`
 
 	requestConfig, err := buildDeepSeekQuotaCurlRequest(rawCurl)
 	if err != nil {
@@ -90,6 +91,21 @@ func TestBuildDeepSeekQuotaCurlRequestParsesHeadersAndCookie(t *testing.T) {
 	}
 	if requestConfig.Headers["x-client-platform"] != "web" {
 		t.Fatalf("x-client-platform header = %q", requestConfig.Headers["x-client-platform"])
+	}
+	if requestConfig.Proxy != "http://127.0.0.1:7990" {
+		t.Fatalf("proxy = %q", requestConfig.Proxy)
+	}
+}
+
+func TestBuildDeepSeekQuotaCurlRequestParsesInlineProxy(t *testing.T) {
+	rawCurl := `curl -xsocks5://127.0.0.1:7990 'https://platform.deepseek.com/api/v0/users/get_user_summary'`
+
+	requestConfig, err := buildDeepSeekQuotaCurlRequest(rawCurl)
+	if err != nil {
+		t.Fatalf("buildDeepSeekQuotaCurlRequest returned error: %v", err)
+	}
+	if requestConfig.Proxy != "socks5://127.0.0.1:7990" {
+		t.Fatalf("proxy = %q", requestConfig.Proxy)
 	}
 }
 

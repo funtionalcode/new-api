@@ -63,7 +63,7 @@ import {
   sideDrawerSwitchItemClassName,
 } from '@/components/drawer-layout'
 import { JsonEditor } from '@/components/json-editor'
-import { MultiSelect } from '@/components/multi-select'
+import { MultiSelect, type Option } from '@/components/multi-select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -108,7 +108,10 @@ import {
   SecureVerificationDialog,
   useSecureVerification,
 } from '@/features/auth/secure-verification'
+import { searchUsers } from '@/features/users/api'
+import type { User } from '@/features/users/types'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { useDebounce } from '@/hooks/use-debounce'
 import { useHiddenClickUnlock } from '@/hooks/use-hidden-click-unlock'
 import {
   ADMIN_PERMISSION_ACTIONS,
@@ -358,6 +361,27 @@ function formatUnixTime(timestamp: unknown): string {
   const seconds = Number(timestamp)
   if (!Number.isFinite(seconds) || seconds <= 0) return '-'
   return new Date(seconds * 1000).toLocaleString()
+}
+
+function formatOpenUserLabel(user: {
+  id?: number
+  username?: string
+  display_name?: string
+  remark?: string
+}): string {
+  const id = Number(user.id || 0)
+  const name = user.username || user.display_name || '-'
+  const remark = user.remark ? ` / ${user.remark}` : ''
+  return `${name} (ID: ${id})${remark}`
+}
+
+function userToOpenUserOption(user: User): Option | null {
+  const id = Number(user.id || 0)
+  if (!Number.isInteger(id) || id <= 0) return null
+  return {
+    value: String(id),
+    label: formatOpenUserLabel(user),
+  }
 }
 
 function CardHeading({ title, icon }: { title: string; icon?: ReactNode }) {
@@ -626,6 +650,7 @@ export function ChannelMutateDrawer({
   const [paramOverrideEditorOpen, setParamOverrideEditorOpen] = useState(false)
   const [advancedCustomEditorOpen, setAdvancedCustomEditorOpen] =
     useState(false)
+  const [openUserKeyword, setOpenUserKeyword] = useState('')
 
   const isEditing = Boolean(currentRow)
   const channelId = currentRow?.id ?? null
@@ -654,6 +679,20 @@ export function ChannelMutateDrawer({
   const { data: prefillGroupsData } = useQuery({
     queryKey: ['prefill_groups', 'model'],
     queryFn: () => getPrefillGroups('model'),
+  })
+
+  const debouncedOpenUserKeyword = useDebounce(openUserKeyword, 300)
+
+  const { data: openUsersData, isLoading: isLoadingOpenUsers } = useQuery({
+    queryKey: ['channel-open-users', debouncedOpenUserKeyword],
+    queryFn: () =>
+      searchUsers({
+        keyword: debouncedOpenUserKeyword,
+        p: 1,
+        page_size: 20,
+      }),
+    enabled: open,
+    staleTime: 30 * 1000,
   })
 
   const { copyToClipboard } = useCopyToClipboard()
@@ -693,6 +732,7 @@ export function ChannelMutateDrawer({
   const multiKeyType = form.watch('multi_key_type')
   const keyMode = form.watch('key_mode')
   const currentGroups = form.watch('group')
+  const currentOpenUserIds = form.watch('open_user_ids') || []
   const currentType = form.watch('type')
   const currentStatus = form.watch('status')
   const currentBaseUrl = form.watch('base_url')
@@ -821,6 +861,36 @@ export function ChannelMutateDrawer({
       label: group,
     }))
   }, [groupsData, currentGroups])
+
+  const openUserOptions = useMemo<Option[]>(() => {
+    const optionMap = new Map<string, Option>()
+
+    for (const info of channelData?.data?.open_user_infos || []) {
+      const id = Number(info.id || 0)
+      if (!Number.isInteger(id) || id <= 0) continue
+      optionMap.set(String(id), {
+        value: String(id),
+        label: formatOpenUserLabel(info),
+      })
+    }
+
+    for (const user of openUsersData?.data?.items || []) {
+      const option = userToOpenUserOption(user)
+      if (option) optionMap.set(option.value, option)
+    }
+
+    for (const id of currentOpenUserIds) {
+      const normalized = String(id)
+      if (!optionMap.has(normalized)) {
+        optionMap.set(normalized, {
+          value: normalized,
+          label: `ID: ${normalized}`,
+        })
+      }
+    }
+
+    return Array.from(optionMap.values())
+  }, [channelData?.data?.open_user_infos, currentOpenUserIds, openUsersData])
 
   // Parse current models as array
   const currentModelsArray = useMemo(
@@ -3449,6 +3519,57 @@ export function ChannelMutateDrawer({
                                         )}
                                       />
                                     )}
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+
+                          <div className='border-border/60 rounded-lg border p-4'>
+                            <FormField
+                              control={form.control}
+                              name='open_user_ids'
+                              render={({ field }) => (
+                                <FormItem className='space-y-3'>
+                                  <div className='flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between'>
+                                    <div className='space-y-1'>
+                                      <FormLabel>{t('Open Users')}</FormLabel>
+                                      <FormDescription>
+                                        {t(
+                                          'Leave empty to make this channel available to all users.'
+                                        )}
+                                      </FormDescription>
+                                    </div>
+                                    <Badge variant='outline' className='w-fit'>
+                                      {field.value?.length
+                                        ? t('Selected {{count}}', {
+                                            count: field.value.length,
+                                          })
+                                        : t('All Users')}
+                                    </Badge>
+                                  </div>
+                                  <Input
+                                    value={openUserKeyword}
+                                    onChange={(event) =>
+                                      setOpenUserKeyword(event.target.value)
+                                    }
+                                    placeholder={t('Search users by username')}
+                                    disabled={isLoadingOpenUsers}
+                                  />
+                                  <FormControl>
+                                    <MultiSelect
+                                      options={openUserOptions}
+                                      selected={field.value || []}
+                                      onChange={field.onChange}
+                                      placeholder={t('Select users')}
+                                      emptyText={
+                                        isLoadingOpenUsers
+                                          ? t('Loading...')
+                                          : t('No matching users')
+                                      }
+                                      maxVisibleChips={6}
+                                    />
                                   </FormControl>
                                   <FormMessage />
                                 </FormItem>

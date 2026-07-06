@@ -76,16 +76,16 @@ func TestGetCliproxyAuthFileBindingsSortsByPlanRank(t *testing.T) {
 
 func TestMigrateCliproxyAuthFileBindingNoteRenamesLegacyDescription(t *testing.T) {
 	originalDB := DB
-	originalUsingSQLite := common.UsingSQLite
+	originalMainDatabaseType := common.MainDatabaseType()
 	t.Cleanup(func() {
 		DB = originalDB
-		common.UsingSQLite = originalUsingSQLite
+		common.SetMainDatabaseType(originalMainDatabaseType)
 	})
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	DB = db
-	common.UsingSQLite = true
+	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 
 	require.NoError(t, db.AutoMigrate(&legacyCliproxyAuthFileBinding{}))
 	require.NoError(t, db.Create(&legacyCliproxyAuthFileBinding{

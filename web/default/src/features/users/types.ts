@@ -44,6 +44,9 @@ export const userSchema = z.object({
   email: z.string().optional(),
   quota: z.number(),
   used_quota: z.number(),
+  daily_token_limit: z.number().optional().default(0),
+  weekly_token_limit: z.number().optional().default(0),
+  monthly_token_limit: z.number().optional().default(0),
   request_count: z.number(),
   group: z.string(),
   aff_code: z.string().optional(),
@@ -111,6 +114,9 @@ export interface UserFormData {
   quota?: number // Only used when updating user
   group?: string // Only used when updating user
   remark?: string // Only used when updating user
+  daily_token_limit?: number
+  weekly_token_limit?: number
+  monthly_token_limit?: number
   admin_permissions?: AdminPermissionMatrix
 }
 

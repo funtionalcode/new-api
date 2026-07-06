@@ -48,6 +48,8 @@ import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authent
 import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_authenticated/playground/index'
 import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenticated/models/index'
 import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authenticated/keys/index'
+import { Route as AuthenticatedGlmQuotaIndexRouteImport } from './routes/_authenticated/glm-quota/index'
+import { Route as AuthenticatedDeepseekQuotaIndexRouteImport } from './routes/_authenticated/deepseek-quota/index'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
 import { Route as AuthenticatedCliproxyAuthFilesIndexRouteImport } from './routes/_authenticated/cliproxy-auth-files/index'
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
@@ -276,6 +278,18 @@ const AuthenticatedKeysIndexRoute = AuthenticatedKeysIndexRouteImport.update({
   path: '/keys/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedGlmQuotaIndexRoute =
+  AuthenticatedGlmQuotaIndexRouteImport.update({
+    id: '/glm-quota/',
+    path: '/glm-quota/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedDeepseekQuotaIndexRoute =
+  AuthenticatedDeepseekQuotaIndexRouteImport.update({
+    id: '/deepseek-quota/',
+    path: '/deepseek-quota/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedDashboardIndexRoute =
   AuthenticatedDashboardIndexRouteImport.update({
     id: '/dashboard/',
@@ -447,6 +461,8 @@ export interface FileRoutesByFullPath {
   '/channels/': typeof AuthenticatedChannelsIndexRoute
   '/cliproxy-auth-files/': typeof AuthenticatedCliproxyAuthFilesIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
+  '/deepseek-quota/': typeof AuthenticatedDeepseekQuotaIndexRoute
+  '/glm-quota/': typeof AuthenticatedGlmQuotaIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
   '/playground/': typeof AuthenticatedPlaygroundIndexRoute
@@ -508,6 +524,8 @@ export interface FileRoutesByTo {
   '/channels': typeof AuthenticatedChannelsIndexRoute
   '/cliproxy-auth-files': typeof AuthenticatedCliproxyAuthFilesIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
+  '/deepseek-quota': typeof AuthenticatedDeepseekQuotaIndexRoute
+  '/glm-quota': typeof AuthenticatedGlmQuotaIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
   '/playground': typeof AuthenticatedPlaygroundIndexRoute
@@ -573,6 +591,8 @@ export interface FileRoutesById {
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
   '/_authenticated/cliproxy-auth-files/': typeof AuthenticatedCliproxyAuthFilesIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
+  '/_authenticated/deepseek-quota/': typeof AuthenticatedDeepseekQuotaIndexRoute
+  '/_authenticated/glm-quota/': typeof AuthenticatedGlmQuotaIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
   '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
@@ -637,6 +657,8 @@ export interface FileRouteTypes {
     | '/channels/'
     | '/cliproxy-auth-files/'
     | '/dashboard/'
+    | '/deepseek-quota/'
+    | '/glm-quota/'
     | '/keys/'
     | '/models/'
     | '/playground/'
@@ -698,6 +720,8 @@ export interface FileRouteTypes {
     | '/channels'
     | '/cliproxy-auth-files'
     | '/dashboard'
+    | '/deepseek-quota'
+    | '/glm-quota'
     | '/keys'
     | '/models'
     | '/playground'
@@ -762,6 +786,8 @@ export interface FileRouteTypes {
     | '/_authenticated/channels/'
     | '/_authenticated/cliproxy-auth-files/'
     | '/_authenticated/dashboard/'
+    | '/_authenticated/deepseek-quota/'
+    | '/_authenticated/glm-quota/'
     | '/_authenticated/keys/'
     | '/_authenticated/models/'
     | '/_authenticated/playground/'
@@ -1087,6 +1113,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedKeysIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/glm-quota/': {
+      id: '/_authenticated/glm-quota/'
+      path: '/glm-quota'
+      fullPath: '/glm-quota/'
+      preLoaderRoute: typeof AuthenticatedGlmQuotaIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/deepseek-quota/': {
+      id: '/_authenticated/deepseek-quota/'
+      path: '/deepseek-quota'
+      fullPath: '/deepseek-quota/'
+      preLoaderRoute: typeof AuthenticatedDeepseekQuotaIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/dashboard/': {
       id: '/_authenticated/dashboard/'
       path: '/dashboard'
@@ -1345,6 +1385,8 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
   AuthenticatedCliproxyAuthFilesIndexRoute: typeof AuthenticatedCliproxyAuthFilesIndexRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
+  AuthenticatedDeepseekQuotaIndexRoute: typeof AuthenticatedDeepseekQuotaIndexRoute
+  AuthenticatedGlmQuotaIndexRoute: typeof AuthenticatedGlmQuotaIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
   AuthenticatedPlaygroundIndexRoute: typeof AuthenticatedPlaygroundIndexRoute
@@ -1371,6 +1413,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCliproxyAuthFilesIndexRoute:
     AuthenticatedCliproxyAuthFilesIndexRoute,
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
+  AuthenticatedDeepseekQuotaIndexRoute: AuthenticatedDeepseekQuotaIndexRoute,
+  AuthenticatedGlmQuotaIndexRoute: AuthenticatedGlmQuotaIndexRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
   AuthenticatedModelsIndexRoute: AuthenticatedModelsIndexRoute,
   AuthenticatedPlaygroundIndexRoute: AuthenticatedPlaygroundIndexRoute,
