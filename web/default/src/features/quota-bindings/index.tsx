@@ -506,164 +506,170 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
   }
 
   return (
-    <SectionPageLayout>
-      <SectionPageLayout.Title>{t(config.titleKey)}</SectionPageLayout.Title>
-      <SectionPageLayout.Actions>
-        <Button
-          variant='outline'
-          onClick={refreshAll}
-          disabled={refreshingAll || bindingsQuery.isLoading}
-        >
-          <RefreshCw className={refreshingAll ? 'animate-spin' : undefined} />
-          {t('Refresh All')}
-        </Button>
-        {isAdmin && (
-          <Button onClick={openCreateDialog}>
-            <Plus />
-            {t('Create')}
+    <>
+      <SectionPageLayout>
+        <SectionPageLayout.Title>{t(config.titleKey)}</SectionPageLayout.Title>
+        <SectionPageLayout.Actions>
+          <Button
+            variant='outline'
+            onClick={refreshAll}
+            disabled={refreshingAll || bindingsQuery.isLoading}
+          >
+            <RefreshCw
+              className={refreshingAll ? 'animate-spin' : undefined}
+            />
+            {t('Refresh All')}
           </Button>
-        )}
-      </SectionPageLayout.Actions>
-      <SectionPageLayout.Content>
-        <Card>
-          <CardHeader>
-            <CardTitle>{t(config.titleKey)}</CardTitle>
-            <CardDescription>{t(config.descriptionKey)}</CardDescription>
-          </CardHeader>
-          <CardContent className='space-y-4'>
-            <div className='max-w-sm'>
-              <Input
-                value={keyword}
-                placeholder={t('Search by name or note')}
-                onChange={(event) => setKeyword(event.target.value)}
-              />
-            </div>
-            {bindingsQuery.data && !bindingsQuery.data.success ? (
-              <Alert variant='destructive'>
-                <AlertDescription>
-                  {bindingsQuery.data.message ||
-                    t('Failed to load quota bindings')}
-                </AlertDescription>
-              </Alert>
-            ) : null}
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('Name')}</TableHead>
-                  <TableHead>{t('Status')}</TableHead>
-                  {provider === 'glm' ? (
-                    <>
-                      <TableHead>{t('Five-hour Tokens')}</TableHead>
-                      <TableHead>{t('Weekly Tokens')}</TableHead>
-                      <TableHead>{t('Model Calls')}</TableHead>
-                    </>
-                  ) : (
-                    <>
-                      <TableHead>{t('Monthly Tokens')}</TableHead>
-                      <TableHead>{t('Remaining Tokens')}</TableHead>
-                      <TableHead>{t('Wallet')}</TableHead>
-                    </>
-                  )}
-                  <TableHead>{t('Last Refreshed')}</TableHead>
-                  <TableHead className='w-[300px] max-w-[300px]'>
-                    {t('Error')}
-                  </TableHead>
-                  <TableHead className='text-right'>{t('Actions')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {bindings.map((binding) => (
-                  <TableRow key={binding.id}>
-                    <TableCell>
-                      <div className='flex flex-col gap-1'>
-                        <span className='font-medium'>{binding.name}</span>
-                        {binding.note ? (
-                          <span className='text-muted-foreground max-w-[260px] truncate text-xs'>
-                            {binding.note}
-                          </span>
-                        ) : null}
-                        {isGLMBinding(binding) && binding.plan_type ? (
-                          <Badge variant='outline' className='w-fit'>
-                            {t(getGLMPlanLabelKey(binding.plan_type))}
-                          </Badge>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={binding.enabled ? 'default' : 'outline'}>
-                        {binding.enabled ? t('Enabled') : t('Disabled')}
-                      </Badge>
-                    </TableCell>
-                    {isGLMBinding(binding) ? (
-                      <GLMUsageCells binding={binding} />
-                    ) : isDeepSeekBinding(binding) ? (
-                      <DeepSeekUsageCells binding={binding} />
-                    ) : null}
-                    <TableCell>
-                      {binding.last_refreshed_at
-                        ? formatTimestampToDate(binding.last_refreshed_at)
-                        : '-'}
-                    </TableCell>
-                    <TableCell className='w-[300px] max-w-[300px] min-w-0'>
-                      <ErrorMessageCell error={binding.last_error} />
-                    </TableCell>
-                    <TableCell>
-                      <div className='flex justify-end gap-1'>
-                        <Button
-                          variant='ghost'
-                          size='icon-sm'
-                          onClick={() => refreshBinding(binding)}
-                          disabled={
-                            !binding.enabled || refreshingId === binding.id
-                          }
-                          aria-label={t('Refresh')}
-                        >
-                          <RefreshCw
-                            className={
-                              refreshingId === binding.id
-                                ? 'animate-spin'
-                                : undefined
-                            }
-                          />
-                        </Button>
-                        {isAdmin && (
-                          <>
-                            <Button
-                              variant='ghost'
-                              size='icon-sm'
-                              onClick={() => openEditDialog(binding)}
-                              aria-label={t('Edit')}
-                            >
-                              <Edit />
-                            </Button>
-                            <Button
-                              variant='ghost'
-                              size='icon-sm'
-                              onClick={() => setDeleteTarget(binding)}
-                              aria-label={t('Delete')}
-                            >
-                              <Trash2 />
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {bindings.length === 0 && (
+          {isAdmin && (
+            <Button onClick={openCreateDialog}>
+              <Plus />
+              {t('Create')}
+            </Button>
+          )}
+        </SectionPageLayout.Actions>
+        <SectionPageLayout.Content>
+          <Card>
+            <CardHeader>
+              <CardTitle>{t(config.titleKey)}</CardTitle>
+              <CardDescription>{t(config.descriptionKey)}</CardDescription>
+            </CardHeader>
+            <CardContent className='space-y-4'>
+              <div className='max-w-sm'>
+                <Input
+                  value={keyword}
+                  placeholder={t('Search by name or note')}
+                  onChange={(event) => setKeyword(event.target.value)}
+                />
+              </div>
+              {bindingsQuery.data && !bindingsQuery.data.success ? (
+                <Alert variant='destructive'>
+                  <AlertDescription>
+                    {bindingsQuery.data.message ||
+                      t('Failed to load quota bindings')}
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={8} className='h-24 text-center'>
-                      {bindingsQuery.isLoading
-                        ? t('Loading...')
-                        : t('No quota bindings found')}
-                    </TableCell>
+                    <TableHead>{t('Name')}</TableHead>
+                    <TableHead>{t('Status')}</TableHead>
+                    {provider === 'glm' ? (
+                      <>
+                        <TableHead>{t('Five-hour Tokens')}</TableHead>
+                        <TableHead>{t('Weekly Tokens')}</TableHead>
+                        <TableHead>{t('Model Calls')}</TableHead>
+                      </>
+                    ) : (
+                      <>
+                        <TableHead>{t('Monthly Tokens')}</TableHead>
+                        <TableHead>{t('Remaining Tokens')}</TableHead>
+                        <TableHead>{t('Wallet')}</TableHead>
+                      </>
+                    )}
+                    <TableHead>{t('Last Refreshed')}</TableHead>
+                    <TableHead className='w-[300px] max-w-[300px]'>
+                      {t('Error')}
+                    </TableHead>
+                    <TableHead className='text-right'>{t('Actions')}</TableHead>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      </SectionPageLayout.Content>
+                </TableHeader>
+                <TableBody>
+                  {bindings.map((binding) => (
+                    <TableRow key={binding.id}>
+                      <TableCell>
+                        <div className='flex flex-col gap-1'>
+                          <span className='font-medium'>{binding.name}</span>
+                          {binding.note ? (
+                            <span className='text-muted-foreground max-w-[260px] truncate text-xs'>
+                              {binding.note}
+                            </span>
+                          ) : null}
+                          {isGLMBinding(binding) && binding.plan_type ? (
+                            <Badge variant='outline' className='w-fit'>
+                              {t(getGLMPlanLabelKey(binding.plan_type))}
+                            </Badge>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={binding.enabled ? 'default' : 'outline'}
+                        >
+                          {binding.enabled ? t('Enabled') : t('Disabled')}
+                        </Badge>
+                      </TableCell>
+                      {isGLMBinding(binding) ? (
+                        <GLMUsageCells binding={binding} />
+                      ) : isDeepSeekBinding(binding) ? (
+                        <DeepSeekUsageCells binding={binding} />
+                      ) : null}
+                      <TableCell>
+                        {binding.last_refreshed_at
+                          ? formatTimestampToDate(binding.last_refreshed_at)
+                          : '-'}
+                      </TableCell>
+                      <TableCell className='w-[300px] max-w-[300px] min-w-0'>
+                        <ErrorMessageCell error={binding.last_error} />
+                      </TableCell>
+                      <TableCell>
+                        <div className='flex justify-end gap-1'>
+                          <Button
+                            variant='ghost'
+                            size='icon-sm'
+                            onClick={() => refreshBinding(binding)}
+                            disabled={
+                              !binding.enabled || refreshingId === binding.id
+                            }
+                            aria-label={t('Refresh')}
+                          >
+                            <RefreshCw
+                              className={
+                                refreshingId === binding.id
+                                  ? 'animate-spin'
+                                  : undefined
+                              }
+                            />
+                          </Button>
+                          {isAdmin && (
+                            <>
+                              <Button
+                                variant='ghost'
+                                size='icon-sm'
+                                onClick={() => openEditDialog(binding)}
+                                aria-label={t('Edit')}
+                              >
+                                <Edit />
+                              </Button>
+                              <Button
+                                variant='ghost'
+                                size='icon-sm'
+                                onClick={() => setDeleteTarget(binding)}
+                                aria-label={t('Delete')}
+                              >
+                                <Trash2 />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {bindings.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={8} className='h-24 text-center'>
+                        {bindingsQuery.isLoading
+                          ? t('Loading...')
+                          : t('No quota bindings found')}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </SectionPageLayout.Content>
+      </SectionPageLayout>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className='sm:max-w-2xl'>
@@ -823,6 +829,6 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </SectionPageLayout>
+    </>
   )
 }
