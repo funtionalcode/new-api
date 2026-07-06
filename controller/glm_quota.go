@@ -311,13 +311,17 @@ func refreshGLMQuotaUsage(ctx context.Context, binding *model.GLMQuotaBinding, n
 	if request.Header.Get("User-Agent") == "" {
 		request.Header.Set("User-Agent", "Mozilla/5.0")
 	}
-	client, err := quotaHTTPClient(resolveQuotaProxy(binding.Proxy, requestConfig.Proxy))
+	proxyURL := resolveQuotaProxy(binding.Proxy, requestConfig.Proxy)
+	client, err := quotaHTTPClient(proxyURL)
 	if err != nil {
+		if strings.TrimSpace(proxyURL) != "" {
+			return glmQuotaUsageRefreshBody{}, fmt.Errorf("创建代理客户端 %s 失败: %w", quotaProxyLabel(proxyURL), err)
+		}
 		return glmQuotaUsageRefreshBody{}, err
 	}
 	response, err := client.Do(request)
 	if err != nil {
-		return glmQuotaUsageRefreshBody{}, err
+		return glmQuotaUsageRefreshBody{}, quotaHTTPRequestError(proxyURL, err)
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(response.Body)

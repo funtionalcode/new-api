@@ -265,13 +265,17 @@ func refreshDeepSeekQuotaUsage(ctx context.Context, binding *model.DeepSeekQuota
 	if request.Header.Get("User-Agent") == "" {
 		request.Header.Set("User-Agent", "Mozilla/5.0")
 	}
-	client, err := quotaHTTPClient(resolveQuotaProxy(binding.Proxy, requestConfig.Proxy))
+	proxyURL := resolveQuotaProxy(binding.Proxy, requestConfig.Proxy)
+	client, err := quotaHTTPClient(proxyURL)
 	if err != nil {
+		if strings.TrimSpace(proxyURL) != "" {
+			return deepSeekQuotaUsageRefreshBody{}, fmt.Errorf("创建代理客户端 %s 失败: %w", quotaProxyLabel(proxyURL), err)
+		}
 		return deepSeekQuotaUsageRefreshBody{}, err
 	}
 	response, err := client.Do(request)
 	if err != nil {
-		return deepSeekQuotaUsageRefreshBody{}, err
+		return deepSeekQuotaUsageRefreshBody{}, quotaHTTPRequestError(proxyURL, err)
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(response.Body)

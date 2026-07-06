@@ -182,6 +182,7 @@ func NewProxyHttpClient(proxyURL string) (*http.Client, error) {
 		if err != nil {
 			return nil, err
 		}
+		contextDialer, _ := dialer.(proxy.ContextDialer)
 
 		transport := &http.Transport{
 			MaxIdleConns:        common.RelayMaxIdleConns,
@@ -189,6 +190,9 @@ func NewProxyHttpClient(proxyURL string) (*http.Client, error) {
 			IdleConnTimeout:     time.Duration(common.RelayIdleConnTimeout) * time.Second,
 			ForceAttemptHTTP2:   true,
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				if contextDialer != nil {
+					return contextDialer.DialContext(ctx, network, addr)
+				}
 				return dialer.Dial(network, addr)
 			},
 		}

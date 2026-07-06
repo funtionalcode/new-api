@@ -1,7 +1,9 @@
 package controller
 
 import (
+	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -30,6 +32,25 @@ func resolveQuotaProxy(configuredProxy string, curlProxy string) string {
 		return proxy
 	}
 	return strings.TrimSpace(curlProxy)
+}
+
+func quotaProxyLabel(proxyURL string) string {
+	proxyURL = strings.TrimSpace(proxyURL)
+	if proxyURL == "" {
+		return ""
+	}
+	parsedURL, err := url.Parse(proxyURL)
+	if err != nil {
+		return proxyURL
+	}
+	return parsedURL.Redacted()
+}
+
+func quotaHTTPRequestError(proxyURL string, err error) error {
+	if strings.TrimSpace(proxyURL) == "" || err == nil {
+		return err
+	}
+	return fmt.Errorf("经代理 %s 请求失败: %w", quotaProxyLabel(proxyURL), err)
 }
 
 func quotaCurlInlineProxy(token string) (string, bool) {
