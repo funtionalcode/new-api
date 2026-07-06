@@ -682,22 +682,12 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
             </DialogDescription>
           </DialogHeader>
           <div className='grid max-h-[70vh] gap-4 overflow-y-auto pr-1'>
-            <div className='grid gap-4 sm:grid-cols-2'>
+            <div className='grid gap-4'>
               <div className='space-y-2'>
                 <Label>{t('Name')}</Label>
                 <Input
                   value={form.name}
                   onChange={(event) => updateForm({ name: event.target.value })}
-                />
-              </div>
-              <div className='space-y-2'>
-                <Label>{t('Proxy')}</Label>
-                <Input
-                  value={form.proxy}
-                  placeholder='http://127.0.0.1:7990'
-                  onChange={(event) =>
-                    updateForm({ proxy: event.target.value })
-                  }
                 />
               </div>
             </div>
@@ -757,6 +747,15 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
                 onChange={(event) =>
                   updateForm({ request_curl: event.target.value })
                 }
+              />
+            </div>
+
+            <div className='space-y-2'>
+              <Label>{t('Proxy Address')}</Label>
+              <Input
+                value={form.proxy}
+                placeholder='http://127.0.0.1:7990'
+                onChange={(event) => updateForm({ proxy: event.target.value })}
               />
             </div>
 
