@@ -20,6 +20,8 @@ import { useCallback, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { useAuthStore } from '@/stores/auth-store'
+
 import { sendImageGeneration, sendSpeechGeneration } from './api'
 import { PlaygroundChat } from './components/chat/playground-chat'
 import { PlaygroundInput } from './components/input/playground-input'
@@ -34,15 +36,18 @@ import {
   buildImageGenerationMarkdown,
   buildSpeechGenerationMarkdown,
   completeAssistantMessage,
+  getMessageContent,
+  getPreviousUserMessage,
   parseRequestErrorDetails,
   updateAssistantMessageWithError,
   updateCurrentVersionContent,
   updateLastAssistantMessage,
 } from './lib'
-import type { PlaygroundMode } from './types'
+import type { Message, PlaygroundMode } from './types'
 
 export function Playground() {
   const { t } = useTranslation()
+  const userId = useAuthStore((state) => state.auth.user?.id)
   const [mode, setMode] = useState<PlaygroundMode>('chat')
   const [isTaskGenerating, setIsTaskGenerating] = useState(false)
   const taskAbortControllerRef = useRef<AbortController | null>(null)
@@ -58,7 +63,7 @@ export function Playground() {
     setGroups,
     updateConfig,
     clearMessages,
-  } = usePlaygroundState()
+  } = usePlaygroundState(userId)
 
   const { sendChat, stopGeneration, isGenerating } = useChatHandler({
     config,
@@ -66,18 +71,26 @@ export function Playground() {
     onMessageUpdate: updateMessages,
   })
 
-  const handleTaskSubmit = useCallback(
-    async (text: string) => {
-      const nextMessages = appendUserMessagePair(messages, text)
+  const sendTaskMessages = useCallback(
+    async (
+      taskMessages: Message[],
+      taskMode: Exclude<PlaygroundMode, 'chat'>
+    ) => {
+      const promptMessage = getPreviousUserMessage(
+        taskMessages,
+        taskMessages.length
+      )
+      const text = promptMessage ? getMessageContent(promptMessage).trim() : ''
+      if (!text) return
+
       const abortController = new AbortController()
       taskAbortControllerRef.current = abortController
 
-      updateMessages(nextMessages)
       setIsTaskGenerating(true)
 
       try {
         const content =
-          mode === 'image'
+          taskMode === 'image'
             ? buildImageGenerationMarkdown(
                 await sendImageGeneration(
                   {
@@ -108,7 +121,9 @@ export function Playground() {
 
         updateMessages((previousMessages) =>
           updateLastAssistantMessage(previousMessages, (message) =>
-            completeAssistantMessage(updateCurrentVersionContent(message, content))
+            completeAssistantMessage(
+              updateCurrentVersionContent(message, content)
+            )
           )
         )
       } catch (error) {
@@ -133,7 +148,28 @@ export function Playground() {
         }
       }
     },
-    [config.group, config.model, messages, mode, t, updateMessages]
+    [config.group, config.model, t, updateMessages]
+  )
+
+  const sendMessages = useCallback(
+    (nextMessages: Message[], generationMode: PlaygroundMode = 'chat') => {
+      if (generationMode === 'chat') {
+        sendChat(nextMessages)
+        return
+      }
+
+      void sendTaskMessages(nextMessages, generationMode)
+    },
+    [sendChat, sendTaskMessages]
+  )
+
+  const handleSubmitMessage = useCallback(
+    (text: string) => {
+      const nextMessages = appendUserMessagePair(messages, text, mode)
+      updateMessages(nextMessages)
+      sendMessages(nextMessages, mode)
+    },
+    [messages, mode, sendMessages, updateMessages]
   )
 
   const {
@@ -147,7 +183,7 @@ export function Playground() {
   } = usePlaygroundConversation({
     messages,
     updateMessages,
-    sendChat,
+    sendMessages,
   })
 
   const handleClearMessages = () => {
@@ -200,7 +236,7 @@ export function Playground() {
           onModeChange={setMode}
           onModelChange={(value) => updateConfig('model', value)}
           onStop={mode === 'chat' ? stopGeneration : undefined}
-          onSubmit={mode === 'chat' ? handleSendMessage : handleTaskSubmit}
+          onSubmit={handleSubmitMessage}
           hasMessages={messages.length > 0}
         />
       </div>

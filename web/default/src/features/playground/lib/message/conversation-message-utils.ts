@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { Message } from '../../types'
+import type { Message, PlaygroundMode } from '../../types'
 import {
   createLoadingAssistantMessage,
   createUserMessage,
@@ -36,16 +36,21 @@ type ChatMessageRenderState = {
   isEditing: boolean
 }
 
+function getMessageMode(message?: Message | null): PlaygroundMode {
+  return message?.mode ?? 'chat'
+}
+
 export function appendUserMessagePair(
   messages: Message[],
-  content: string
+  content: string,
+  mode: PlaygroundMode = 'chat'
 ): Message[] {
   const submittedAt = Date.now()
 
   return [
     ...messages,
-    createUserMessage(content, submittedAt),
-    createLoadingAssistantMessage(submittedAt),
+    createUserMessage(content, submittedAt, mode),
+    createLoadingAssistantMessage(submittedAt, mode),
   ]
 }
 
@@ -61,14 +66,19 @@ export function createRegeneratedMessages(
     return null
   }
 
+  const mode = getMessageMode(messages[messageIndex])
+
   if (messages[messageIndex].from === MESSAGE_ROLES.USER) {
     return [
       ...messages.slice(0, messageIndex + 1),
-      createLoadingAssistantMessage(),
+      createLoadingAssistantMessage(undefined, mode),
     ]
   }
 
-  return [...messages.slice(0, messageIndex), createLoadingAssistantMessage()]
+  return [
+    ...messages.slice(0, messageIndex),
+    createLoadingAssistantMessage(undefined, mode),
+  ]
 }
 
 export function removeMessageByKey(
@@ -89,6 +99,16 @@ export function getPreviousUserMessage(
   }
 
   return null
+}
+
+export function getPendingGenerationMode(messages: Message[]): PlaygroundMode {
+  const lastMessage = messages.at(-1)
+  if (lastMessage?.from === MESSAGE_ROLES.ASSISTANT) {
+    return getMessageMode(lastMessage)
+  }
+
+  const previousUserMessage = getPreviousUserMessage(messages, messages.length)
+  return getMessageMode(previousUserMessage)
 }
 
 export function applyMessageEdit(
@@ -122,10 +142,12 @@ export function applyMessageEdit(
     return { messages: updatedMessages, shouldSend: false }
   }
 
+  const mode = getMessageMode(updatedMessages[messageIndex])
+
   return {
     messages: [
       ...updatedMessages.slice(0, messageIndex + 1),
-      createLoadingAssistantMessage(submittedAt),
+      createLoadingAssistantMessage(submittedAt, mode),
     ],
     shouldSend: true,
   }

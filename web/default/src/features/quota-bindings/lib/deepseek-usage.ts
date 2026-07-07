@@ -25,7 +25,7 @@ type DeepSeekMoneyUsageInput = {
   bonusWallets?: string
   monthlyCosts?: string
   todayCosts?: string
-  todayUsedTokens?: number
+  monthlyUsedTokens?: number
 }
 
 export type DeepSeekMoneyUsage = {
@@ -33,14 +33,14 @@ export type DeepSeekMoneyUsage = {
   remainingAmount: number
   monthlyCostAmount: number
   todayCostAmount: number
-  todayUsedTokens: number
+  monthlyUsedTokens: number
   totalAmount: number
   remainingPercent: number
   remainingLabel: string
   monthlyCostLabel: string
   todayCostLabel: string
-  todayTokenLabel: string
-  todayTokenDetail: string
+  monthlyTokenLabel: string
+  monthlyTokenDetail: string
 }
 
 function parseJsonList(value: string | undefined): JsonObject[] {
@@ -96,7 +96,7 @@ export function buildDeepSeekMoneyUsage(
   const remainingAmount = sumField(wallets, 'balance')
   const monthlyCostAmount = sumField(monthlyCosts, 'amount')
   const todayCostAmount = sumField(todayCosts, 'amount')
-  const todayUsedTokens = Math.max(0, Number(input.todayUsedTokens || 0))
+  const monthlyUsedTokens = Math.max(0, Number(input.monthlyUsedTokens || 0))
   const totalAmount = remainingAmount + monthlyCostAmount
   const remainingPercent =
     totalAmount > 0
@@ -108,14 +108,15 @@ export function buildDeepSeekMoneyUsage(
     remainingAmount,
     monthlyCostAmount,
     todayCostAmount,
-    todayUsedTokens,
+    monthlyUsedTokens,
     totalAmount,
     remainingPercent,
     remainingLabel: formatCurrencyAmount(currency, remainingAmount),
     monthlyCostLabel: formatCurrencyAmount(currency, monthlyCostAmount),
     todayCostLabel: formatCurrencyAmount(currency, todayCostAmount),
-    todayTokenLabel: todayUsedTokens > 0 ? formatTokens(todayUsedTokens) : '-',
-    todayTokenDetail:
-      todayUsedTokens > 0 ? formatTokenDetails(todayUsedTokens) : '-',
+    monthlyTokenLabel:
+      monthlyUsedTokens > 0 ? formatTokens(monthlyUsedTokens) : '-',
+    monthlyTokenDetail:
+      monthlyUsedTokens > 0 ? formatTokenDetails(monthlyUsedTokens) : '-',
   }
 }

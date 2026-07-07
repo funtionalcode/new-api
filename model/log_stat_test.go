@@ -57,6 +57,8 @@ func TestSumUsedQuotaReturnsAverageUseTimeForConfiguredWindow(t *testing.T) {
 		"192.0.2.1",
 		now-60,
 		now,
+		"",
+		"",
 	)
 	require.NoError(t, err)
 
@@ -65,4 +67,49 @@ func TestSumUsedQuotaReturnsAverageUseTimeForConfiguredWindow(t *testing.T) {
 	require.Equal(t, 80, stat.Tpm)
 	require.InDelta(t, 3.0, stat.AvgUseTime, 0.001)
 	require.Equal(t, int64(2), stat.AvgUseTimeCount)
+}
+
+func TestSumUsedQuotaAppliesRequestFiltersToAllStats(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, LOG_DB.Exec("DELETE FROM logs").Error)
+
+	now := time.Now().Unix()
+	logs := []*Log{
+		{
+			Username: "root", TokenName: "tok", ModelName: "gpt-test",
+			CreatedAt: now - 30, Type: LogTypeConsume, Quota: 100,
+			PromptTokens: 10, CompletionTokens: 20, UseTime: 4,
+			RequestId: "req-match", UpstreamRequestId: "up-match",
+		},
+		{
+			Username: "root", TokenName: "tok", ModelName: "gpt-test",
+			CreatedAt: now - 20, Type: LogTypeConsume, Quota: 900,
+			PromptTokens: 90, CompletionTokens: 90, UseTime: 30,
+			RequestId: "req-other", UpstreamRequestId: "up-other",
+		},
+	}
+	require.NoError(t, LOG_DB.Create(&logs).Error)
+
+	stat, err := SumUsedQuota(
+		LogTypeUnknown,
+		now-60,
+		now,
+		"gpt-test",
+		"root",
+		"tok",
+		0,
+		"",
+		"",
+		now-60,
+		now,
+		"req-match",
+		"up-match",
+	)
+	require.NoError(t, err)
+
+	require.Equal(t, 100, stat.Quota)
+	require.Equal(t, 1, stat.Rpm)
+	require.Equal(t, 30, stat.Tpm)
+	require.InDelta(t, 4.0, stat.AvgUseTime, 0.001)
+	require.Equal(t, int64(1), stat.AvgUseTimeCount)
 }

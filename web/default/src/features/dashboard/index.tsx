@@ -50,14 +50,17 @@ import {
   DASHBOARD_DEFAULT_SECTION,
   DASHBOARD_SECTION_IDS,
 } from './section-registry'
-import {
-  type DashboardChartPreferences,
-  type DashboardFilters,
-  type QuotaDataItem,
-  type UserChartsFilters,
+import type {
+  DashboardChartPreferences,
+  DashboardFilters,
+  QuotaDataItem,
+  UserChartsFilters,
 } from './types'
 
 const route = getRouteApi('/_authenticated/dashboard/$section')
+const LOG_STAT_FALLBACK_KEYS = ['quota', 'tokens', 'requests', 'rpm', 'tpm']
+const PERFORMANCE_STAT_FALLBACK_KEYS = ['latency', 'success', 'throughput']
+const PERFORMANCE_BADGE_FALLBACK_KEYS = ['primary', 'secondary']
 
 const LazyLogStatCards = lazy(() =>
   import('./components/models/log-stat-cards').then((m) => ({
@@ -111,8 +114,8 @@ function LogStatCardsFallback() {
   return (
     <div className='overflow-hidden rounded-lg border'>
       <div className='divide-border/60 grid grid-cols-2 divide-x sm:grid-cols-3 lg:grid-cols-5'>
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className='px-4 py-3.5 sm:px-5 sm:py-4'>
+        {LOG_STAT_FALLBACK_KEYS.map((key) => (
+          <div key={key} className='px-4 py-3.5 sm:px-5 sm:py-4'>
             <Skeleton className='h-3.5 w-16' />
             <Skeleton className='mt-2 h-7 w-20' />
             <Skeleton className='mt-1.5 h-3.5 w-28' />
@@ -144,15 +147,15 @@ function PerformanceOverviewFallback() {
         <div className='flex items-center gap-2'>
           <Skeleton className='h-4 w-24' />
         </div>
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className='flex items-center gap-1.5'>
+        {PERFORMANCE_STAT_FALLBACK_KEYS.map((key) => (
+          <div key={key} className='flex items-center gap-1.5'>
             <Skeleton className='h-3 w-14' />
             <Skeleton className='h-4 w-16' />
           </div>
         ))}
         <div className='ml-auto flex items-center gap-2'>
-          {Array.from({ length: 2 }).map((_, i) => (
-            <Skeleton key={i} className='h-5 w-28 rounded-full' />
+          {PERFORMANCE_BADGE_FALLBACK_KEYS.map((key) => (
+            <Skeleton key={key} className='h-5 w-28 rounded-full' />
           ))}
         </div>
       </div>
@@ -235,12 +238,8 @@ export function Dashboard() {
   const isAdmin = Boolean(userRole && userRole >= ROLE.ADMIN)
   const visibleSections = useMemo(
     () =>
-      DASHBOARD_SECTION_IDS.filter(
-        (section) =>
-          section !== 'overview' &&
-          (section !== 'users' || isAdmin)
-      ),
-    [isAdmin]
+      DASHBOARD_SECTION_IDS.filter((section) => section !== 'overview'),
+    []
   )
   const handleSectionChange = useCallback(
     (section: string) => {

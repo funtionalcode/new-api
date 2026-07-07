@@ -45,6 +45,8 @@ import {
   getMessageAlignmentClass,
   getMessageContentState,
   isErrorMessage,
+  extractGeneratedImageUrls,
+  extractGeneratedSpeechUrl,
   type MessageAlignment,
 } from '../../lib'
 import { getMessageContentStyles } from '../../lib/message/message-styles'
@@ -80,6 +82,14 @@ export function PlaygroundMessageContent({
     sources,
   } = getMessageContentState(message, versionContent)
   const isError = isErrorMessage(message)
+  const generatedImageUrls = extractGeneratedImageUrls(displayContent, {
+    allowRawBase64: message.mode === 'image',
+  })
+  const generatedSpeechUrl = extractGeneratedSpeechUrl(displayContent, {
+    allowRawBase64: message.mode === 'speech',
+  })
+  const hasGeneratedMedia =
+    generatedImageUrls.length > 0 || generatedSpeechUrl !== null
   const isMessageFinal =
     message.status !== MESSAGE_STATUS.LOADING &&
     message.status !== MESSAGE_STATUS.STREAMING
@@ -155,7 +165,30 @@ export function PlaygroundMessageContent({
               variant='flat'
               className={cn(getMessageContentStyles())}
             >
-              <Response final={isMessageFinal}>{displayContent}</Response>
+              {hasGeneratedMedia ? (
+                <div className='flex flex-col gap-3'>
+                  {generatedImageUrls.map((url, index) => (
+                    <img
+                      alt={t('Generated image {{index}}', {
+                        index: index + 1,
+                      })}
+                      className='border-border/60 max-h-[640px] max-w-full rounded-lg border object-contain'
+                      key={url}
+                      loading='lazy'
+                      src={url}
+                    />
+                  ))}
+                  {generatedSpeechUrl ? (
+                    <audio
+                      className='w-full max-w-xl'
+                      controls
+                      src={generatedSpeechUrl}
+                    />
+                  ) : null}
+                </div>
+              ) : (
+                <Response final={isMessageFinal}>{displayContent}</Response>
+              )}
             </MessageContent>
           )}
           <MessageMetadata alignment={alignment} message={message} />

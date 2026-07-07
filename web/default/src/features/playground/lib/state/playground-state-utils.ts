@@ -22,22 +22,27 @@ import {
   loadConfig,
   loadMessages,
   loadParameterEnabled,
+  type PlaygroundStorageScope,
 } from '../storage/storage'
 
 export type MessageStateUpdater =
   | Message[]
   | ((previousMessages: Message[]) => Message[])
 
-export function getInitialPlaygroundConfig(): PlaygroundConfig {
-  return { ...DEFAULT_CONFIG, ...loadConfig() }
+export function getInitialPlaygroundConfig(
+  scope?: PlaygroundStorageScope
+): PlaygroundConfig {
+  return { ...DEFAULT_CONFIG, ...loadConfig(scope) }
 }
 
-export function getInitialParameterEnabled(): ParameterEnabled {
-  return { ...DEFAULT_PARAMETER_ENABLED, ...loadParameterEnabled() }
+export function getInitialParameterEnabled(
+  scope?: PlaygroundStorageScope
+): ParameterEnabled {
+  return { ...DEFAULT_PARAMETER_ENABLED, ...loadParameterEnabled(scope) }
 }
 
-export function getInitialMessages(): Message[] {
-  return loadMessages() || []
+export function getInitialMessages(scope?: PlaygroundStorageScope): Message[] {
+  return loadMessages(scope) || []
 }
 
 export function applyMessageStateUpdate(

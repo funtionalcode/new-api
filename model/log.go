@@ -667,7 +667,7 @@ func applyLogSearchFilter(tx *gorm.DB, column string, value string) (*gorm.DB, e
 	return tx.Where(condition, likePattern), nil
 }
 
-func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, ip string, avgStartTimestamp int64, avgEndTimestamp int64) (stat Stat, err error) {
+func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, ip string, avgStartTimestamp int64, avgEndTimestamp int64, requestId string, upstreamRequestId string) (stat Stat, err error) {
 	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
 
 	// 为rpm和tpm创建单独的查询
@@ -700,6 +700,16 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	}
 	if avgUseTimeQuery, err = applyLogSearchFilter(avgUseTimeQuery, "ip", ip); err != nil {
 		return stat, err
+	}
+	if requestId != "" {
+		tx = tx.Where("request_id = ?", requestId)
+		rpmTpmQuery = rpmTpmQuery.Where("request_id = ?", requestId)
+		avgUseTimeQuery = avgUseTimeQuery.Where("request_id = ?", requestId)
+	}
+	if upstreamRequestId != "" {
+		tx = tx.Where("upstream_request_id = ?", upstreamRequestId)
+		rpmTpmQuery = rpmTpmQuery.Where("upstream_request_id = ?", upstreamRequestId)
+		avgUseTimeQuery = avgUseTimeQuery.Where("upstream_request_id = ?", upstreamRequestId)
 	}
 	if startTimestamp != 0 {
 		tx = tx.Where("created_at >= ?", startTimestamp)

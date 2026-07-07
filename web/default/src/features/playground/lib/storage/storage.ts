@@ -41,10 +41,25 @@ type StoredEnvelope<T> = {
   data: T
 }
 
+export type PlaygroundStorageScope = string | number | null | undefined
+
 const TRUNCATED_CONTENT_SUFFIX = '\n\n[...]'
 const MIN_PREFIX_COLLAPSE_LENGTH = 2000
 const MIN_REPEATED_SECTION_COUNT = 3
 const SECTION_HEADING_LINE_PATTERN = /^#{2,6}\s+\d+\.\s+.+$/gm
+
+export function getPlaygroundStorageScope(
+  userId: PlaygroundStorageScope
+): string {
+  return userId == null || userId === '' ? 'anonymous' : `user:${userId}`
+}
+
+export function getScopedStorageKey(
+  key: string,
+  scope: PlaygroundStorageScope
+): string {
+  return `${key}:${getPlaygroundStorageScope(scope)}`
+}
 
 function readStoredValue(key: string): unknown | null {
   const saved = localStorage.getItem(key)
@@ -53,12 +68,12 @@ function readStoredValue(key: string): unknown | null {
   return JSON.parse(saved) as unknown
 }
 
-function readStoredMessagesValue(): unknown | null {
-  const saved = localStorage.getItem(STORAGE_KEYS.MESSAGES)
+function readStoredMessagesValue(key: string): unknown | null {
+  const saved = localStorage.getItem(key)
   if (!saved) return null
 
   if (saved.length > MAX_STORED_MESSAGES_BYTES) {
-    localStorage.removeItem(STORAGE_KEYS.MESSAGES)
+    localStorage.removeItem(key)
     return null
   }
 
@@ -278,9 +293,11 @@ function trimMessagesByContentSize(messages: Message[]): Message[] {
 /**
  * Load playground config from localStorage
  */
-export function loadConfig(): Partial<PlaygroundConfig> {
+export function loadConfig(
+  scope?: PlaygroundStorageScope
+): Partial<PlaygroundConfig> {
   try {
-    const saved = readStoredValue(STORAGE_KEYS.CONFIG)
+    const saved = readStoredValue(getScopedStorageKey(STORAGE_KEYS.CONFIG, scope))
     if (!saved) return {}
 
     return playgroundConfigSchema.parse(unwrapStoredValue(saved))
@@ -294,10 +311,13 @@ export function loadConfig(): Partial<PlaygroundConfig> {
 /**
  * Save playground config to localStorage
  */
-export function saveConfig(config: Partial<PlaygroundConfig>): void {
+export function saveConfig(
+  config: Partial<PlaygroundConfig>,
+  scope?: PlaygroundStorageScope
+): void {
   try {
     const parsed = playgroundConfigSchema.parse(config)
-    writeStoredValue(STORAGE_KEYS.CONFIG, parsed)
+    writeStoredValue(getScopedStorageKey(STORAGE_KEYS.CONFIG, scope), parsed)
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('Failed to save config:', error)
@@ -307,9 +327,13 @@ export function saveConfig(config: Partial<PlaygroundConfig>): void {
 /**
  * Load parameter enabled state from localStorage
  */
-export function loadParameterEnabled(): Partial<ParameterEnabled> {
+export function loadParameterEnabled(
+  scope?: PlaygroundStorageScope
+): Partial<ParameterEnabled> {
   try {
-    const saved = readStoredValue(STORAGE_KEYS.PARAMETER_ENABLED)
+    const saved = readStoredValue(
+      getScopedStorageKey(STORAGE_KEYS.PARAMETER_ENABLED, scope)
+    )
     if (!saved) return {}
 
     return parameterEnabledSchema.parse(unwrapStoredValue(saved))
@@ -324,11 +348,15 @@ export function loadParameterEnabled(): Partial<ParameterEnabled> {
  * Save parameter enabled state to localStorage
  */
 export function saveParameterEnabled(
-  parameterEnabled: Partial<ParameterEnabled>
+  parameterEnabled: Partial<ParameterEnabled>,
+  scope?: PlaygroundStorageScope
 ): void {
   try {
     const parsed = parameterEnabledSchema.parse(parameterEnabled)
-    writeStoredValue(STORAGE_KEYS.PARAMETER_ENABLED, parsed)
+    writeStoredValue(
+      getScopedStorageKey(STORAGE_KEYS.PARAMETER_ENABLED, scope),
+      parsed
+    )
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('Failed to save parameter enabled:', error)
@@ -338,9 +366,11 @@ export function saveParameterEnabled(
 /**
  * Load messages from localStorage
  */
-export function loadMessages(): Message[] | null {
+export function loadMessages(scope?: PlaygroundStorageScope): Message[] | null {
   try {
-    const saved = readStoredMessagesValue()
+    const saved = readStoredMessagesValue(
+      getScopedStorageKey(STORAGE_KEYS.MESSAGES, scope)
+    )
     if (!saved) return null
 
     const parsed = messagesSchema.parse(unwrapStoredValue(saved)) as Message[]
@@ -358,7 +388,7 @@ export function loadMessages(): Message[] | null {
       sizeTrimmed !== trimmed ||
       sanitized !== sizeTrimmed
     ) {
-      saveMessages(sanitized)
+      saveMessages(sanitized, scope)
     }
 
     return sanitized
@@ -372,11 +402,14 @@ export function loadMessages(): Message[] | null {
 /**
  * Save messages to localStorage
  */
-export function saveMessages(messages: Message[]): void {
+export function saveMessages(
+  messages: Message[],
+  scope?: PlaygroundStorageScope
+): void {
   try {
     const trimmed = trimMessages(messages)
     const parsed = messagesSchema.parse(trimmed) as Message[]
-    writeStoredValue(STORAGE_KEYS.MESSAGES, parsed)
+    writeStoredValue(getScopedStorageKey(STORAGE_KEYS.MESSAGES, scope), parsed)
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('Failed to save messages:', error)
@@ -386,11 +419,13 @@ export function saveMessages(messages: Message[]): void {
 /**
  * Clear all playground data
  */
-export function clearPlaygroundData(): void {
+export function clearPlaygroundData(scope?: PlaygroundStorageScope): void {
   try {
-    localStorage.removeItem(STORAGE_KEYS.CONFIG)
-    localStorage.removeItem(STORAGE_KEYS.PARAMETER_ENABLED)
-    localStorage.removeItem(STORAGE_KEYS.MESSAGES)
+    localStorage.removeItem(getScopedStorageKey(STORAGE_KEYS.CONFIG, scope))
+    localStorage.removeItem(
+      getScopedStorageKey(STORAGE_KEYS.PARAMETER_ENABLED, scope)
+    )
+    localStorage.removeItem(getScopedStorageKey(STORAGE_KEYS.MESSAGES, scope))
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('Failed to clear playground data:', error)

@@ -24,6 +24,7 @@ import type {
   MessageVersion,
   ChatCompletionMessage,
   ContentPart,
+  PlaygroundMode,
 } from '../../types'
 
 /**
@@ -76,11 +77,13 @@ export function updateCurrentVersionContent(
  */
 export function createUserMessage(
   content: string,
-  createdAt: number = Date.now()
+  createdAt: number = Date.now(),
+  mode: PlaygroundMode = 'chat'
 ): Message {
   return {
     key: nanoid(),
     from: MESSAGE_ROLES.USER,
+    mode,
     versions: [createMessageVersion(content)],
     createdAt,
   }
@@ -90,11 +93,13 @@ export function createUserMessage(
  * Create a loading assistant message
  */
 export function createLoadingAssistantMessage(
-  startedAt: number = Date.now()
+  startedAt: number = Date.now(),
+  mode: PlaygroundMode = 'chat'
 ): Message {
   return {
     key: nanoid(),
     from: MESSAGE_ROLES.ASSISTANT,
+    mode,
     versions: [createMessageVersion('')],
     createdAt: startedAt,
     startedAt,

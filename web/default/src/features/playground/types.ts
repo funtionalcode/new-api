@@ -33,6 +33,7 @@ export interface MessageVersion {
 export interface Message {
   key: string
   from: MessageRole
+  mode?: PlaygroundMode
   versions: MessageVersion[]
   createdAt?: number
   startedAt?: number

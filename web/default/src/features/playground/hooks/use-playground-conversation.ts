@@ -22,22 +22,23 @@ import {
   appendUserMessagePair,
   applyMessageEdit,
   createRegeneratedMessages,
+  getPendingGenerationMode,
   removeMessageByKey,
 } from '../lib'
-import type { Message } from '../types'
+import type { Message, PlaygroundMode } from '../types'
 
 type UsePlaygroundConversationOptions = {
   messages: Message[]
   updateMessages: (
     updater: Message[] | ((prev: Message[]) => Message[])
   ) => void
-  sendChat: (messages: Message[]) => void
+  sendMessages: (messages: Message[], mode?: PlaygroundMode) => void
 }
 
 export function usePlaygroundConversation({
   messages,
   updateMessages,
-  sendChat,
+  sendMessages,
 }: UsePlaygroundConversationOptions) {
   const [editingMessageKey, setEditingMessageKey] = useState<string | null>(
     null
@@ -45,11 +46,11 @@ export function usePlaygroundConversation({
 
   const handleSendMessage = useCallback(
     (text: string) => {
-      const nextMessages = appendUserMessagePair(messages, text)
+      const nextMessages = appendUserMessagePair(messages, text, 'chat')
       updateMessages(nextMessages)
-      sendChat(nextMessages)
+      sendMessages(nextMessages, 'chat')
     },
-    [messages, updateMessages, sendChat]
+    [messages, updateMessages, sendMessages]
   )
 
   const handleRegenerateMessage = useCallback(
@@ -58,9 +59,9 @@ export function usePlaygroundConversation({
       if (!nextMessages) return
 
       updateMessages(nextMessages)
-      sendChat(nextMessages)
+      sendMessages(nextMessages, getPendingGenerationMode(nextMessages))
     },
-    [messages, updateMessages, sendChat]
+    [messages, updateMessages, sendMessages]
   )
 
   const handleEditMessage = useCallback((message: Message) => {
@@ -89,10 +90,13 @@ export function usePlaygroundConversation({
       updateMessages(editResult.messages)
 
       if (editResult.shouldSend) {
-        sendChat(editResult.messages)
+        sendMessages(
+          editResult.messages,
+          getPendingGenerationMode(editResult.messages)
+        )
       }
     },
-    [editingMessageKey, messages, updateMessages, sendChat]
+    [editingMessageKey, messages, updateMessages, sendMessages]
   )
 
   const handleDeleteMessage = useCallback(

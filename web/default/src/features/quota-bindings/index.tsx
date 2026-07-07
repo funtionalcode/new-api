@@ -296,7 +296,7 @@ function DeepSeekUsageCells({ binding }: { binding: DeepSeekQuotaBinding }) {
     bonusWallets: binding.last_bonus_wallets,
     monthlyCosts: binding.last_monthly_costs,
     todayCosts: binding.last_today_costs,
-    todayUsedTokens: binding.last_today_used_tokens,
+    monthlyUsedTokens: binding.last_monthly_used_tokens,
   })
   const remainingPercent = normalizePercent(usage.remainingPercent)
   const remainingColor = remainingBalanceColor(remainingPercent)
@@ -323,15 +323,15 @@ function DeepSeekUsageCells({ binding }: { binding: DeepSeekQuotaBinding }) {
         </div>
       </TableCell>
       <TableCell>
-        {usage.todayUsedTokens > 0 ? (
+        {usage.monthlyUsedTokens > 0 ? (
           <TooltipProvider delay={100}>
             <Tooltip>
               <TooltipTrigger
                 render={<span className='cursor-default font-mono' />}
               >
-                {usage.todayTokenLabel}
+                {usage.monthlyTokenLabel}
               </TooltipTrigger>
-              <TooltipContent>{usage.todayTokenDetail}</TooltipContent>
+              <TooltipContent>{usage.monthlyTokenDetail}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         ) : (
@@ -623,7 +623,7 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
                     ) : (
                       <>
                         <TableHead>{t('Remaining Balance')}</TableHead>
-                        <TableHead>{t('Today Tokens')}</TableHead>
+                        <TableHead>{t('Monthly Tokens')}</TableHead>
                         <TableHead>{t('Monthly Cost')}</TableHead>
                       </>
                     )}
