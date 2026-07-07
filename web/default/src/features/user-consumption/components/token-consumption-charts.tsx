@@ -29,12 +29,14 @@ interface TokenConsumptionChartsProps {
   data: UserConsumptionSummary[]
   loading?: boolean
   limit?: number
+  renderKey?: string
 }
 
 export function TokenConsumptionCharts({
   data,
   loading,
   limit = 15,
+  renderKey = 'default',
 }: TokenConsumptionChartsProps) {
   const { t } = useTranslation()
   const { resolvedTheme } = useTheme()
@@ -73,7 +75,7 @@ export function TokenConsumptionCharts({
       <div className='h-[300px] p-1.5 sm:h-96 sm:p-2'>
         {themeReady && hasData && (
           <VChart
-            key={`token-consumption-rank-${limit}-${resolvedTheme}`}
+            key={`token-consumption-rank-${renderKey}-${limit}-${resolvedTheme}`}
             spec={{
               ...spec,
               theme: resolvedTheme === 'dark' ? 'dark' : 'light',

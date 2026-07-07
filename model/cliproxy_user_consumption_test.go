@@ -83,6 +83,19 @@ func TestGetUserTokenUsageSummaryWithSeparatedLogDBEnrichesMainDBFields(t *testi
 			Quota:            100,
 			CreatedAt:        now,
 		},
+		{
+			UserId:           11,
+			Username:         "alice",
+			TokenId:          101,
+			TokenName:        "codex-main",
+			ChannelId:        7,
+			ModelName:        "gpt-5",
+			Type:             LogTypeConsume,
+			PromptTokens:     1000,
+			CompletionTokens: 1000,
+			Quota:            1000,
+			CreatedAt:        now - 3600,
+		},
 	}).Error)
 
 	summaries, total, err := GetUserTokenUsageSummary(UserTokenUsageQuery{

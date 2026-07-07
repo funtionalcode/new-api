@@ -190,6 +190,8 @@ export function UserConsumption() {
     [rankQuery.data?.data?.items]
   )
 
+  const timeRangeKey = `${filters.start_timestamp ?? 0}-${filters.end_timestamp ?? 0}`
+
   const timeRangeLabel = useMemo(() => {
     return `${formatTimestampToDate(toUnixSeconds(timeRange.start))} ~ ${formatTimestampToDate(toUnixSeconds(timeRange.end))}`
   }, [timeRange.end, timeRange.start])
@@ -358,6 +360,7 @@ export function UserConsumption() {
           <TokenConsumptionCharts
             data={rankRows}
             loading={rankQuery.isLoading}
+            renderKey={timeRangeKey}
           />
 
           <Card>

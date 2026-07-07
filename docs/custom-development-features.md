@@ -45,6 +45,7 @@
 | 用户消耗 | 用户消耗 token 聚合表保留用户备注，用户名下展示备注，悬浮展示完整用户名和备注 | `model/cliproxy_auth_file.go`、`web/default/src/features/user-consumption` | 本次同步 |
 | 用户消耗 | 管理员用户消耗菜单列表上方新增令牌消耗排行图，按当前筛选条件拉取并聚合令牌 Token 消耗 | `web/default/src/features/user-consumption` | 本次同步 |
 | 用户消耗 | 管理员用户消耗菜单补齐快捷日期筛选和开始/结束时间选择，排行图、统计卡和列表共用当前筛选条件 | `web/default/src/features/user-consumption` | 本次同步 |
+| 用户消耗 | 令牌消耗排行图随时间筛选窗口强制重建图表实例，并补充后端时间窗口过滤回归测试 | `model/cliproxy_user_consumption_test.go`、`web/default/src/features/user-consumption` | 本次同步 |
 | 真实 IP / 反代 | 支持 nginx 反代真实 IP 记录，并补充 host 3000 反代示例配置 | `middleware`、`setting`、`docs/installation/nginx-new-api-3000.conf` | `d5233257`、`333c84b1` |
 | 流式诊断 | 补充流式转发断开来源诊断日志，记录 request_id、model、elapsed、chunk_count 和请求上下文错误 | `relay` / stream forward 相关代码 | `26bafa7b` |
 | Cliproxy 认证文件 | 兼容认证文件额度、备注回显、备注字段统一为 note，并调整绑定刷新权限 | `controller/cliproxy*`、`model/cliproxy*`、`web/default/src/features/cliproxy-auth-files` | `f09f1beb`、`aef05809`、`9c6da6db`、`651370c0` |
