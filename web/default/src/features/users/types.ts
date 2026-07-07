@@ -47,6 +47,8 @@ export const userSchema = z.object({
   daily_token_limit: z.number().optional().default(0),
   weekly_token_limit: z.number().optional().default(0),
   monthly_token_limit: z.number().optional().default(0),
+  model_limits_enabled: z.boolean().optional().default(false),
+  model_limits: z.array(z.string()).optional().default([]),
   request_count: z.number(),
   group: z.string(),
   aff_code: z.string().optional(),
@@ -117,6 +119,8 @@ export interface UserFormData {
   daily_token_limit?: number
   weekly_token_limit?: number
   monthly_token_limit?: number
+  model_limits_enabled?: boolean
+  model_limits?: string[]
   admin_permissions?: AdminPermissionMatrix
 }
 

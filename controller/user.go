@@ -642,16 +642,42 @@ func generateDefaultSidebarConfig(userRole int) string {
 }
 
 func GetUserModels(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		id = c.GetInt("id")
+	id := c.GetInt("id")
+	targetIdParam := c.Param("id")
+	if targetIdParam != "" {
+		parsedId, err := strconv.Atoi(targetIdParam)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		id = parsedId
 	}
-	user, err := model.GetUserCache(id)
-	if err != nil {
-		common.ApiError(c, err)
-		return
+
+	userId := id
+	userGroup := ""
+	if targetIdParam != "" {
+		targetUser, err := model.GetUserById(id, false)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if id != c.GetInt("id") && !canManageTargetRole(c.GetInt("role"), targetUser.Role) {
+			common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
+			return
+		}
+		userId = targetUser.Id
+		userGroup = targetUser.Group
+	} else {
+		user, err := model.GetUserCache(id)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		userId = user.Id
+		userGroup = user.Group
 	}
-	groups := service.GetUserUsableGroups(user.Group)
+
+	groups := service.GetUserUsableGroups(userGroup)
 	group := c.Query("group")
 	if group != "" {
 		if _, ok := groups[group]; !ok {
@@ -663,21 +689,27 @@ func GetUserModels(c *gin.Context) {
 			return
 		}
 
+		models, err := model.GetUserEnabledModelsInGroups(userId, []string{group})
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"message": "",
-			"data":    model.GetGroupEnabledModels(group),
+			"data":    models,
 		})
 		return
 	}
 
-	var models []string
+	groupNames := make([]string, 0, len(groups))
 	for group := range groups {
-		for _, g := range model.GetGroupEnabledModels(group) {
-			if !common.StringsContains(models, g) {
-				models = append(models, g)
-			}
-		}
+		groupNames = append(groupNames, group)
+	}
+	models, err := model.GetUserEnabledModelsInGroups(userId, groupNames)
+	if err != nil {
+		common.ApiError(c, err)
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -751,7 +783,11 @@ func UpdateUser(c *gin.Context) {
 			common.ApiError(c, fmt.Errorf("启用模型限制时至少需要选择一个模型"))
 			return
 		}
-		if err := validateUserModelLimits(modelLimits); err != nil {
+		validationGroup := updatedUser.Group
+		if strings.TrimSpace(validationGroup) == "" {
+			validationGroup = originUser.Group
+		}
+		if err := validateUserModelLimits(updatedUser.Id, validationGroup, modelLimits); err != nil {
 			common.ApiError(c, err)
 			return
 		}
@@ -799,8 +835,16 @@ func UpdateUser(c *gin.Context) {
 	return
 }
 
-func validateUserModelLimits(modelLimits []string) error {
-	enabledModels := model.GetEnabledModels()
+func validateUserModelLimits(userId int, userGroup string, modelLimits []string) error {
+	groups := service.GetUserUsableGroups(userGroup)
+	groupNames := make([]string, 0, len(groups))
+	for group := range groups {
+		groupNames = append(groupNames, group)
+	}
+	enabledModels, err := model.GetUserEnabledModelsInGroups(userId, groupNames)
+	if err != nil {
+		return err
+	}
 	enabledModelMap := make(map[string]bool, len(enabledModels))
 	for _, enabledModel := range enabledModels {
 		enabledModelMap[enabledModel] = true

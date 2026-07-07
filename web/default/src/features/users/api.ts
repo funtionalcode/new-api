@@ -79,6 +79,20 @@ export async function getUser(id: number): Promise<ApiResponse<User>> {
 }
 
 /**
+ * Get models available to a managed user.
+ */
+export async function getUserModelsForUser(
+  id: number,
+  group?: string
+): Promise<ApiResponse<string[]>> {
+  const query = group
+    ? `?${new URLSearchParams({ group }).toString()}`
+    : ''
+  const res = await api.get(`/api/user/${id}/models${query}`)
+  return res.data
+}
+
+/**
  * Create a new user
  */
 export async function createUser(

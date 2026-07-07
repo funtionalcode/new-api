@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 
@@ -46,6 +47,61 @@ func GetGroupEnabledModels(group string) []string {
 	// Find distinct models
 	DB.Table("abilities").Where(commonGroupCol+" = ? and enabled = ?", group, true).Distinct("model").Pluck("model", &models)
 	return models
+}
+
+func GetUserEnabledModelsInGroups(userId int, groups []string) ([]string, error) {
+	groupSet := make(map[string]struct{}, len(groups))
+	for _, group := range groups {
+		group = strings.TrimSpace(group)
+		if group == "" {
+			continue
+		}
+		groupSet[group] = struct{}{}
+	}
+	if len(groupSet) == 0 {
+		return []string{}, nil
+	}
+
+	normalizedGroups := make([]string, 0, len(groupSet))
+	for group := range groupSet {
+		normalizedGroups = append(normalizedGroups, group)
+	}
+	sort.Strings(normalizedGroups)
+
+	type abilityChannelRow struct {
+		Model       string             `gorm:"column:model"`
+		OpenUserIds ChannelOpenUserIds `gorm:"column:open_user_ids"`
+	}
+	var rows []abilityChannelRow
+	groupCol := "abilities." + commonGroupCol
+	err := DB.Table("abilities").
+		Select("abilities.model, channels.open_user_ids").
+		Joins("JOIN channels ON channels.id = abilities.channel_id").
+		Where(groupCol+" IN ? AND abilities.enabled = ? AND channels.status = ?", normalizedGroups, true, common.ChannelStatusEnabled).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	modelSet := make(map[string]struct{})
+	for _, row := range rows {
+		modelName := strings.TrimSpace(row.Model)
+		if modelName == "" {
+			continue
+		}
+		channel := Channel{OpenUserIds: row.OpenUserIds}
+		if userId > 0 && !channel.IsOpenToUser(userId) {
+			continue
+		}
+		modelSet[modelName] = struct{}{}
+	}
+
+	models := make([]string, 0, len(modelSet))
+	for modelName := range modelSet {
+		models = append(models, modelName)
+	}
+	sort.Strings(models)
+	return models, nil
 }
 
 func GetEnabledModels() []string {

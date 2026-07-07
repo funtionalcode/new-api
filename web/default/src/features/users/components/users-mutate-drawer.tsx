@@ -30,7 +30,9 @@ import {
   sideDrawerFooterClassName,
   sideDrawerFormClassName,
   sideDrawerHeaderClassName,
+  sideDrawerSwitchItemClassName,
 } from '@/components/drawer-layout'
+import { MultiSelect } from '@/components/multi-select'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -61,6 +63,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import {
   ADMIN_PERMISSION_ACTIONS,
@@ -80,6 +83,7 @@ import {
   getUser,
   getGroups,
   getPermissionCatalog,
+  getUserModelsForUser,
 } from '../api'
 import { BINDING_FIELDS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
@@ -131,6 +135,22 @@ export function UsersMutateDrawer({
     resolver: zodResolver(userFormSchema),
     defaultValues: USER_FORM_DEFAULT_VALUES,
   })
+
+  const selectedGroupForModels = form.watch('group')
+  const modelLimitsEnabled = form.watch('model_limits_enabled')
+  const { data: targetModelsData, isFetching: isLoadingTargetModels } =
+    useQuery({
+      queryKey: [
+        'managed-user-models',
+        currentRow?.id,
+        selectedGroupForModels,
+      ],
+      queryFn: () =>
+        getUserModelsForUser(currentRow!.id, selectedGroupForModels),
+      enabled: open && isUpdate && !!currentRow?.id,
+      staleTime: 0,
+    })
+  const targetModels = targetModelsData?.data || []
 
   // Load existing data when updating
   useEffect(() => {
@@ -474,6 +494,65 @@ export function UsersMutateDrawer({
                   />
 
                   {renderTokenLimitFields()}
+
+                  <FormField
+                    control={form.control}
+                    name='model_limits_enabled'
+                    render={({ field }) => (
+                      <FormItem className={sideDrawerSwitchItemClassName()}>
+                        <FormLabel className='text-sm'>
+                          {t('Model Limits')}
+                        </FormLabel>
+                        <FormControl>
+                          <Switch
+                            checked={!!field.value}
+                            onCheckedChange={(checked) => {
+                              field.onChange(checked)
+                              if (!checked) {
+                                form.setValue('model_limits', [])
+                              }
+                            }}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+
+                  {modelLimitsEnabled && (
+                    <FormField
+                      control={form.control}
+                      name='model_limits'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Model Limits')}</FormLabel>
+                          <FormControl>
+                            <MultiSelect
+                              options={targetModels.map((model) => ({
+                                label: model,
+                                value: model,
+                              }))}
+                              selected={field.value ?? []}
+                              onChange={field.onChange}
+                              placeholder={
+                                isLoadingTargetModels
+                                  ? t('Loading...')
+                                  : t('Model Limits')
+                              }
+                              emptyText={
+                                isLoadingTargetModels
+                                  ? t('Loading...')
+                                  : t('No models found')
+                              }
+                              disabled={isLoadingTargetModels}
+                              maxVisibleChips={4}
+                              copyChipOnClick
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
 
                   <FormField
                     control={form.control}

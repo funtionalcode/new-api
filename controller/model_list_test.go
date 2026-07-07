@@ -184,6 +184,11 @@ func TestGetUserModelsFiltersByRequestedGroup(t *testing.T) {
 		Group:    "default",
 		Status:   common.UserStatusEnabled,
 	}).Error)
+	require.NoError(t, db.Create(&model.Channel{
+		Id:     1,
+		Name:   "open",
+		Status: common.ChannelStatusEnabled,
+	}).Error)
 	require.NoError(t, db.Create(&[]model.Ability{
 		{Group: "default", Model: "zz-default-only-model", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "zz-disabled-model", ChannelId: 1, Enabled: false},
@@ -207,6 +212,75 @@ func TestGetUserModelsFiltersByRequestedGroup(t *testing.T) {
 	GetUserModels(vipContext)
 
 	require.Empty(t, decodeUserModelsResponse(t, vipRecorder))
+}
+
+func TestGetUserModelsFiltersByChannelOpenUsers(t *testing.T) {
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.Create(&[]model.User{
+		{
+			Id:       1003,
+			Username: "open-user",
+			Password: "password",
+			Group:    "default",
+			Status:   common.UserStatusEnabled,
+			AffCode:  "open-user-aff",
+		},
+		{
+			Id:       1004,
+			Username: "restricted-user",
+			Password: "password",
+			Group:    "default",
+			Status:   common.UserStatusEnabled,
+			AffCode:  "restricted-user-aff",
+		},
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Channel{
+		{
+			Id:          11,
+			Name:        "open-channel",
+			Status:      common.ChannelStatusEnabled,
+			OpenUserIds: nil,
+		},
+		{
+			Id:          12,
+			Name:        "restricted-channel",
+			Status:      common.ChannelStatusEnabled,
+			OpenUserIds: model.ChannelOpenUserIds{1004},
+		},
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Ability{
+		{Group: "default", Model: "zz-open-model", ChannelId: 11, Enabled: true},
+		{Group: "default", Model: "zz-restricted-model", ChannelId: 12, Enabled: true},
+	}).Error)
+
+	openRecorder := httptest.NewRecorder()
+	openContext, _ := gin.CreateTestContext(openRecorder)
+	openContext.Request = httptest.NewRequest(http.MethodGet, "/api/user/models?group=default", nil)
+	openContext.Set("id", 1003)
+
+	GetUserModels(openContext)
+
+	require.ElementsMatch(t, []string{"zz-open-model"}, decodeUserModelsResponse(t, openRecorder))
+
+	restrictedRecorder := httptest.NewRecorder()
+	restrictedContext, _ := gin.CreateTestContext(restrictedRecorder)
+	restrictedContext.Request = httptest.NewRequest(http.MethodGet, "/api/user/models?group=default", nil)
+	restrictedContext.Set("id", 1004)
+
+	GetUserModels(restrictedContext)
+
+	require.ElementsMatch(t, []string{"zz-open-model", "zz-restricted-model"}, decodeUserModelsResponse(t, restrictedRecorder))
+
+	adminRecorder := httptest.NewRecorder()
+	adminContext, _ := gin.CreateTestContext(adminRecorder)
+	adminContext.Request = httptest.NewRequest(http.MethodGet, "/api/user/1004/models?group=default", nil)
+	adminContext.Params = gin.Params{{Key: "id", Value: "1004"}}
+	adminContext.Set("id", 1003)
+	adminContext.Set("role", common.RoleAdminUser)
+
+	GetUserModels(adminContext)
+
+	require.ElementsMatch(t, []string{"zz-open-model", "zz-restricted-model"}, decodeUserModelsResponse(t, adminRecorder))
 }
 
 func TestListModelsIncludesTieredBillingModel(t *testing.T) {
