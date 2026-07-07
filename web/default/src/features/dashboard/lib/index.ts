@@ -36,7 +36,6 @@ export {
   processChartData,
   processUserChartData,
 } from './charts'
-export { processUserTokenRankChartData } from './user-token-rank'
 export {
   buildDashboardFlowData,
   buildFlowSankeySpec,

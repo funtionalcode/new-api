@@ -54,6 +54,8 @@ export interface GetUserConsumptionParams {
   username?: string
   token_name?: string
   auth_index?: string
+  sort_by?: string
+  sort_order?: string
 }
 
 export type GetUserConsumptionResponse = ApiResponse<

@@ -39,10 +39,12 @@
 | 数据看板 | 在 `web/default` 实现令牌消耗分析，包含令牌趋势、分布和排行图表，并提供 `/dashboard/tokens` 入口 | `web/default/src/features/dashboard`、`web/default/src/hooks/use-sidebar-data.ts` | 本次同步 |
 | 数据看板 | 用户统计显示当前统计时间区间，并支持自定义开始/结束时间筛选计算数据 | `web/default/src/features/dashboard/components/users`、`web/default/src/features/dashboard/lib` | 本次同步 |
 | 数据看板 | 用户统计快捷区间会同步填充开始/结束时间控件，时间控件独立显示在筛选行上方，避免横向挤满筛选条 | `web/default/src/features/dashboard/components/users`、`web/default/src/features/dashboard/lib` | 本次同步 |
-| 数据看板 | 用户统计新增令牌消耗排行图，按当前时间筛选和 Top 数量聚合 root flow 中的令牌 Token 消耗 | `web/default/src/features/dashboard/components/users`、`web/default/src/features/dashboard/lib` | 本次同步 |
+| 数据看板 | 用户统计时间筛选切换后强制刷新排行和趋势图表实例，避免图表复用旧时间窗口数据 | `web/default/src/features/dashboard/components/users` | 本次同步 |
 | 数据看板 | 普通用户可访问用户统计 tab，并查看全量用户聚合统计 | `controller/usedata.go`、`router/api-router.go`、`web/default/src/features/dashboard` | 本次同步 |
 | 用户消耗 | 修复 ClickHouse 日志库与主库分离时用户消耗查询跨库 JOIN 主库 `users` 表导致报错的问题，改为日志库聚合后回主库补充用户、渠道和认证文件信息 | `model/cliproxy_auth_file.go`、`model/cliproxy_user_consumption_test.go` | 本次同步 |
 | 用户消耗 | 用户消耗 token 聚合表保留用户备注，用户名下展示备注，悬浮展示完整用户名和备注 | `model/cliproxy_auth_file.go`、`web/default/src/features/user-consumption` | 本次同步 |
+| 用户消耗 | 管理员用户消耗菜单列表上方新增令牌消耗排行图，按当前筛选条件拉取并聚合令牌 Token 消耗 | `web/default/src/features/user-consumption` | 本次同步 |
+| 用户消耗 | 管理员用户消耗菜单补齐快捷日期筛选和开始/结束时间选择，排行图、统计卡和列表共用当前筛选条件 | `web/default/src/features/user-consumption` | 本次同步 |
 | 真实 IP / 反代 | 支持 nginx 反代真实 IP 记录，并补充 host 3000 反代示例配置 | `middleware`、`setting`、`docs/installation/nginx-new-api-3000.conf` | `d5233257`、`333c84b1` |
 | 流式诊断 | 补充流式转发断开来源诊断日志，记录 request_id、model、elapsed、chunk_count 和请求上下文错误 | `relay` / stream forward 相关代码 | `26bafa7b` |
 | Cliproxy 认证文件 | 兼容认证文件额度、备注回显、备注字段统一为 note，并调整绑定刷新权限 | `controller/cliproxy*`、`model/cliproxy*`、`web/default/src/features/cliproxy-auth-files` | `f09f1beb`、`aef05809`、`9c6da6db`、`651370c0` |
@@ -51,6 +53,7 @@
 | Cliproxy 认证文件 | 普通用户只能查看并刷新自己的认证文件绑定，管理员才可配置服务、拉取远程认证文件、新建绑定、编辑和删除绑定 | `controller/cliproxy.go`、`model/cliproxy_auth_file.go`、`web/default/src/features/cliproxy-auth-files` | 本次同步 |
 | 游乐场 | 恢复图片生成和 TTS 生成模式，复用当前模型/分组，生成结果写回对话消息 | `router/relay-router.go`、`web/default/src/features/playground` | 本次同步 |
 | 游乐场 | 图片/TTS 模式下重试和编辑后提交继续走对应生成接口，图片和音频结果直接渲染为媒体控件，兼容裸 base64 返回，并按登录用户隔离本地会话历史 | `web/default/src/features/playground` | 本次同步 |
+| 游乐场 | 图片生成历史保留 data URL 内容并增加内存兜底，避免切换菜单后因 base64 图片过大导致聊天消息丢失 | `web/default/src/features/playground/lib/storage` | 本次同步 |
 | 构建上下文 | Docker 构建忽略运行态文件，缩小构建上下文 | `.dockerignore` | `c6c55020` |
 
 ## 验证记录

@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { VChart } from '@visactor/react-vchart'
-import { CalendarRange, KeyRound, Users, Loader2 } from 'lucide-react'
+import { CalendarRange, Users, Loader2 } from 'lucide-react'
 import {
   Fragment,
   useEffect,
@@ -33,10 +33,7 @@ import { DateTimePicker } from '@/components/datetime-picker'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useTheme } from '@/context/theme-provider'
-import {
-  getFlowQuotaDates,
-  getUserQuotaDataByUsers,
-} from '@/features/dashboard/api'
+import { getUserQuotaDataByUsers } from '@/features/dashboard/api'
 import {
   TIME_GRANULARITY_OPTIONS,
   TIME_RANGE_PRESETS,
@@ -45,7 +42,6 @@ import {
   getDefaultDays,
   saveGranularity,
   processUserChartData,
-  processUserTokenRankChartData,
 } from '@/features/dashboard/lib'
 import {
   buildUserChartTimeRangeDates,
@@ -58,9 +54,7 @@ import type {
   UserChartsFilters,
 } from '@/features/dashboard/types'
 import type { TimeGranularity } from '@/lib/time'
-import { ROLE } from '@/lib/roles'
 import { VCHART_OPTION } from '@/lib/vchart'
-import { useAuthStore } from '@/stores/auth-store'
 
 let themeManagerPromise: Promise<
   (typeof import('@visactor/vchart'))['ThemeManager']
@@ -93,7 +87,6 @@ interface UserChartsProps {
 export function UserCharts(props: UserChartsProps) {
   const { t } = useTranslation()
   const { resolvedTheme } = useTheme()
-  const userRole = useAuthStore((state) => state.auth.user?.role)
   const [themeReady, setThemeReady] = useState(false)
   const themeManagerRef = useRef<
     (typeof import('@visactor/vchart'))['ThemeManager'] | null
@@ -106,7 +99,6 @@ export function UserCharts(props: UserChartsProps) {
   const topUserLimit = props.filters.topUserLimit
   const metric = props.filters.metric
   const onFiltersChange = props.onFiltersChange
-  const isRoot = Boolean(userRole && userRole >= ROLE.SUPER_ADMIN)
 
   const timeRangeDates = useMemo(() => {
     return buildUserChartTimeRangeDates(props.filters)
@@ -120,6 +112,7 @@ export function UserCharts(props: UserChartsProps) {
     () => formatUserChartTimeRangeLabel(timeRange),
     [timeRange]
   )
+  const chartRenderKey = `${timeRange.start_timestamp}-${timeRange.end_timestamp}-${timeGranularity}`
 
   const handleRangeChange = useCallback(
     (days: number) => {
@@ -210,14 +203,6 @@ export function UserCharts(props: UserChartsProps) {
     staleTime: 60_000,
   })
 
-  const { data: flowRows, isLoading: isTokenRankLoading } = useQuery({
-    queryKey: ['dashboard', 'user-token-rank', timeRange],
-    queryFn: () => getFlowQuotaDates(timeRange, true),
-    select: (res) => (res.success ? (res.data ?? []) : []),
-    staleTime: 60_000,
-    enabled: isRoot,
-  })
-
   const chartData = useMemo(
     () =>
       processUserChartData(
@@ -228,16 +213,6 @@ export function UserCharts(props: UserChartsProps) {
         metric
       ),
     [userData, isLoading, timeGranularity, t, topUserLimit, metric]
-  )
-
-  const tokenRankSpec = useMemo(
-    () =>
-      processUserTokenRankChartData(
-        isTokenRankLoading ? [] : (flowRows ?? []),
-        t,
-        topUserLimit
-      ),
-    [flowRows, isTokenRankLoading, t, topUserLimit]
   )
 
   return (
@@ -371,7 +346,7 @@ export function UserCharts(props: UserChartsProps) {
                     themeReady &&
                     spec && (
                       <VChart
-                        key={`user-${chart.value}-${metric}-${topUserLimit}-${resolvedTheme}`}
+                        key={`user-${chart.value}-${chartRenderKey}-${metric}-${topUserLimit}-${resolvedTheme}`}
                         spec={{
                           ...spec,
                           theme: resolvedTheme === 'dark' ? 'dark' : 'light',
@@ -383,36 +358,6 @@ export function UserCharts(props: UserChartsProps) {
                   )}
                 </div>
               </div>
-
-              {chart.value === 'rank' && isRoot && (
-                <div className='overflow-hidden rounded-lg border'>
-                  <div className='flex w-full items-center gap-2 border-b px-3 py-2 sm:px-5 sm:py-3'>
-                    <KeyRound className='text-muted-foreground/60 size-4' />
-                    <div className='text-sm font-semibold'>
-                      {t('Token Consumption Ranking')}
-                    </div>
-                  </div>
-
-                  <div className='h-[300px] p-1.5 sm:h-96 sm:p-2'>
-                    {isTokenRankLoading ? (
-                      <Skeleton className='h-full w-full' />
-                    ) : (
-                      themeReady &&
-                      tokenRankSpec && (
-                        <VChart
-                          key={`user-token-rank-${topUserLimit}-${resolvedTheme}`}
-                          spec={{
-                            ...tokenRankSpec,
-                            theme: resolvedTheme === 'dark' ? 'dark' : 'light',
-                            background: 'transparent',
-                          }}
-                          option={VCHART_OPTION}
-                        />
-                      )
-                    )}
-                  </div>
-                </div>
-              )}
             </Fragment>
           )
         })}

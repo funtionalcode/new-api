@@ -47,6 +47,7 @@ const TRUNCATED_CONTENT_SUFFIX = '\n\n[...]'
 const MIN_PREFIX_COLLAPSE_LENGTH = 2000
 const MIN_REPEATED_SECTION_COUNT = 3
 const SECTION_HEADING_LINE_PATTERN = /^#{2,6}\s+\d+\.\s+.+$/gm
+const persistedMessagesMemoryCache = new Map<string, Message[]>()
 
 export function getPlaygroundStorageScope(
   userId: PlaygroundStorageScope
@@ -73,7 +74,6 @@ function readStoredMessagesValue(key: string): unknown | null {
   if (!saved) return null
 
   if (saved.length > MAX_STORED_MESSAGES_BYTES) {
-    localStorage.removeItem(key)
     return null
   }
 
@@ -99,6 +99,24 @@ function writeStoredValue<T>(key: string, data: T): void {
   }
 
   localStorage.setItem(key, JSON.stringify(payload))
+}
+
+function cloneMessages(messages: Message[]): Message[] {
+  return messages.map((message) => ({
+    ...message,
+    versions: message.versions.map((version) => ({ ...version })),
+    sources: message.sources?.map((source) => ({ ...source })),
+    reasoning: message.reasoning ? { ...message.reasoning } : undefined,
+  }))
+}
+
+function cacheMessagesInMemory(key: string, messages: Message[]): void {
+  persistedMessagesMemoryCache.set(key, cloneMessages(messages))
+}
+
+function getCachedMessagesFromMemory(key: string): Message[] | null {
+  const cached = persistedMessagesMemoryCache.get(key)
+  return cached ? cloneMessages(cached) : null
 }
 
 function trimMessages(messages: Message[]): Message[] {
@@ -129,6 +147,13 @@ function truncateText(text: string, maxLength: number): string {
   }
 
   return `${text.slice(0, maxLength - TRUNCATED_CONTENT_SUFFIX.length)}${TRUNCATED_CONTENT_SUFFIX}`
+}
+
+function shouldPreserveFullMessageContent(
+  message: Message,
+  content: string
+): boolean {
+  return message.mode === 'image' && content.includes('data:image/')
 }
 
 type SectionOccurrence = {
@@ -210,6 +235,10 @@ function collapseRepeatedSectionSnapshots(text: string): string {
 function normalizeStoredMessageForLoad(message: Message): Message {
   let changed = false
   const versions = message.versions.map((version) => {
+    if (shouldPreserveFullMessageContent(message, version.content)) {
+      return version
+    }
+
     const collapsedContent = collapseRepeatedSectionSnapshots(version.content)
     const content = truncateText(collapsedContent, MAX_LOADED_MESSAGE_CHARS)
 
@@ -290,6 +319,23 @@ function trimMessagesByContentSize(messages: Message[]): Message[] {
   return result.reverse()
 }
 
+function trimMessagesForStorageBudget(messages: Message[]): Message[] {
+  let result = trimMessages(messages)
+
+  while (result.length > 1) {
+    const payload: StoredEnvelope<Message[]> = {
+      version: STORAGE_VERSION,
+      data: result,
+    }
+    if (JSON.stringify(payload).length <= MAX_STORED_MESSAGES_BYTES) {
+      return result
+    }
+    result = result.slice(1)
+  }
+
+  return result
+}
+
 /**
  * Load playground config from localStorage
  */
@@ -367,11 +413,11 @@ export function saveParameterEnabled(
  * Load messages from localStorage
  */
 export function loadMessages(scope?: PlaygroundStorageScope): Message[] | null {
+  const key = getScopedStorageKey(STORAGE_KEYS.MESSAGES, scope)
+
   try {
-    const saved = readStoredMessagesValue(
-      getScopedStorageKey(STORAGE_KEYS.MESSAGES, scope)
-    )
-    if (!saved) return null
+    const saved = readStoredMessagesValue(key)
+    if (!saved) return getCachedMessagesFromMemory(key)
 
     const parsed = messagesSchema.parse(unwrapStoredValue(saved)) as Message[]
     const normalized = parsed.map(normalizeStoredMessageForLoad)
@@ -391,12 +437,13 @@ export function loadMessages(scope?: PlaygroundStorageScope): Message[] | null {
       saveMessages(sanitized, scope)
     }
 
+    cacheMessagesInMemory(key, sanitized)
     return sanitized
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('Failed to load messages:', error)
   }
-  return null
+  return getCachedMessagesFromMemory(key)
 }
 
 /**
@@ -406,10 +453,13 @@ export function saveMessages(
   messages: Message[],
   scope?: PlaygroundStorageScope
 ): void {
+  const key = getScopedStorageKey(STORAGE_KEYS.MESSAGES, scope)
+
   try {
-    const trimmed = trimMessages(messages)
+    const trimmed = trimMessagesForStorageBudget(messages)
     const parsed = messagesSchema.parse(trimmed) as Message[]
-    writeStoredValue(getScopedStorageKey(STORAGE_KEYS.MESSAGES, scope), parsed)
+    cacheMessagesInMemory(key, parsed)
+    writeStoredValue(key, parsed)
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('Failed to save messages:', error)
@@ -425,7 +475,9 @@ export function clearPlaygroundData(scope?: PlaygroundStorageScope): void {
     localStorage.removeItem(
       getScopedStorageKey(STORAGE_KEYS.PARAMETER_ENABLED, scope)
     )
-    localStorage.removeItem(getScopedStorageKey(STORAGE_KEYS.MESSAGES, scope))
+    const messagesKey = getScopedStorageKey(STORAGE_KEYS.MESSAGES, scope)
+    localStorage.removeItem(messagesKey)
+    persistedMessagesMemoryCache.delete(messagesKey)
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('Failed to clear playground data:', error)

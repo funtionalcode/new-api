@@ -18,8 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { RefreshCw } from 'lucide-react'
+import { CalendarRange, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { DateTimePicker } from '@/components/datetime-picker'
 import { SectionPageLayout } from '@/components/layout'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -39,13 +40,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { TIME_RANGE_PRESETS } from '@/features/dashboard/constants'
 import {
   formatLogQuota,
   formatTimestampToDate,
   formatTokenDetails,
   formatTokens,
-  parseTimestampFromInput,
 } from '@/lib/format'
+import { getRollingDateRange } from '@/lib/time'
 import {
   Tooltip,
   TooltipContent,
@@ -56,20 +59,10 @@ import { getUserConsumption } from './api'
 import { TokenStatCards, TokenConsumptionCharts } from './components'
 import type { UserConsumptionSummary } from './types'
 
-const daySeconds = 24 * 60 * 60
+const defaultRangeDays = 29
 
-function getDefaultStartTimestamp() {
-  return Math.floor(Date.now() / 1000) - 30 * daySeconds
-}
-
-function getDefaultEndTimestamp() {
-  return Math.floor(Date.now() / 1000)
-}
-
-function formatDatetimeInput(timestamp: number) {
-  const date = new Date(timestamp * 1000)
-  const timezoneOffset = date.getTimezoneOffset() * 60 * 1000
-  return new Date(date.getTime() - timezoneOffset).toISOString().slice(0, 16)
+function toUnixSeconds(date: Date | undefined): number | undefined {
+  return date ? Math.floor(date.getTime() / 1000) : undefined
 }
 
 function TokenAmount({ value }: { value: number }) {
@@ -142,12 +135,13 @@ function UserSummaryCell({
 
 export function UserConsumption() {
   const { t } = useTranslation()
-  const [startInput, setStartInput] = useState(() =>
-    formatDatetimeInput(getDefaultStartTimestamp())
+  const [selectedRange, setSelectedRange] = useState<number | null>(
+    defaultRangeDays
   )
-  const [endInput, setEndInput] = useState(() =>
-    formatDatetimeInput(getDefaultEndTimestamp())
-  )
+  const [timeRange, setTimeRange] = useState<{
+    start?: Date
+    end?: Date
+  }>(() => getRollingDateRange(defaultRangeDays))
   const [username, setUsername] = useState('')
   const [tokenName, setTokenName] = useState('')
   const [authIndex, setAuthIndex] = useState('')
@@ -156,13 +150,24 @@ export function UserConsumption() {
     () => ({
       p: 1,
       page_size: 100,
-      start_timestamp: parseTimestampFromInput(startInput),
-      end_timestamp: parseTimestampFromInput(endInput),
+      start_timestamp: toUnixSeconds(timeRange.start),
+      end_timestamp: toUnixSeconds(timeRange.end),
       username: username.trim() || undefined,
       token_name: tokenName.trim() || undefined,
       auth_index: authIndex.trim() || undefined,
     }),
-    [authIndex, endInput, startInput, tokenName, username]
+    [authIndex, timeRange.end, timeRange.start, tokenName, username]
+  )
+
+  const rankFilters = useMemo(
+    () => ({
+      ...filters,
+      p: 1,
+      page_size: 500,
+      sort_by: 'total_tokens',
+      sort_order: 'desc',
+    }),
+    [filters]
   )
 
   const query = useQuery({
@@ -170,10 +175,39 @@ export function UserConsumption() {
     queryFn: () => getUserConsumption(filters),
   })
 
+  const rankQuery = useQuery({
+    queryKey: ['cliproxy-user-consumption-rank', rankFilters],
+    queryFn: () => getUserConsumption(rankFilters),
+  })
+
   const rows = useMemo(
     () => query.data?.data?.items ?? [],
     [query.data?.data?.items]
   )
+
+  const rankRows = useMemo(
+    () => rankQuery.data?.data?.items ?? [],
+    [rankQuery.data?.data?.items]
+  )
+
+  const timeRangeLabel = useMemo(() => {
+    return `${formatTimestampToDate(toUnixSeconds(timeRange.start))} ~ ${formatTimestampToDate(toUnixSeconds(timeRange.end))}`
+  }, [timeRange.end, timeRange.start])
+
+  const handleRangeChange = (days: number) => {
+    setTimeRange(getRollingDateRange(days))
+    setSelectedRange(days)
+  }
+
+  const handleStartChange = (date: Date | undefined) => {
+    setTimeRange((prev) => ({ ...prev, start: date }))
+    setSelectedRange(null)
+  }
+
+  const handleEndChange = (date: Date | undefined) => {
+    setTimeRange((prev) => ({ ...prev, end: date }))
+    setSelectedRange(null)
+  }
 
   const tokenGroupedData = useMemo(() => {
     const tokenMap = new Map<number, {
@@ -224,8 +258,20 @@ export function UserConsumption() {
     <SectionPageLayout>
       <SectionPageLayout.Title>{t('User Consumption')}</SectionPageLayout.Title>
       <SectionPageLayout.Actions>
-        <Button variant='outline' onClick={() => query.refetch()}>
-          <RefreshCw className={query.isFetching ? 'animate-spin' : undefined} />
+        <Button
+          variant='outline'
+          onClick={() => {
+            void query.refetch()
+            void rankQuery.refetch()
+          }}
+        >
+          <RefreshCw
+            className={
+              query.isFetching || rankQuery.isFetching
+                ? 'animate-spin'
+                : undefined
+            }
+          />
           {t('Refresh')}
         </Button>
       </SectionPageLayout.Actions>
@@ -239,39 +285,80 @@ export function UserConsumption() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-5'>
-                <Input
-                  type='datetime-local'
-                  value={startInput}
-                  onChange={(event) => setStartInput(event.target.value)}
-                />
-                <Input
-                  type='datetime-local'
-                  value={endInput}
-                  onChange={(event) => setEndInput(event.target.value)}
-                />
-                <Input
-                  value={username}
-                  placeholder={t('Filter by username')}
-                  onChange={(event) => setUsername(event.target.value)}
-                />
-                <Input
-                  value={tokenName}
-                  placeholder={t('Filter by token name')}
-                  onChange={(event) => setTokenName(event.target.value)}
-                />
-                <Input
-                  value={authIndex}
-                  placeholder={t('Filter by auth index')}
-                  onChange={(event) => setAuthIndex(event.target.value)}
-                />
+              <div className='space-y-3'>
+                <div className='flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between'>
+                  <div className='text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs'>
+                    <CalendarRange className='size-3.5 shrink-0' />
+                    <span>{t('Date Range')}:</span>
+                    <span className='truncate font-mono tabular-nums'>
+                      {timeRangeLabel}
+                    </span>
+                  </div>
+
+                  <div className='border-border/60 bg-muted/20 flex max-w-full flex-wrap items-center gap-2 rounded-md border px-2 py-1'>
+                    <CalendarRange className='text-muted-foreground size-4 shrink-0' />
+                    <DateTimePicker
+                      value={timeRange.start}
+                      onChange={handleStartChange}
+                      placeholder={t('Select start time')}
+                      className='w-[280px]'
+                    />
+                    <DateTimePicker
+                      value={timeRange.end}
+                      onChange={handleEndChange}
+                      placeholder={t('Select end time')}
+                      className='w-[280px]'
+                    />
+                  </div>
+                </div>
+
+                <div className='flex flex-wrap items-center gap-2'>
+                  <Tabs
+                    value={selectedRange == null ? '' : String(selectedRange)}
+                    onValueChange={(value) => handleRangeChange(Number(value))}
+                    className='shrink-0'
+                  >
+                    <TabsList>
+                      {TIME_RANGE_PRESETS.map((preset) => (
+                        <TabsTrigger
+                          key={preset.days}
+                          value={String(preset.days)}
+                          className='px-2.5 text-xs'
+                        >
+                          {t(preset.label)}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
+                  </Tabs>
+                </div>
+
+                <div className='grid gap-3 md:grid-cols-3'>
+                  <Input
+                    value={username}
+                    placeholder={t('Filter by username')}
+                    onChange={(event) => setUsername(event.target.value)}
+                  />
+                  <Input
+                    value={tokenName}
+                    placeholder={t('Filter by token name')}
+                    onChange={(event) => setTokenName(event.target.value)}
+                  />
+                  <Input
+                    value={authIndex}
+                    placeholder={t('Filter by auth index')}
+                    onChange={(event) => setAuthIndex(event.target.value)}
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>
 
           <TokenStatCards data={rows} loading={query.isLoading} />
 
-          <TokenConsumptionCharts data={rows} loading={query.isLoading} />
+          <TokenConsumptionCharts
+            data={rankRows}
+            loading={rankQuery.isLoading}
+          />
 
           <Card>
             <CardHeader>

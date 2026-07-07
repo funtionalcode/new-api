@@ -16,8 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { FlowQuotaDataItem } from '@/features/dashboard/types'
-import { formatTokens } from '@/lib/format'
+import { formatTokenDetails, formatTokens } from '@/lib/format'
+import type { UserConsumptionSummary } from '../types'
 
 type TFunction = (key: string, options?: Record<string, unknown>) => string
 
@@ -41,7 +41,7 @@ function formatTokenValue(value: number): string {
 function emptyTokenRankSpec(t: TFunction) {
   return {
     type: 'bar',
-    data: [{ id: 'userTokenRankData', values: [] }],
+    data: [{ id: 'tokenConsumptionRankData', values: [] }],
     xField: 'rawValue',
     yField: 'Token',
     seriesField: 'Token',
@@ -57,17 +57,27 @@ function emptyTokenRankSpec(t: TFunction) {
   }
 }
 
-export function processUserTokenRankChartData(
-  data: FlowQuotaDataItem[],
+export function processTokenConsumptionRankChartData(
+  data: UserConsumptionSummary[],
   t?: TFunction,
-  limit = 10
+  limit = 15
 ) {
   const translate = t ?? ((key) => key)
   const emptySpec = emptyTokenRankSpec(translate)
 
   if (!data || data.length === 0) return emptySpec
 
-  const tokenTotals = new Map<string, { label: string; tokens: number }>()
+  const tokenTotals = new Map<
+    string,
+    {
+      label: string
+      tokens: number
+      requests: number
+      quota: number
+      userIds: Set<number>
+    }
+  >()
+
   for (const item of data) {
     const tokenID = Number(item.token_id) || 0
     const tokenName = item.token_name?.trim()
@@ -79,8 +89,17 @@ export function processUserTokenRankChartData(
       (tokenID > 0 ? translate('Deleted ({{id}})', { id: tokenID }) : '')
     if (!label) continue
 
-    const existing = tokenTotals.get(key) || { label, tokens: 0 }
-    existing.tokens += Number(item.token_used) || 0
+    const existing = tokenTotals.get(key) || {
+      label,
+      tokens: 0,
+      requests: 0,
+      quota: 0,
+      userIds: new Set<number>(),
+    }
+    existing.tokens += Number(item.total_tokens) || 0
+    existing.requests += Number(item.request_count) || 0
+    existing.quota += Number(item.quota) || 0
+    if (item.user_id > 0) existing.userIds.add(item.user_id)
     tokenTotals.set(key, existing)
   }
 
@@ -90,10 +109,13 @@ export function processUserTokenRankChartData(
   if (sorted.length === 0) return emptySpec
 
   const visibleItems = sorted.slice(0, limit)
-  const totalValue = visibleItems.reduce((sum, item) => sum + item.tokens, 0)
+  const totalValue = sorted.reduce((sum, item) => sum + item.tokens, 0)
   const rankValues = visibleItems.map((item) => ({
     Token: item.label,
     rawValue: item.tokens,
+    requests: item.requests,
+    quota: item.quota,
+    userCount: item.userIds.size,
   }))
   const tokenColorMap = rankValues.reduce<Record<string, string>>(
     (acc, item, index) => {
@@ -105,7 +127,7 @@ export function processUserTokenRankChartData(
 
   return {
     type: 'bar',
-    data: [{ id: 'userTokenRankData', values: rankValues }],
+    data: [{ id: 'tokenConsumptionRankData', values: rankValues }],
     xField: 'rawValue',
     yField: 'Token',
     seriesField: 'Token',
@@ -140,7 +162,17 @@ export function processUserTokenRankChartData(
           {
             key: (datum: Record<string, unknown>) => datum?.Token,
             value: (datum: Record<string, unknown>) =>
-              formatTokenValue(Number(datum?.rawValue) || 0),
+              formatTokenDetails(Number(datum?.rawValue) || 0),
+          },
+          {
+            key: translate('Requests'),
+            value: (datum: Record<string, unknown>) =>
+              Number(datum?.requests || 0).toLocaleString(),
+          },
+          {
+            key: translate('Users'),
+            value: (datum: Record<string, unknown>) =>
+              Number(datum?.userCount || 0).toLocaleString(),
           },
         ],
       },
