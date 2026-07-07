@@ -41,6 +41,7 @@ export interface CommonFilters {
   startTime?: Date
   endTime?: Date
   channel?: string
+  channelName?: string
 }
 
 /**
@@ -289,6 +290,7 @@ export interface GetLogsParams {
   start_timestamp?: number
   end_timestamp?: number
   channel?: number
+  channel_name?: string
   group?: string
   ip?: string
   request_id?: string
@@ -314,6 +316,7 @@ export interface GetLogStatsParams {
   start_timestamp?: number
   end_timestamp?: number
   channel?: number
+  channel_name?: string
   group?: string
   ip?: string
   avg_start_timestamp?: number

@@ -19,11 +19,12 @@ func GetAllLogs(c *gin.Context) {
 	tokenName := c.Query("token_name")
 	modelName := c.Query("model_name")
 	channel, _ := strconv.Atoi(c.Query("channel"))
+	channelName := c.Query("channel_name")
 	group := c.Query("group")
 	ip := c.Query("ip")
 	requestId := c.Query("request_id")
 	upstreamRequestId := c.Query("upstream_request_id")
-	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, ip, requestId, upstreamRequestId)
+	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, channelName, group, ip, requestId, upstreamRequestId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -107,11 +108,12 @@ func GetLogsStat(c *gin.Context) {
 	username := c.Query("username")
 	modelName := c.Query("model_name")
 	channel, _ := strconv.Atoi(c.Query("channel"))
+	channelName := c.Query("channel_name")
 	group := c.Query("group")
 	ip := c.Query("ip")
 	requestId := c.Query("request_id")
 	upstreamRequestId := c.Query("upstream_request_id")
-	stat, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, ip, avgStartTimestamp, avgEndTimestamp, requestId, upstreamRequestId)
+	stat, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, channelName, group, ip, avgStartTimestamp, avgEndTimestamp, requestId, upstreamRequestId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -145,7 +147,7 @@ func GetLogsSelfStat(c *gin.Context) {
 	ip := c.Query("ip")
 	requestId := c.Query("request_id")
 	upstreamRequestId := c.Query("upstream_request_id")
-	quotaNum, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, ip, avgStartTimestamp, avgEndTimestamp, requestId, upstreamRequestId)
+	quotaNum, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, "", group, ip, avgStartTimestamp, avgEndTimestamp, requestId, upstreamRequestId)
 	if err != nil {
 		common.ApiError(c, err)
 		return

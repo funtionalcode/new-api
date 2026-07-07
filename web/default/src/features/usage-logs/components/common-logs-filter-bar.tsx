@@ -82,6 +82,7 @@ function buildSearchSourceKey(values: {
   startTime?: unknown
   endTime?: unknown
   channel?: unknown
+  channelName?: unknown
   model?: unknown
   token?: unknown
   group?: unknown
@@ -95,6 +96,7 @@ function buildSearchSourceKey(values: {
     values.startTime,
     values.endTime,
     values.channel,
+    values.channelName,
     values.model,
     values.token,
     values.group,
@@ -129,6 +131,7 @@ export function CommonLogsFilterBar<TData>(
       startTime: searchParams.startTime,
       endTime: searchParams.endTime,
       channel: searchParams.channel,
+      channelName: searchParams.channelName,
       model: searchParams.model,
       token: searchParams.token,
       group: searchParams.group,
@@ -144,6 +147,7 @@ export function CommonLogsFilterBar<TData>(
         : start,
       endTime: searchParams.endTime ? new Date(searchParams.endTime) : end,
       channel: searchParams.channel || undefined,
+      channelName: searchParams.channelName || undefined,
       model: searchParams.model || undefined,
       token: searchParams.token || undefined,
       group: searchParams.group || undefined,
@@ -161,6 +165,7 @@ export function CommonLogsFilterBar<TData>(
     searchParams.startTime,
     searchParams.endTime,
     searchParams.channel,
+    searchParams.channelName,
     searchParams.model,
     searchParams.token,
     searchParams.group,
@@ -243,6 +248,7 @@ export function CommonLogsFilterBar<TData>(
     !!filters.token ||
     !!filters.username ||
     !!filters.channel ||
+    !!filters.channelName ||
     !!filters.requestId ||
     !!filters.upstreamRequestId ||
     !!filters.ip
@@ -255,6 +261,7 @@ export function CommonLogsFilterBar<TData>(
     filters.token,
     isAdmin ? filters.username : undefined,
     isAdmin ? filters.channel : undefined,
+    isAdmin ? filters.channelName : undefined,
     filters.requestId,
     filters.upstreamRequestId,
     filters.ip,
@@ -394,6 +401,17 @@ export function CommonLogsFilterBar<TData>(
             placeholder={t('Channel ID')}
             value={filters.channel || ''}
             onChange={(e) => handleChange('channel', e.target.value)}
+            onKeyDown={handleKeyDown}
+          />
+        </LogsFilterField>
+      )}
+      {isAdmin && (
+        <LogsFilterField>
+          <LogsFilterInput
+            placeholder={t('Channel Name')}
+            type={sensitiveType}
+            value={filters.channelName || ''}
+            onChange={(e) => handleChange('channelName', e.target.value)}
             onKeyDown={handleKeyDown}
           />
         </LogsFilterField>

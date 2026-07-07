@@ -53,6 +53,7 @@ func TestSumUsedQuotaReturnsAverageUseTimeForConfiguredWindow(t *testing.T) {
 		"alice",
 		"tok",
 		3,
+		"",
 		"vip",
 		"192.0.2.1",
 		now-60,
@@ -100,6 +101,7 @@ func TestSumUsedQuotaAppliesRequestFiltersToAllStats(t *testing.T) {
 		0,
 		"",
 		"",
+		"",
 		now-60,
 		now,
 		"req-match",
@@ -107,6 +109,77 @@ func TestSumUsedQuotaAppliesRequestFiltersToAllStats(t *testing.T) {
 	)
 	require.NoError(t, err)
 
+	require.Equal(t, 100, stat.Quota)
+	require.Equal(t, 1, stat.Rpm)
+	require.Equal(t, 30, stat.Tpm)
+	require.InDelta(t, 4.0, stat.AvgUseTime, 0.001)
+	require.Equal(t, int64(1), stat.AvgUseTimeCount)
+}
+
+func TestLogQueriesFilterByChannelName(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, DB.Exec("DELETE FROM channels").Error)
+	require.NoError(t, LOG_DB.Exec("DELETE FROM logs").Error)
+	require.NoError(t, DB.Create(&[]Channel{
+		{Id: 31, Name: "codex-usa", Status: 1},
+		{Id: 32, Name: "deepseek-eu", Status: 1},
+	}).Error)
+
+	now := time.Now().Unix()
+	require.NoError(t, LOG_DB.Create(&[]Log{
+		{
+			Username: "root", TokenName: "tok", ModelName: "gpt-test",
+			CreatedAt: now - 30, Type: LogTypeConsume, Quota: 100,
+			PromptTokens: 10, CompletionTokens: 20, UseTime: 4,
+			ChannelId: 31,
+		},
+		{
+			Username: "root", TokenName: "tok", ModelName: "gpt-test",
+			CreatedAt: now - 20, Type: LogTypeConsume, Quota: 900,
+			PromptTokens: 90, CompletionTokens: 90, UseTime: 30,
+			ChannelId: 32,
+		},
+	}).Error)
+
+	logs, total, err := GetAllLogs(
+		LogTypeConsume,
+		now-60,
+		now,
+		"",
+		"",
+		"",
+		0,
+		10,
+		0,
+		"codex",
+		"",
+		"",
+		"",
+		"",
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Len(t, logs, 1)
+	require.Equal(t, 31, logs[0].ChannelId)
+	require.Equal(t, "codex-usa", logs[0].ChannelName)
+
+	stat, err := SumUsedQuota(
+		LogTypeUnknown,
+		now-60,
+		now,
+		"gpt-test",
+		"root",
+		"tok",
+		0,
+		"codex",
+		"",
+		"",
+		now-60,
+		now,
+		"",
+		"",
+	)
+	require.NoError(t, err)
 	require.Equal(t, 100, stat.Quota)
 	require.Equal(t, 1, stat.Rpm)
 	require.Equal(t, 30, stat.Tpm)
