@@ -116,6 +116,45 @@ func TestSumUsedQuotaAppliesRequestFiltersToAllStats(t *testing.T) {
 	require.Equal(t, int64(1), stat.AvgUseTimeCount)
 }
 
+func TestSumUsedQuotaAppliesLogTypeFilterToAverageUseTime(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, LOG_DB.Exec("DELETE FROM logs").Error)
+
+	now := time.Now().Unix()
+	require.NoError(t, LOG_DB.Create(&[]Log{
+		{
+			Username: "root", TokenName: "tok", ModelName: "gpt-test",
+			CreatedAt: now - 30, Type: LogTypeConsume, Quota: 100,
+			PromptTokens: 10, CompletionTokens: 20, UseTime: 4,
+		},
+		{
+			Username: "root", TokenName: "tok", ModelName: "gpt-test",
+			CreatedAt: now - 20, Type: LogTypeError, UseTime: 12,
+		},
+	}).Error)
+
+	stat, err := SumUsedQuota(
+		LogTypeError,
+		now-60,
+		now,
+		"gpt-test",
+		"root",
+		"tok",
+		0,
+		"",
+		"",
+		"",
+		now-60,
+		now,
+		"",
+		"",
+	)
+	require.NoError(t, err)
+
+	require.InDelta(t, 12.0, stat.AvgUseTime, 0.001)
+	require.Equal(t, int64(1), stat.AvgUseTimeCount)
+}
+
 func TestLogQueriesFilterByChannelName(t *testing.T) {
 	truncateTables(t)
 	require.NoError(t, DB.Exec("DELETE FROM channels").Error)
