@@ -103,6 +103,7 @@ import {
   type CliproxyUsageWindowKey,
 } from './lib/usage-summary'
 import {
+  getCliproxyAuthFileEmail,
   getCliproxyAuthFileType,
   getCliproxyAuthFileTypeLabel,
 } from './lib/auth-file-type'
@@ -250,6 +251,15 @@ function AuthFileTypeBadge(props: { binding: CliproxyAuthFileBinding }) {
     >
       {label}
     </Badge>
+  )
+}
+
+function AuthFileEmailCell(props: { binding: CliproxyAuthFileBinding }) {
+  const email = getCliproxyAuthFileEmail(props.binding)
+  return (
+    <div className='max-w-[260px] truncate font-mono text-sm'>
+      {email || '-'}
+    </div>
   )
 }
 
@@ -403,25 +413,13 @@ function BindingUsageCell({
                 </span>
               </div>
             ))}
-            <div className='border-background/15 grid gap-1 border-t pt-2'>
-              <div className='flex justify-between gap-4'>
-                <span className='text-background/70'>{labels.quota}</span>
-                <span className='font-mono'>
-                  {binding.last_usage_quota || '-'}
-                </span>
-              </div>
-              <div className='flex justify-between gap-4'>
-                <span className='text-background/70'>{t('Total Tokens')}</span>
-                <span className='font-mono'>
-                  {formatTokenDetails(binding.last_usage_tokens)}
-                </span>
-              </div>
-              {binding.last_error ? (
+            {binding.last_error ? (
+              <div className='border-background/15 border-t pt-2'>
                 <div className='text-background/80 whitespace-pre-wrap break-words'>
                   {binding.last_error}
                 </div>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
           </div>
         </TooltipContent>
       </Tooltip>
@@ -1000,6 +998,7 @@ function BindingTable({
             <TableRow>
               <TableHead>{t('User')}</TableHead>
               <TableHead>{t('Type')}</TableHead>
+              <TableHead>{t('Email')}</TableHead>
               <TableHead>{t('Usage')}</TableHead>
               <TableHead>{t('Last Refreshed')}</TableHead>
               <TableHead>{t('Status')}</TableHead>
@@ -1053,6 +1052,9 @@ function BindingTable({
                   </TableCell>
                   <TableCell>
                     <AuthFileTypeBadge binding={binding} />
+                  </TableCell>
+                  <TableCell>
+                    <AuthFileEmailCell binding={binding} />
                   </TableCell>
                   <TableCell>
                     <BindingUsageCell

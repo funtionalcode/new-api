@@ -18,6 +18,10 @@ interface CliproxyAuthFileTypeSource {
   last_plan_type?: string
 }
 
+const emailPlanSuffixPattern =
+  /[-_](pro|prolite|plus|free|team|plan[-_]?max|plan[-_]?pro|plan[-_]?team|plan[-_]?free|claude[-_]?max|claude[-_]?pro|claude[-_]?team|claude[-_]?free|\d+x)$/i
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
 function normalizeCliproxyPlan(value?: string): string {
   return String(value || '')
     .toLowerCase()
@@ -59,4 +63,29 @@ export function getCliproxyAuthFileTypeLabel(
   type: CliproxyAuthFileType
 ): string {
   return type === 'claude' ? 'Claude' : 'Codex'
+}
+
+function getAuthFileBaseName(value?: string): string {
+  const normalized = String(value || '').trim().replaceAll('\\', '/')
+  if (!normalized) {
+    return ''
+  }
+  return normalized.split('/').at(-1) || ''
+}
+
+function emailFromAuthFileName(value?: string): string {
+  const name = getAuthFileBaseName(value)
+    .replace(/\.json$/i, '')
+    .replace(/^(codex|claude)[-_]/i, '')
+    .replace(emailPlanSuffixPattern, '')
+  return emailPattern.test(name) ? name : ''
+}
+
+export function getCliproxyAuthFileEmail(
+  source: CliproxyAuthFileTypeSource
+): string {
+  return (
+    emailFromAuthFileName(source.auth_name) ||
+    emailFromAuthFileName(source.auth_file)
+  )
 }

@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { getCliproxyAuthFileType } from './auth-file-type'
+import {
+  getCliproxyAuthFileEmail,
+  getCliproxyAuthFileType,
+} from './auth-file-type'
 
 describe('cliproxy auth file type', () => {
   test('detects Claude bindings from auth names and plan types', () => {
@@ -31,6 +34,25 @@ describe('cliproxy auth file type', () => {
         last_plan_type: 'pro',
       }),
       'codex'
+    )
+  })
+
+  test('extracts email from auth file names', () => {
+    assert.equal(
+      getCliproxyAuthFileEmail({
+        auth_name: 'codex-hermensdriggars@gmail.com-pro.json',
+        auth_file: '',
+        last_plan_type: '',
+      }),
+      'hermensdriggars@gmail.com'
+    )
+    assert.equal(
+      getCliproxyAuthFileEmail({
+        auth_name: 'claude-gooddgege@gmail.com.json',
+        auth_file: '',
+        last_plan_type: '',
+      }),
+      'gooddgege@gmail.com'
     )
   })
 })
