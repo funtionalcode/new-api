@@ -789,13 +789,12 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 		avgUseTimeQuery = avgUseTimeQuery.Where(logGroupCol+" = ?", group)
 	}
 
-	tx = tx.Where("type = ?", LogTypeConsume)
-	rpmTpmQuery = rpmTpmQuery.Where("type = ?", LogTypeConsume)
-	if logType == LogTypeUnknown {
-		avgUseTimeQuery = avgUseTimeQuery.Where("type = ? and use_time > ?", LogTypeConsume, 0)
-	} else {
-		avgUseTimeQuery = avgUseTimeQuery.Where("type = ? and use_time > ?", logType, 0)
+	if logType != LogTypeUnknown {
+		tx = tx.Where("type = ?", logType)
+		rpmTpmQuery = rpmTpmQuery.Where("type = ?", logType)
+		avgUseTimeQuery = avgUseTimeQuery.Where("type = ?", logType)
 	}
+	avgUseTimeQuery = avgUseTimeQuery.Where("use_time > ?", 0)
 
 	rpmTpmStartTimestamp := startTimestamp
 	rpmTpmEndTimestamp := endTimestamp

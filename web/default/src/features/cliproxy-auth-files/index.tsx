@@ -102,6 +102,10 @@ import {
   buildCliproxyUsageSummary,
   type CliproxyUsageWindowKey,
 } from './lib/usage-summary'
+import {
+  getCliproxyAuthFileType,
+  getCliproxyAuthFileTypeLabel,
+} from './lib/auth-file-type'
 import type {
   CliproxyAuthFile,
   CliproxyAuthFileBinding,
@@ -224,6 +228,27 @@ function PlanLabel(props: { value?: string | null }) {
           {config.multiplier}
         </span>
       ) : null}
+    </Badge>
+  )
+}
+
+function AuthFileTypeBadge(props: { binding: CliproxyAuthFileBinding }) {
+  const type = getCliproxyAuthFileType(props.binding)
+  const label = getCliproxyAuthFileTypeLabel(type)
+  const className =
+    type === 'claude'
+      ? 'border-violet-300 bg-violet-50 text-violet-800 dark:border-violet-700 dark:bg-violet-950/35 dark:text-violet-200'
+      : 'border-sky-300 bg-sky-50 text-sky-800 dark:border-sky-700 dark:bg-sky-950/35 dark:text-sky-200'
+
+  return (
+    <Badge
+      variant='outline'
+      className={cn(
+        'inline-flex h-6 rounded-md px-2 font-mono text-[11px] font-semibold tracking-normal',
+        className
+      )}
+    >
+      {label}
     </Badge>
   )
 }
@@ -974,7 +999,7 @@ function BindingTable({
           <TableHeader>
             <TableRow>
               <TableHead>{t('User')}</TableHead>
-              <TableHead>{t('Auth File')}</TableHead>
+              <TableHead>{t('Type')}</TableHead>
               <TableHead>{t('Usage')}</TableHead>
               <TableHead>{t('Last Refreshed')}</TableHead>
               <TableHead>{t('Status')}</TableHead>
@@ -1027,10 +1052,7 @@ function BindingTable({
                     </TooltipProvider>
                   </TableCell>
                   <TableCell>
-                    <div>{binding.auth_name || '-'}</div>
-                    <div className='text-muted-foreground font-mono text-xs'>
-                      {binding.auth_index}
-                    </div>
+                    <AuthFileTypeBadge binding={binding} />
                   </TableCell>
                   <TableCell>
                     <BindingUsageCell

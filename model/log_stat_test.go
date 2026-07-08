@@ -46,7 +46,7 @@ func TestSumUsedQuotaReturnsAverageUseTimeForConfiguredWindow(t *testing.T) {
 	require.NoError(t, LOG_DB.Create(&logs).Error)
 
 	stat, err := SumUsedQuota(
-		LogTypeUnknown,
+		LogTypeConsume,
 		now-180,
 		now,
 		"gpt-test",
@@ -129,7 +129,8 @@ func TestSumUsedQuotaAppliesLogTypeFilterToAverageUseTime(t *testing.T) {
 		},
 		{
 			Username: "root", TokenName: "tok", ModelName: "gpt-test",
-			CreatedAt: now - 20, Type: LogTypeError, UseTime: 12,
+			CreatedAt: now - 20, Type: LogTypeError, Quota: 50,
+			PromptTokens: 5, CompletionTokens: 6, UseTime: 12,
 		},
 	}).Error)
 
@@ -151,6 +152,9 @@ func TestSumUsedQuotaAppliesLogTypeFilterToAverageUseTime(t *testing.T) {
 	)
 	require.NoError(t, err)
 
+	require.Equal(t, 50, stat.Quota)
+	require.Equal(t, 1, stat.Rpm)
+	require.Equal(t, 11, stat.Tpm)
 	require.InDelta(t, 12.0, stat.AvgUseTime, 0.001)
 	require.Equal(t, int64(1), stat.AvgUseTimeCount)
 }
