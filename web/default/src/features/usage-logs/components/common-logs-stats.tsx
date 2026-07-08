@@ -28,7 +28,7 @@ import { cn } from '@/lib/utils'
 import { getLogStats, getUserLogStats } from '../api'
 import { DEFAULT_LOG_STATS } from '../constants'
 import { formatAverageUseTimeSeconds } from '../lib/stat-format'
-import { buildApiParams } from '../lib/utils'
+import { buildStatsApiParams } from '../lib/utils'
 import { useUsageLogsContext } from './usage-logs-provider'
 
 const route = getRouteApi('/_authenticated/usage-logs/$section')
@@ -58,9 +58,7 @@ export function CommonLogsStats() {
   const { data: stats, isLoading } = useQuery({
     queryKey: ['usage-logs-stats', isAdmin, searchParams],
     queryFn: async () => {
-      const params = buildApiParams({
-        page: 1,
-        pageSize: 1,
+      const params = buildStatsApiParams({
         searchParams,
         columnFilters: [],
         isAdmin,

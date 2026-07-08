@@ -35,6 +35,7 @@ import {
 import type {
   GetLogsParams,
   GetLogsResponse,
+  GetLogStatsParams,
   FetchLogsConfig,
   GetMidjourneyLogsParams,
   GetTaskLogsParams,
@@ -236,6 +237,37 @@ export function buildApiParams(config: {
   }
 
   return params
+}
+
+export function buildStatsApiParams(config: {
+  searchParams: Record<string, unknown>
+  columnFilters?: Array<{ id: string; value: unknown }>
+  isAdmin: boolean
+}): GetLogStatsParams {
+  const params = buildApiParams({
+    page: 1,
+    pageSize: 1,
+    searchParams: config.searchParams,
+    columnFilters: config.columnFilters,
+    isAdmin: config.isAdmin,
+  })
+
+  return {
+    type: params.type,
+    username: params.username,
+    token_name: params.token_name,
+    model_name: params.model_name,
+    start_timestamp: params.start_timestamp,
+    end_timestamp: params.end_timestamp,
+    channel: params.channel,
+    channel_name: params.channel_name,
+    group: params.group,
+    ip: params.ip,
+    avg_start_timestamp: params.start_timestamp,
+    avg_end_timestamp: params.end_timestamp,
+    request_id: params.request_id,
+    upstream_request_id: params.upstream_request_id,
+  }
 }
 
 // ============================================================================
