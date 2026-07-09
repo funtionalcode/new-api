@@ -38,6 +38,16 @@ function createImageMessage(content: string): Message {
   }
 }
 
+function createVideoMessage(content: string): Message {
+  return {
+    key: `assistant-${Date.now()}`,
+    from: 'assistant',
+    mode: 'video',
+    status: 'complete',
+    versions: [{ id: 'v1', content }],
+  }
+}
+
 function getTestConsole(): Pick<Console, 'error'> {
   return Reflect.get(globalThis, 'console') as Pick<Console, 'error'>
 }
@@ -85,6 +95,16 @@ describe('playground message storage', () => {
     const loaded = loadMessages(scope)
 
     assert.equal(loaded?.[0]?.versions[0]?.content, imageMarkdown)
+    clearPlaygroundData(scope)
+  })
+
+  test('preserves generated video mode when loading from storage', () => {
+    const scope = 'video-history'
+
+    saveMessages([createVideoMessage('[Video Preview](/v1/videos/task_123/content)')], scope)
+    const loaded = loadMessages(scope)
+
+    assert.equal(loaded?.[0]?.mode, 'video')
     clearPlaygroundData(scope)
   })
 })

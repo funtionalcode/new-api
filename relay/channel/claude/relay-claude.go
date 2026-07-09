@@ -44,6 +44,10 @@ func maybeMarkClaudeRefusal(c *gin.Context, stopReason string) {
 	}
 }
 
+func claudeModelOmitsSamplingParams(model string) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(model)), "fable")
+}
+
 func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRequest) (*dto.ClaudeRequest, error) {
 	claudeTools := make([]any, 0, len(textRequest.Tools))
 
@@ -241,6 +245,12 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 				BudgetTokens: &budgetTokens,
 			}
 		}
+	}
+
+	if claudeModelOmitsSamplingParams(claudeRequest.Model) {
+		claudeRequest.Temperature = nil
+		claudeRequest.TopP = nil
+		claudeRequest.TopK = nil
 	}
 
 	if textRequest.Stop != nil {

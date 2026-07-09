@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { buildCliproxyUsageSummary } from './usage-summary'
+import {
+  buildCliproxyUsageSummary,
+  buildCliproxyXAIUsageSummary,
+} from './usage-summary'
 
 describe('cliproxy auth file usage summary', () => {
   test('keeps only primary usage windows in the table summary', () => {
@@ -18,6 +21,8 @@ describe('cliproxy auth file usage summary', () => {
       last_codex_five_hour_reset_at: 1783371908,
       last_codex_weekly_percent: 10,
       last_codex_weekly_reset_at: 1783394218,
+      last_xai_on_demand_cap: 0,
+      last_xai_billing_period_end_at: 0,
       last_error: '',
     })
 
@@ -46,11 +51,28 @@ describe('cliproxy auth file usage summary', () => {
       last_codex_five_hour_reset_at: 0,
       last_codex_weekly_percent: 0,
       last_codex_weekly_reset_at: 0,
+      last_xai_on_demand_cap: 0,
+      last_xai_billing_period_end_at: 0,
       last_error: '',
     })
 
     assert.equal(summary.hasUsageWindow, false)
     assert.equal(summary.primaryWindows.length, 0)
     assert.equal(summary.detailWindows.length, 0)
+  })
+
+  test('formats xAI billing values as USD cents with remaining percent', () => {
+    const summary = buildCliproxyXAIUsageSummary({
+      last_usage_tokens: 0,
+      last_usage_quota: 15000,
+      last_xai_on_demand_cap: 0,
+      last_xai_billing_period_end_at: 1785542400,
+    })
+
+    assert.equal(summary.remainingPercent, 100)
+    assert.equal(summary.remainingLabel, '$150.00')
+    assert.equal(summary.quotaLabel, '$150.00')
+    assert.equal(summary.onDemandCapLabel, '$0.00')
+    assert.equal(summary.billingPeriodEndAt, 1785542400)
   })
 })

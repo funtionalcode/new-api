@@ -46,6 +46,8 @@ type cliproxyUsageRefreshBody struct {
 	CodexFiveHourResetAt int64
 	CodexWeeklyPercent   int
 	CodexWeeklyResetAt   int64
+	OnDemandCap          int
+	BillingPeriodEndAt   int64
 }
 
 func GetCliproxyRemoteAuthFiles(c *gin.Context) {
@@ -192,18 +194,20 @@ func RefreshCliproxyAuthFileBindingUsage(c *gin.Context) {
 		usage.PlanType = firstNonEmpty(fetchCliproxyClaudeProfilePlan(c.Request.Context(), client, binding.AuthIndex), usage.PlanType, binding.LastPlanType)
 	}
 	updatedBinding, err := model.UpdateCliproxyAuthFileBindingUsage(id, model.CliproxyUsageRefreshUpdate{
-		LastUsageTokens:          usage.UsedTokens,
-		LastUsageQuota:           usage.Quota,
-		LastPlanType:             usage.PlanType,
-		LastFiveHourPercent:      usage.FiveHourPercent,
-		LastFiveHourResetAt:      usage.FiveHourResetAt,
-		LastWeeklyPercent:        usage.WeeklyPercent,
-		LastWeeklyResetAt:        usage.WeeklyResetAt,
-		LastCodexFiveHourPercent: usage.CodexFiveHourPercent,
-		LastCodexFiveHourResetAt: usage.CodexFiveHourResetAt,
-		LastCodexWeeklyPercent:   usage.CodexWeeklyPercent,
-		LastCodexWeeklyResetAt:   usage.CodexWeeklyResetAt,
-		LastError:                "",
+		LastUsageTokens:           usage.UsedTokens,
+		LastUsageQuota:            usage.Quota,
+		LastPlanType:              usage.PlanType,
+		LastFiveHourPercent:       usage.FiveHourPercent,
+		LastFiveHourResetAt:       usage.FiveHourResetAt,
+		LastWeeklyPercent:         usage.WeeklyPercent,
+		LastWeeklyResetAt:         usage.WeeklyResetAt,
+		LastCodexFiveHourPercent:  usage.CodexFiveHourPercent,
+		LastCodexFiveHourResetAt:  usage.CodexFiveHourResetAt,
+		LastCodexWeeklyPercent:    usage.CodexWeeklyPercent,
+		LastCodexWeeklyResetAt:    usage.CodexWeeklyResetAt,
+		LastXAIOnDemandCap:        usage.OnDemandCap,
+		LastXAIBillingPeriodEndAt: usage.BillingPeriodEndAt,
+		LastError:                 "",
 	})
 	if err != nil {
 		common.ApiError(c, err)
@@ -426,15 +430,18 @@ func resolveCliproxyXAIUsage(body map[string]any) (cliproxyUsageRefreshBody, boo
 	config := mapFromMap(body, "config")
 	monthlyLimit := mapFromMap(config, "monthlyLimit")
 	used := mapFromMap(config, "used")
+	onDemandCap := mapFromMap(config, "onDemandCap")
 	quota := intFromMap(monthlyLimit, "val")
 	usedTokens := intFromMap(used, "val")
-	if quota == 0 && usedTokens == 0 && len(monthlyLimit) == 0 && len(used) == 0 {
+	if quota == 0 && usedTokens == 0 && len(monthlyLimit) == 0 && len(used) == 0 && len(onDemandCap) == 0 {
 		return cliproxyUsageRefreshBody{}, false
 	}
 	return cliproxyUsageRefreshBody{
-		UsedTokens: usedTokens,
-		Quota:      quota,
-		PlanType:   "xai",
+		UsedTokens:         usedTokens,
+		Quota:              quota,
+		PlanType:           "SuperGrok",
+		OnDemandCap:        intFromMap(onDemandCap, "val"),
+		BillingPeriodEndAt: unixFromRFC3339(stringFromMap(config, "billingPeriodEnd")),
 	}, true
 }
 
@@ -500,7 +507,8 @@ func isCliproxyXAIAuthFile(binding *model.CliproxyAuthFileBinding) bool {
 	if binding == nil {
 		return false
 	}
-	if normalizeCliproxyPlan(binding.LastPlanType) == "xai" {
+	switch normalizeCliproxyPlan(binding.LastPlanType) {
+	case "xai", "supergrok":
 		return true
 	}
 	return isCliproxyXAIAuthFileName(binding.AuthFile) || isCliproxyXAIAuthFileName(binding.AuthName)
@@ -615,6 +623,19 @@ func stringFromMap(data map[string]any, key string) string {
 
 func int64FromMap(data map[string]any, key string) int64 {
 	return int64(float64FromMap(data, key))
+}
+
+func unixFromRFC3339(raw string) int64 {
+	if raw == "" {
+		return 0
+	}
+	if parsed, err := time.Parse(time.RFC3339, raw); err == nil {
+		return parsed.Unix()
+	}
+	if parsed, err := time.Parse(time.RFC3339Nano, raw); err == nil {
+		return parsed.Unix()
+	}
+	return 0
 }
 
 func float64FromMap(data map[string]any, key string) float64 {

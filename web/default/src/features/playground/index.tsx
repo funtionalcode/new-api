@@ -45,6 +45,7 @@ import {
   getMessageContent,
   getPreviousUserMessage,
   parseRequestErrorDetails,
+  getPlaygroundTaskModel,
   updateAssistantMessageWithError,
   updateCurrentVersionContent,
   updateLastAssistantMessage,
@@ -114,10 +115,11 @@ export function Playground() {
       try {
         let content = ''
         if (taskMode === 'image') {
+          const imageModel = getPlaygroundTaskModel('image', config.model)
           content = buildImageGenerationMarkdown(
             await sendImageGeneration(
               {
-                model: config.model,
+                model: imageModel,
                 group: config.group,
                 prompt: text,
                 n: 1,
@@ -127,9 +129,10 @@ export function Playground() {
             )
           )
         } else if (taskMode === 'video') {
+          const videoModel = getPlaygroundTaskModel('video', config.model)
           const submittedVideo = await sendVideoGeneration(
             {
-              model: config.model,
+              model: videoModel,
               group: config.group,
               prompt: text,
               duration: 6,

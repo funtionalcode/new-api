@@ -100,6 +100,7 @@ import {
 } from './api'
 import {
   buildCliproxyUsageSummary,
+  buildCliproxyXAIUsageSummary,
   type CliproxyUsageWindowKey,
 } from './lib/usage-summary'
 import {
@@ -200,6 +201,14 @@ const getPlanLabelConfig = (value: unknown): PlanLabelConfig | null => {
     return {
       label: 'Free',
       className: 'border-border bg-muted text-muted-foreground',
+    }
+  }
+
+  if (key === 'supergrok') {
+    return {
+      label: 'SuperGrok',
+      className:
+        'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-200',
     }
   }
 
@@ -364,6 +373,52 @@ function BindingUsageCell({
   }
 }) {
   const { t } = useTranslation()
+  const type = getCliproxyAuthFileType(binding)
+  if (type === 'xai') {
+    const xaiSummary = buildCliproxyXAIUsageSummary(binding)
+
+    return (
+      <div className='min-w-[220px] space-y-2'>
+        <div className='flex items-center gap-2'>
+          <PlanLabel value={binding.last_plan_type || 'SuperGrok'} />
+          {binding.last_error ? (
+            <Badge variant='destructive' className='h-5 px-1.5 text-[11px]'>
+              {t('Error')}
+            </Badge>
+          ) : null}
+        </div>
+        <div className='space-y-1'>
+          <div className='flex items-center justify-between gap-3 text-xs'>
+            <span className='text-muted-foreground'>
+              {t('Monthly Billing Limit')}
+            </span>
+            <span className='font-mono font-medium'>
+              {xaiSummary.remainingPercent}% {t('Remaining')}{' '}
+              {xaiSummary.remainingLabel} / {xaiSummary.quotaLabel}
+            </span>
+          </div>
+          <Progress
+            value={xaiSummary.remainingPercent}
+            className={cn(
+              'h-1.5',
+              usageProgressColor(100 - xaiSummary.remainingPercent)
+            )}
+          />
+          <div className='text-muted-foreground flex items-center justify-between gap-3 text-xs'>
+            <span>
+              {t('On-demand Cap')} {xaiSummary.onDemandCapLabel}
+            </span>
+            <span>
+              {xaiSummary.billingPeriodEndAt > 0
+                ? formatTimestampToDate(xaiSummary.billingPeriodEndAt)
+                : '-'}
+            </span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const summary = buildCliproxyUsageSummary(binding)
 
   if (!summary.hasUsageWindow) {

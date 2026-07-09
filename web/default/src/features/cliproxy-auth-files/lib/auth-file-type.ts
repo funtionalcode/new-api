@@ -12,7 +12,7 @@ const claudePlanTypes = new Set([
   'claudefree',
 ])
 
-const xaiPlanTypes = new Set(['xai'])
+const xaiPlanTypes = new Set(['xai', 'supergrok'])
 
 interface CliproxyAuthFileTypeSource {
   auth_name?: string

@@ -74,7 +74,7 @@ const reasoningSchema = z.object({
 const messageSchema = z.object({
   key: z.string(),
   from: messageRoleSchema,
-  mode: z.enum(['chat', 'image', 'speech']).optional(),
+  mode: z.enum(['chat', 'image', 'speech', 'video']).optional(),
   versions: z.array(messageVersionSchema).min(1),
   createdAt: z.number().optional(),
   startedAt: z.number().optional(),

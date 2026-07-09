@@ -63,8 +63,10 @@ func TestExtractCliproxyUsageSupportsXAIBillingPayload(t *testing.T) {
 	result := &service.CliproxyAPICallResponse{
 		Body: map[string]any{
 			"config": map[string]any{
-				"monthlyLimit": map[string]any{"val": float64(15000)},
-				"used":         map[string]any{"val": float64(123)},
+				"monthlyLimit":     map[string]any{"val": float64(15000)},
+				"used":             map[string]any{"val": float64(123)},
+				"onDemandCap":      map[string]any{"val": float64(2500)},
+				"billingPeriodEnd": "2026-08-01T00:00:00+00:00",
 			},
 		},
 	}
@@ -72,9 +74,11 @@ func TestExtractCliproxyUsageSupportsXAIBillingPayload(t *testing.T) {
 	usage, err := extractCliproxyUsage(result)
 
 	require.NoError(t, err)
-	require.Equal(t, "xai", usage.PlanType)
+	require.Equal(t, "SuperGrok", usage.PlanType)
 	require.Equal(t, 123, usage.UsedTokens)
 	require.Equal(t, 15000, usage.Quota)
+	require.Equal(t, 2500, usage.OnDemandCap)
+	require.Equal(t, time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC).Unix(), usage.BillingPeriodEndAt)
 }
 
 func TestResolveCliproxyClaudeProfilePlan(t *testing.T) {
