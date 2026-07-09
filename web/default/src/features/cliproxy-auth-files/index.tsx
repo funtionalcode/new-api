@@ -162,7 +162,7 @@ const getPlanLabelConfig = (value: unknown): PlanLabelConfig | null => {
   const key = normalizePlanKey(value)
   if (!key) return null
 
-  if (key === 'pro' || key === 'pro20x') {
+  if (key === 'pro' || key === 'pro20x' || key === 'planmax' || key === 'claudemax') {
     return {
       label: 'Pro',
       multiplier: '20x',
@@ -180,7 +180,7 @@ const getPlanLabelConfig = (value: unknown): PlanLabelConfig | null => {
     }
   }
 
-  if (key === 'team') {
+  if (key === 'team' || key === 'planteam' || key === 'claudeteam') {
     return {
       label: 'Team',
       className:
@@ -188,7 +188,7 @@ const getPlanLabelConfig = (value: unknown): PlanLabelConfig | null => {
     }
   }
 
-  if (key === 'plus') {
+  if (key === 'plus' || key === 'planpro' || key === 'claudepro') {
     return {
       label: 'Plus',
       className:
@@ -196,7 +196,7 @@ const getPlanLabelConfig = (value: unknown): PlanLabelConfig | null => {
     }
   }
 
-  if (key === 'free') {
+  if (key === 'free' || key === 'planfree' || key === 'claudefree') {
     return {
       label: 'Free',
       className: 'border-border bg-muted text-muted-foreground',
@@ -234,7 +234,17 @@ function PlanLabel(props: { value?: string | null }) {
 }
 
 function AuthFileTypeBadge(props: { binding: CliproxyAuthFileBinding }) {
-  const type = getCliproxyAuthFileType(props.binding)
+  return <AuthFileTypeLabel source={props.binding} />
+}
+
+function AuthFileTypeLabel(props: {
+  source: {
+    auth_name?: string
+    auth_file?: string
+    last_plan_type?: string
+  }
+}) {
+  const type = getCliproxyAuthFileType(props.source)
   const label = getCliproxyAuthFileTypeLabel(type)
   const className =
     type === 'claude'
@@ -251,6 +261,23 @@ function AuthFileTypeBadge(props: { binding: CliproxyAuthFileBinding }) {
     >
       {label}
     </Badge>
+  )
+}
+
+function RemoteAuthFilePlanCell(props: { authFile: CliproxyAuthFile }) {
+  const source = {
+    auth_name: props.authFile.name,
+    auth_file: props.authFile.authFile,
+    last_plan_type: props.authFile.planType,
+  }
+
+  return (
+    <div className='flex flex-wrap items-center gap-2'>
+      <AuthFileTypeLabel source={source} />
+      {normalizePlanKey(props.authFile.planType) === 'claude' ? null : (
+        <PlanLabel value={props.authFile.planType} />
+      )}
+    </div>
   )
 }
 
@@ -820,9 +847,7 @@ function RemoteAuthFilesTable({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{t('Auth Index')}</TableHead>
                 <TableHead>{t('Auth Name')}</TableHead>
-                <TableHead>{t('Account ID')}</TableHead>
                 <TableHead>{t('Plan')}</TableHead>
                 <TableHead>{t('Status')}</TableHead>
                 <TableHead className='text-right'>{t('Actions')}</TableHead>
@@ -832,15 +857,9 @@ function RemoteAuthFilesTable({
               {authFiles.length > 0 ? (
                 authFiles.map((authFile) => (
                   <TableRow key={authFile.authIndex}>
-                    <TableCell className='font-mono text-xs'>
-                      {authFile.authIndex}
-                    </TableCell>
                     <TableCell>{authFile.name || '-'}</TableCell>
-                    <TableCell className='font-mono text-xs'>
-                      {authFile.accountId || '-'}
-                    </TableCell>
                     <TableCell>
-                      <PlanLabel value={authFile.planType} />
+                      <RemoteAuthFilePlanCell authFile={authFile} />
                     </TableCell>
                     <TableCell>
                       <Badge

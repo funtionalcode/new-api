@@ -37,6 +37,17 @@ describe('cliproxy auth file type', () => {
     )
   })
 
+  test('detects Codex remote files from auth names', () => {
+    assert.equal(
+      getCliproxyAuthFileType({
+        auth_name: 'codex-yuyangsga@gmail.com-pro.json',
+        auth_file: '',
+        last_plan_type: '',
+      }),
+      'codex'
+    )
+  })
+
   test('extracts email from auth file names', () => {
     assert.equal(
       getCliproxyAuthFileEmail({
