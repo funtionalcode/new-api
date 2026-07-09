@@ -78,13 +78,15 @@ export function updateCurrentVersionContent(
 export function createUserMessage(
   content: string,
   createdAt: number = Date.now(),
-  mode: PlaygroundMode = 'chat'
+  mode: PlaygroundMode = 'chat',
+  imageUrls: string[] = []
 ): Message {
   return {
     key: nanoid(),
     from: MESSAGE_ROLES.USER,
     mode,
     versions: [createMessageVersion(content)],
+    imageUrls: imageUrls.filter((url) => url.trim() !== ''),
     createdAt,
   }
 }
@@ -161,7 +163,7 @@ export function formatMessageForAPI(message: Message): ChatCompletionMessage {
   const currentVersion = getCurrentVersion(message)
   return {
     role: message.from,
-    content: currentVersion.content,
+    content: buildMessageContent(currentVersion.content, message.imageUrls),
   }
 }
 
@@ -174,6 +176,14 @@ export function isValidMessage(message: Message): boolean {
 
   // Exclude empty assistant messages (loading/streaming placeholders)
   if (message.from === MESSAGE_ROLES.ASSISTANT && !hasMessageContent(message)) {
+    return false
+  }
+
+  if (
+    message.from === MESSAGE_ROLES.USER &&
+    !hasMessageContent(message) &&
+    !message.imageUrls?.length
+  ) {
     return false
   }
 

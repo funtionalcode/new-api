@@ -28,13 +28,13 @@ import {
 } from '@/components/ai-elements/prompt-input'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
-import { getSubmittableInputText } from '../../lib'
+import { getPromptInputImageUrls, getSubmittableInputText } from '../../lib'
 import type { ModelOption, GroupOption, PlaygroundMode } from '../../types'
 import { PlaygroundInputControls } from './playground-input-controls'
 import { PlaygroundInputTools } from './playground-input-tools'
 
 interface PlaygroundInputProps {
-  onSubmit: (text: string) => void
+  onSubmit: (text: string, imageUrls?: string[]) => void
   onStop?: () => void
   disabled?: boolean
   isGenerating?: boolean
@@ -72,10 +72,15 @@ export function PlaygroundInput({
   const [text, setText] = useState('')
 
   const handleSubmit = (message: PromptInputMessage) => {
-    const submittableText = getSubmittableInputText(message, disabled)
+    const imageUrls = getPromptInputImageUrls(message)
+    const submittableText = getSubmittableInputText(
+      message,
+      disabled,
+      mode === 'chat' && imageUrls.length > 0
+    )
 
-    if (!submittableText) return
-    onSubmit(submittableText)
+    if (submittableText === null) return
+    onSubmit(submittableText, imageUrls)
     setText('')
   }
 
@@ -146,6 +151,7 @@ export function PlaygroundInput({
             isModelLoading={isModelLoading}
             models={models}
             modelValue={modelValue}
+            mode={mode}
             onGroupChange={onGroupChange}
             onModelChange={onModelChange}
             onStop={onStop}

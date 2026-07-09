@@ -40,16 +40,33 @@ function getMessageMode(message?: Message | null): PlaygroundMode {
   return message?.mode ?? 'chat'
 }
 
+function getRegenerationMode(
+  messages: Message[],
+  messageIndex: number
+): PlaygroundMode {
+  const message = messages[messageIndex]
+  if (message?.mode) {
+    return message.mode
+  }
+
+  if (message?.from === MESSAGE_ROLES.ASSISTANT) {
+    return getMessageMode(getPreviousUserMessage(messages, messageIndex))
+  }
+
+  return 'chat'
+}
+
 export function appendUserMessagePair(
   messages: Message[],
   content: string,
-  mode: PlaygroundMode = 'chat'
+  mode: PlaygroundMode = 'chat',
+  imageUrls: string[] = []
 ): Message[] {
   const submittedAt = Date.now()
 
   return [
     ...messages,
-    createUserMessage(content, submittedAt, mode),
+    createUserMessage(content, submittedAt, mode, imageUrls),
     createLoadingAssistantMessage(submittedAt, mode),
   ]
 }
@@ -66,7 +83,7 @@ export function createRegeneratedMessages(
     return null
   }
 
-  const mode = getMessageMode(messages[messageIndex])
+  const mode = getRegenerationMode(messages, messageIndex)
 
   if (messages[messageIndex].from === MESSAGE_ROLES.USER) {
     return [
@@ -104,7 +121,10 @@ export function getPreviousUserMessage(
 export function getPendingGenerationMode(messages: Message[]): PlaygroundMode {
   const lastMessage = messages.at(-1)
   if (lastMessage?.from === MESSAGE_ROLES.ASSISTANT) {
-    return getMessageMode(lastMessage)
+    return (
+      lastMessage.mode ??
+      getMessageMode(getPreviousUserMessage(messages, messages.length))
+    )
   }
 
   const previousUserMessage = getPreviousUserMessage(messages, messages.length)

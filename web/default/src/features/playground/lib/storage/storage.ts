@@ -105,6 +105,7 @@ function cloneMessages(messages: Message[]): Message[] {
   return messages.map((message) => ({
     ...message,
     versions: message.versions.map((version) => ({ ...version })),
+    imageUrls: message.imageUrls ? [...message.imageUrls] : undefined,
     sources: message.sources?.map((source) => ({ ...source })),
     reasoning: message.reasoning ? { ...message.reasoning } : undefined,
   }))
@@ -133,8 +134,10 @@ function getMessageSize(message: Message): number {
     0
   )
   const reasoningSize = message.reasoning?.content.length ?? 0
+  const imageUrlsSize =
+    message.imageUrls?.reduce((total, url) => total + url.length, 0) ?? 0
 
-  return versionsSize + reasoningSize
+  return versionsSize + reasoningSize + imageUrlsSize
 }
 
 function truncateText(text: string, maxLength: number): string {

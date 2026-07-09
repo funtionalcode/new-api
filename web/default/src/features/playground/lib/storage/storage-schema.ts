@@ -76,6 +76,7 @@ const messageSchema = z.object({
   from: messageRoleSchema,
   mode: z.enum(['chat', 'image', 'speech', 'video']).optional(),
   versions: z.array(messageVersionSchema).min(1),
+  imageUrls: z.array(z.string()).optional(),
   createdAt: z.number().optional(),
   startedAt: z.number().optional(),
   completedAt: z.number().optional(),

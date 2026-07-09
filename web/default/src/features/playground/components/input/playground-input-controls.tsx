@@ -20,11 +20,14 @@ import { SendIcon, SquareIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { PromptInputButton } from '@/components/ai-elements/prompt-input'
+import {
+  PromptInputButton,
+  usePromptInputAttachments,
+} from '@/components/ai-elements/prompt-input'
 import { ModelGroupSelector } from '@/components/model-group-selector'
 
 import { getInputControlState } from '../../lib'
-import type { GroupOption, ModelOption } from '../../types'
+import type { GroupOption, ModelOption, PlaygroundMode } from '../../types'
 
 type PlaygroundInputControlsProps = {
   disabled?: boolean
@@ -34,6 +37,7 @@ type PlaygroundInputControlsProps = {
   isModelLoading?: boolean
   models: ModelOption[]
   modelValue: string
+  mode: PlaygroundMode
   onGroupChange: (value: string) => void
   onModelChange: (value: string) => void
   onStop?: () => void
@@ -49,6 +53,7 @@ export function PlaygroundInputControls({
   isModelLoading = false,
   models,
   modelValue,
+  mode,
   onGroupChange,
   onModelChange,
   onStop,
@@ -56,10 +61,13 @@ export function PlaygroundInputControls({
   tools,
 }: PlaygroundInputControlsProps) {
   const { t } = useTranslation()
+  const attachments = usePromptInputAttachments()
   const { canSubmit, isSelectorDisabled, shouldShowStop } =
     getInputControlState({
+      allowAttachmentOnly: mode === 'chat',
       disabled,
       groups,
+      hasAttachments: attachments.files.length > 0,
       hasStopHandler: Boolean(onStop),
       isGenerating,
       isModelLoading,

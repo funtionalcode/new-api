@@ -35,6 +35,7 @@ export interface Message {
   from: MessageRole
   mode?: PlaygroundMode
   versions: MessageVersion[]
+  imageUrls?: string[]
   createdAt?: number
   startedAt?: number
   completedAt?: number
@@ -146,6 +147,7 @@ export interface VideoGenerationRequest {
   model: string
   group?: string
   prompt: string
+  image?: string
   duration?: number
 }
 

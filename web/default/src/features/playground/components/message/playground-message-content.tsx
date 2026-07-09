@@ -91,10 +91,13 @@ export function PlaygroundMessageContent({
   })
   const generatedVideoUrl =
     message.mode === 'video' ? extractGeneratedVideoUrl(displayContent) : null
+  const attachedImageUrls =
+    message.from === 'user' ? [...new Set(message.imageUrls ?? [])] : []
   const hasGeneratedMedia =
     generatedImageUrls.length > 0 ||
     generatedSpeechUrl !== null ||
     generatedVideoUrl !== null
+  const hasAttachedImages = attachedImageUrls.length > 0
   const isMessageFinal =
     message.status !== MESSAGE_STATUS.LOADING &&
     message.status !== MESSAGE_STATUS.STREAMING
@@ -149,7 +152,7 @@ export function PlaygroundMessageContent({
         </>
       )}
 
-      {!isError && showMessageContent && (
+      {!isError && (showMessageContent || hasAttachedImages) && (
         <>
           {isSourceVisible ? (
             <CodeBlock
@@ -170,8 +173,17 @@ export function PlaygroundMessageContent({
               variant='flat'
               className={cn(getMessageContentStyles())}
             >
-              {hasGeneratedMedia ? (
+              {hasGeneratedMedia || hasAttachedImages ? (
                 <div className='flex flex-col gap-3'>
+                  {attachedImageUrls.map((url) => (
+                    <img
+                      alt={t('Image')}
+                      className='border-border/60 max-h-[360px] max-w-full rounded-lg border object-contain'
+                      key={url}
+                      loading='lazy'
+                      src={url}
+                    />
+                  ))}
                   {generatedImageUrls.map((url, index) => (
                     <img
                       alt={t('Generated image {{index}}', {
@@ -196,6 +208,9 @@ export function PlaygroundMessageContent({
                       controls
                       src={generatedVideoUrl}
                     />
+                  ) : null}
+                  {hasAttachedImages && displayContent ? (
+                    <Response final={isMessageFinal}>{displayContent}</Response>
                   ) : null}
                 </div>
               ) : (

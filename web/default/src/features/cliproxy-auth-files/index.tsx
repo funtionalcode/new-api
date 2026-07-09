@@ -103,6 +103,7 @@ import {
   buildCliproxyXAIUsageSummary,
   type CliproxyUsageWindowKey,
 } from './lib/usage-summary'
+import { refreshCliproxyAuthFileBindingsUsageAll } from './lib/bulk-refresh'
 import {
   getCliproxyAuthFileEmail,
   getCliproxyAuthFileType,
@@ -973,6 +974,7 @@ function BindingTable({
   const [authIndex, setAuthIndex] = useState('')
   const [deleteTarget, setDeleteTarget] =
     useState<CliproxyAuthFileBinding | null>(null)
+  const [refreshingAll, setRefreshingAll] = useState(false)
 
   const query = useQuery({
     queryKey: ['cliproxy-auth-file-bindings', username, authIndex],
@@ -1009,6 +1011,39 @@ function BindingTable({
       toast.error(error.message || t('Failed to refresh usage'))
     },
   })
+
+  const refreshAll = async () => {
+    const enabledBindings = bindings.filter((binding) => binding.enabled)
+    if (enabledBindings.length === 0) {
+      toast.error(t('No bindings found'))
+      return
+    }
+
+    setRefreshingAll(true)
+    try {
+      const summary = await refreshCliproxyAuthFileBindingsUsageAll(
+        bindings,
+        refreshCliproxyAuthFileBindingUsage
+      )
+      if (summary.failed === 0) {
+        toast.success(t('Refresh succeeded'))
+      } else {
+        toast.error(
+          t('Refresh completed: {{success}} succeeded, {{fail}} failed', {
+            success: summary.success,
+            fail: summary.failed,
+          })
+        )
+      }
+      queryClient.invalidateQueries({
+        queryKey: ['cliproxy-auth-file-bindings'],
+      })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('Refresh failed'))
+    } finally {
+      setRefreshingAll(false)
+    }
+  }
 
   const deleteMutation = useMutation({
     mutationFn: deleteCliproxyAuthFileBinding,
@@ -1056,11 +1091,15 @@ function BindingTable({
             placeholder={t('Filter by auth index')}
             onChange={(event) => setAuthIndex(event.target.value)}
           />
-          <Button variant='outline' onClick={() => query.refetch()}>
+          <Button
+            variant='outline'
+            onClick={refreshAll}
+            disabled={refreshingAll || query.isLoading}
+          >
             <RefreshCw
-              className={query.isFetching ? 'animate-spin' : undefined}
+              className={refreshingAll ? 'animate-spin' : undefined}
             />
-            {t('Refresh')}
+            {t('Refresh All')}
           </Button>
         </div>
 

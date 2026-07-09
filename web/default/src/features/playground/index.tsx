@@ -105,6 +105,7 @@ export function Playground() {
         taskMessages.length
       )
       const text = promptMessage ? getMessageContent(promptMessage).trim() : ''
+      const imageUrls = promptMessage?.imageUrls ?? []
       if (!text) return
 
       const abortController = new AbortController()
@@ -135,6 +136,7 @@ export function Playground() {
               model: videoModel,
               group: config.group,
               prompt: text,
+              image: imageUrls[0],
               duration: 6,
             },
             abortController.signal
@@ -223,8 +225,8 @@ export function Playground() {
   )
 
   const handleSubmitMessage = useCallback(
-    (text: string) => {
-      const nextMessages = appendUserMessagePair(messages, text, mode)
+    (text: string, imageUrls: string[] = []) => {
+      const nextMessages = appendUserMessagePair(messages, text, mode, imageUrls)
       updateMessages(nextMessages)
       sendMessages(nextMessages, mode)
     },

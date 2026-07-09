@@ -107,4 +107,21 @@ describe('playground message storage', () => {
     assert.equal(loaded?.[0]?.mode, 'video')
     clearPlaygroundData(scope)
   })
+
+  test('preserves user screenshot image urls when loading from storage', () => {
+    const scope = 'screenshot-history'
+    const message: Message = {
+      key: 'user-1',
+      from: 'user',
+      mode: 'chat',
+      versions: [{ id: 'v1', content: 'look at this' }],
+      imageUrls: ['data:image/png;base64,abc'],
+    }
+
+    saveMessages([message], scope)
+    const loaded = loadMessages(scope)
+
+    assert.deepEqual(loaded?.[0]?.imageUrls, ['data:image/png;base64,abc'])
+    clearPlaygroundData(scope)
+  })
 })

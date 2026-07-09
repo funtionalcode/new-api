@@ -17,13 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { GlobeIcon, PaperclipIcon, Trash2Icon } from 'lucide-react'
-import { useState } from 'react'
+import { type ChangeEvent, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import {
   PromptInputButton,
   PromptInputTools,
+  usePromptInputAttachments,
 } from '@/components/ai-elements/prompt-input'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import {
@@ -42,6 +43,7 @@ import {
   ATTACHMENT_ACTIONS,
   getAttachmentActionNotice,
   getSearchActionNotice,
+  readClipboardImageFiles,
 } from '../../lib'
 
 type PlaygroundInputToolsProps = {
@@ -56,9 +58,45 @@ export function PlaygroundInputTools({
   onClearMessages,
 }: PlaygroundInputToolsProps) {
   const { t } = useTranslation()
+  const attachments = usePromptInputAttachments()
+  const imageInputRef = useRef<HTMLInputElement | null>(null)
+  const cameraInputRef = useRef<HTMLInputElement | null>(null)
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
 
-  const handleFileAction = (action: string) => {
+  const handleFileAction = async (action: string) => {
+    if (action === 'upload-file') {
+      attachments.openFileDialog()
+      return
+    }
+
+    if (action === 'upload-photo') {
+      imageInputRef.current?.click()
+      return
+    }
+
+    if (action === 'take-photo') {
+      cameraInputRef.current?.click()
+      return
+    }
+
+    if (action === 'take-screenshot') {
+      try {
+        const files = await readClipboardImageFiles()
+        if (files.length === 0) {
+          toast.error(t('No files match the accepted types.'))
+          return
+        }
+        attachments.add(files)
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : t('No files match the accepted types.')
+        )
+      }
+      return
+    }
+
     const notice = getAttachmentActionNotice(action)
     toast.info(t(notice.title), {
       description: notice.description,
@@ -76,8 +114,32 @@ export function PlaygroundInputTools({
     toast.success(t('Conversation cleared'))
   }
 
+  const handleImageInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = event.currentTarget.files
+    if (files && files.length > 0) {
+      attachments.add(files)
+    }
+    event.currentTarget.value = ''
+  }
+
   return (
     <>
+      <input
+        accept='image/*'
+        className='hidden'
+        multiple
+        onChange={handleImageInputChange}
+        ref={imageInputRef}
+        type='file'
+      />
+      <input
+        accept='image/*'
+        capture='environment'
+        className='hidden'
+        onChange={handleImageInputChange}
+        ref={cameraInputRef}
+        type='file'
+      />
       <PromptInputTools className='bg-background/70 border-border/60 rounded-lg border p-1 shadow-xs'>
         <Tooltip>
           <DropdownMenu>

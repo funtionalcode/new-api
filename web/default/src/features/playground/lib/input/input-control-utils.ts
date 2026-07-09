@@ -19,8 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 import type { GroupOption, ModelOption } from '../../types'
 
 type InputControlStateOptions = {
+  allowAttachmentOnly?: boolean
   disabled?: boolean
   groups: GroupOption[]
+  hasAttachments?: boolean
   hasStopHandler: boolean
   isGenerating?: boolean
   isModelLoading?: boolean
@@ -36,22 +38,44 @@ type InputControlState = {
 
 type SubmittableInputMessage = {
   text?: string | null
+  files?: Array<{
+    mediaType?: string
+    url?: string
+  }>
+}
+
+export function getPromptInputImageUrls(
+  message: SubmittableInputMessage
+): string[] {
+  return (
+    message.files
+      ?.filter((file) => file.mediaType?.startsWith('image/') && file.url)
+      .map((file) => file.url?.trim() ?? '')
+      .filter(Boolean) ?? []
+  )
 }
 
 export function getSubmittableInputText(
   message: SubmittableInputMessage,
-  disabled?: boolean
+  disabled?: boolean,
+  allowEmptyText: boolean = false
 ): string | null {
-  if (disabled || !message.text?.trim()) {
+  if (disabled) {
     return null
   }
 
-  return message.text
+  if (!message.text?.trim() && !allowEmptyText) {
+    return null
+  }
+
+  return message.text ?? ''
 }
 
 export function getInputControlState({
   disabled,
+  allowAttachmentOnly,
   groups,
+  hasAttachments,
   hasStopHandler,
   isGenerating,
   isModelLoading,
@@ -61,7 +85,11 @@ export function getInputControlState({
   const hasModels = models.length > 0
 
   return {
-    canSubmit: !disabled && hasModels && text.trim().length > 0,
+    canSubmit:
+      !disabled &&
+      hasModels &&
+      (text.trim().length > 0 ||
+        Boolean(hasAttachments && allowAttachmentOnly)),
     isSelectorDisabled: disabled || isModelLoading || groups.length === 0,
     shouldShowStop: Boolean(isGenerating && hasStopHandler),
   }
