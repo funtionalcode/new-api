@@ -46,6 +46,7 @@ import {
   getPreviousUserMessage,
   parseRequestErrorDetails,
   getPlaygroundTaskModel,
+  pollVideoGeneration,
   updateAssistantMessageWithError,
   updateCurrentVersionContent,
   updateLastAssistantMessage,
@@ -53,7 +54,6 @@ import {
 import type { Message, PlaygroundMode } from './types'
 
 const VIDEO_POLL_INTERVAL_MS = 2000
-const VIDEO_POLL_MAX_ATTEMPTS = 90
 
 function waitForVideoPollInterval(signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -143,20 +143,14 @@ export function Playground() {
           if (!videoId) {
             throw new Error(t('No video task returned'))
           }
-          let video = submittedVideo
-          for (let attempt = 0; attempt < VIDEO_POLL_MAX_ATTEMPTS; attempt++) {
-            if (video.status === 'completed') break
-            if (video.status === 'failed') {
-              throw new Error(
-                video.error?.message || t('Video generation failed')
-              )
-            }
-            await waitForVideoPollInterval(abortController.signal)
-            video = await getVideoGeneration(videoId, abortController.signal)
-          }
-          if (video.status !== 'completed') {
-            throw new Error(t('Video generation timed out'))
-          }
+          const video = await pollVideoGeneration({
+            videoId,
+            initialVideo: submittedVideo,
+            signal: abortController.signal,
+            failureMessage: t('Video generation failed'),
+            getVideoGeneration,
+            waitForPollInterval: waitForVideoPollInterval,
+          })
           content = buildVideoGenerationMarkdown(
             video.metadata?.url || `/v1/videos/${videoId}/content`
           )
@@ -209,6 +203,12 @@ export function Playground() {
     },
     [config.group, config.model, t, updateMessages]
   )
+
+  const stopTaskGeneration = useCallback(() => {
+    taskAbortControllerRef.current?.abort()
+    taskAbortControllerRef.current = null
+    setIsTaskGenerating(false)
+  }, [])
 
   const sendMessages = useCallback(
     (nextMessages: Message[], generationMode: PlaygroundMode = 'chat') => {
@@ -294,7 +294,7 @@ export function Playground() {
           onClearMessages={handleClearMessages}
           onModeChange={setMode}
           onModelChange={(value) => updateConfig('model', value)}
-          onStop={mode === 'chat' ? stopGeneration : undefined}
+          onStop={mode === 'chat' ? stopGeneration : stopTaskGeneration}
           onSubmit={handleSubmitMessage}
           hasMessages={messages.length > 0}
         />
