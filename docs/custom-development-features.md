@@ -23,6 +23,7 @@
 | 常规菜单 | 认证文件、GLM 额度和 DeepSeek 额度移动到常规菜单，普通用户可进入查看并刷新，编辑、新建、删除仍限管理员 | `controller/cliproxy.go`、`router/api-router.go`、`web/default/src/hooks/use-sidebar-*`、`web/default/src/features/*quota*`、`web/default/src/features/cliproxy-auth-files` | 本次同步 |
 | 渠道管理 | 渠道支持开放用户限制；未配置时默认开放给所有用户 | `controller/channel.go`、`model/channel.go`、`middleware/distributor.go`、`service/channel_select.go`、`web/default/src/features/channels` | `001cd50f` |
 | 渠道管理 | 在 `web/default` 实现渠道开放用户限制，支持编辑抽屉搜索选择用户、列表展示开放用户范围 | `web/default/src/features/channels` | 本次同步 |
+| 登录认证 | Passkey 支持检测不再要求内置平台验证器，浏览器支持 WebAuthn 时允许外置安全密钥/跨平台通行密钥入口 | `web/default/src/lib/passkey.ts`、`web/default/src/lib/passkey.test.ts` | 本次同步 |
 | 用户管理 | 新增每日、每周、每月可使用 Token 数量限制 | `model/user_token_limit.go`、`middleware/distributor.go`、`controller/user.go`、`web/default/src/features/users` | `ef3f665e` |
 | 用户管理 | 在 `web/default` 实现用户周期 Token 限制，创建/编辑用户时可维护每日、每周、每月 Token 上限，列表展示限制状态 | `web/default/src/features/users` | 本次同步 |
 | 用户管理 | 注销用户支持管理员恢复 | `controller/user.go`、`model/user.go`、`web/default/src/features/users` | `a8c7d4c7` |
@@ -47,6 +48,7 @@
 | 用户消耗 | 管理员用户消耗菜单补齐快捷日期筛选和开始/结束时间选择，排行图、统计卡和列表共用当前筛选条件 | `web/default/src/features/user-consumption` | 本次同步 |
 | 用户消耗 | 令牌消耗排行图随时间筛选窗口强制重建图表实例，并补充后端时间窗口过滤回归测试 | `model/cliproxy_user_consumption_test.go`、`web/default/src/features/user-consumption` | 本次同步 |
 | 真实 IP / 反代 | 支持 nginx 反代真实 IP 记录，并补充 host 3000 反代示例配置 | `middleware`、`setting`、`docs/installation/nginx-new-api-3000.conf` | `d5233257`、`333c84b1` |
+| 真实 IP / 反代 | 用户登录审计日志使用统一真实 IP 解析，可信反代场景下记录 `X-Forwarded-For` 中的客户端 IP | `controller/user.go`、`controller/user_login_audit_test.go` | 本次同步 |
 | 流式诊断 | 补充流式转发断开来源诊断日志，记录 request_id、model、elapsed、chunk_count 和请求上下文错误 | `relay` / stream forward 相关代码 | `26bafa7b` |
 | Cliproxy 认证文件 | 兼容认证文件额度、备注回显、备注字段统一为 note，并调整绑定刷新权限 | `controller/cliproxy*`、`model/cliproxy*`、`web/default/src/features/cliproxy-auth-files` | `f09f1beb`、`aef05809`、`9c6da6db`、`651370c0` |
 | Cliproxy 认证文件 | 认证文件和用户消耗相关菜单补齐 `web/default` i18n key，避免缺少语言包文案 | `web/default/src/i18n/locales` | 本次同步 |

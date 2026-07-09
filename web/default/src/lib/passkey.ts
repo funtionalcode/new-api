@@ -261,9 +261,15 @@ export async function isPasskeySupported(): Promise<boolean> {
     'function'
   ) {
     try {
-      return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+      // A false value only means no built-in platform authenticator; roaming keys
+      // can still be available through the WebAuthn API.
+      if (
+        await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+      ) {
+        return true
+      }
     } catch {
-      return false
+      // ignore
     }
   }
 
