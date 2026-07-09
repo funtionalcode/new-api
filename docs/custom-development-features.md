@@ -1,6 +1,6 @@
 # 二开功能记录
 
-更新时间：2026-07-07
+更新时间：2026-07-09
 
 本文记录当前项目已做的二开功能，便于后续升级、排查和继续开发时快速确认改动范围。后续新增或调整二开功能时，需要同步更新本文。
 
@@ -52,9 +52,11 @@
 | Cliproxy 认证文件 | 认证文件和用户消耗相关菜单补齐 `web/default` i18n key，避免缺少语言包文案 | `web/default/src/i18n/locales` | 本次同步 |
 | Cliproxy 认证文件 | 认证文件绑定列表精简用量列，仅默认展示主窗口进度，Codex 窗口、重置时间、token/quota 和错误详情改为悬浮展示 | `web/default/src/features/cliproxy-auth-files` | 本次同步 |
 | Cliproxy 认证文件 | 普通用户只能查看并刷新自己的认证文件绑定，管理员才可配置服务、拉取远程认证文件、新建绑定、编辑和删除绑定 | `controller/cliproxy.go`、`model/cliproxy_auth_file.go`、`web/default/src/features/cliproxy-auth-files` | 本次同步 |
+| Cliproxy 认证文件 | 识别 `xai-*` / `xai_*` 认证文件并按 xAI billing 响应刷新额度，认证文件列表区分 Codex、Claude 和 xAI 类型 | `controller/cliproxy.go`、`service/cliproxy.go`、`web/default/src/features/cliproxy-auth-files` | 本次同步 |
 | 游乐场 | 恢复图片生成和 TTS 生成模式，复用当前模型/分组，生成结果写回对话消息 | `router/relay-router.go`、`web/default/src/features/playground` | 本次同步 |
 | 游乐场 | 图片/TTS 模式下重试和编辑后提交继续走对应生成接口，图片和音频结果直接渲染为媒体控件，兼容裸 base64 返回，并按登录用户隔离本地会话历史 | `web/default/src/features/playground` | 本次同步 |
 | 游乐场 | 图片生成历史保留 data URL 内容并增加内存兜底，避免切换菜单后因 base64 图片过大导致聊天消息丢失 | `web/default/src/features/playground/lib/storage` | 本次同步 |
+| 游乐场 | 新增视频生成模式，xAI 视频模型走视频任务接口并轮询结果，生成完成后直接渲染视频控件 | `relay/channel/task/xai`、`relay/relay_adaptor.go`、`router/relay-router.go`、`middleware/distributor.go`、`web/default/src/features/playground` | 本次同步 |
 | 构建上下文 | Docker 构建忽略运行态文件，缩小构建上下文 | `.dockerignore` | `c6c55020` |
 
 ## 验证记录

@@ -20,6 +20,7 @@ const (
 	cliproxyWhamUsageURL     = "https://chatgpt.com/backend-api/wham/usage"
 	cliproxyClaudeUsageURL   = "https://api.anthropic.com/api/oauth/usage"
 	cliproxyClaudeProfileURL = "https://api.anthropic.com/api/oauth/profile"
+	cliproxyXAIBillingURL    = "https://cli-chat-proxy.grok.com/v1/billing"
 )
 
 type cliproxyAuthFileBindingRequest struct {
@@ -287,6 +288,9 @@ func newCliproxyClientFromOptions() (*service.CliproxyAPIClient, error) {
 }
 
 func buildCliproxyUsageRefreshRequest(binding *model.CliproxyAuthFileBinding) service.CliproxyAPICallRequest {
+	if isCliproxyXAIAuthFile(binding) {
+		return buildCliproxyXAIBillingRequest(binding.AuthIndex)
+	}
 	if isCliproxyClaudeAuthFile(binding) {
 		return buildCliproxyClaudeUsageRequest(binding.AuthIndex)
 	}
@@ -299,6 +303,17 @@ func buildCliproxyUsageRefreshRequest(binding *model.CliproxyAuthFileBinding) se
 			"Content-Type":       "application/json",
 			"User-Agent":         "codex_cli_rs/0.76.0 (Debian 13.0.0; x86_64) WindowsTerminal",
 			"Chatgpt-Account-Id": binding.AccountId,
+		},
+	}
+}
+
+func buildCliproxyXAIBillingRequest(authIndex string) service.CliproxyAPICallRequest {
+	return service.CliproxyAPICallRequest{
+		AuthIndex: authIndex,
+		Method:    http.MethodGet,
+		URL:       cliproxyXAIBillingURL,
+		Header: map[string]string{
+			"Authorization": "Bearer $TOKEN$",
 		},
 	}
 }
@@ -346,6 +361,9 @@ func extractCliproxyUsage(result *service.CliproxyAPICallResponse) (cliproxyUsag
 	}
 	if len(body) == 0 {
 		return cliproxyUsageRefreshBody{}, fmt.Errorf("刷新结果缺少用量数据")
+	}
+	if xaiUsage, ok := resolveCliproxyXAIUsage(body); ok {
+		return xaiUsage, nil
 	}
 	fiveHourWindow, weeklyWindow := resolveCliproxyUsageWindows(body)
 	claudeFiveHourWindow, claudeWeeklyWindow := resolveCliproxyClaudeUsageWindows(body)
@@ -402,6 +420,22 @@ func resolveCliproxyCodexUsageWindows(body map[string]any) (map[string]any, map[
 
 func resolveCliproxyClaudeUsageWindows(body map[string]any) (map[string]any, map[string]any) {
 	return mapFromMap(body, "five_hour"), mapFromMap(body, "seven_day")
+}
+
+func resolveCliproxyXAIUsage(body map[string]any) (cliproxyUsageRefreshBody, bool) {
+	config := mapFromMap(body, "config")
+	monthlyLimit := mapFromMap(config, "monthlyLimit")
+	used := mapFromMap(config, "used")
+	quota := intFromMap(monthlyLimit, "val")
+	usedTokens := intFromMap(used, "val")
+	if quota == 0 && usedTokens == 0 && len(monthlyLimit) == 0 && len(used) == 0 {
+		return cliproxyUsageRefreshBody{}, false
+	}
+	return cliproxyUsageRefreshBody{
+		UsedTokens: usedTokens,
+		Quota:      quota,
+		PlanType:   "xai",
+	}, true
 }
 
 func classifyCliproxyUsageWindows(primaryWindow map[string]any, secondaryWindow map[string]any) (map[string]any, map[string]any) {
@@ -462,6 +496,16 @@ func isCliproxyClaudeAuthFile(binding *model.CliproxyAuthFileBinding) bool {
 	return isCliproxyClaudeAuthFileName(binding.AuthFile) || isCliproxyClaudeAuthFileName(binding.AuthName)
 }
 
+func isCliproxyXAIAuthFile(binding *model.CliproxyAuthFileBinding) bool {
+	if binding == nil {
+		return false
+	}
+	if normalizeCliproxyPlan(binding.LastPlanType) == "xai" {
+		return true
+	}
+	return isCliproxyXAIAuthFileName(binding.AuthFile) || isCliproxyXAIAuthFileName(binding.AuthName)
+}
+
 func isCliproxyClaudePlanType(value string) bool {
 	switch normalizeCliproxyPlan(value) {
 	case "claude", "planmax", "claudemax", "planpro", "claudepro", "planteam", "claudeteam", "planfree", "claudefree":
@@ -471,14 +515,22 @@ func isCliproxyClaudePlanType(value string) bool {
 	}
 }
 
+func isCliproxyXAIAuthFileName(value string) bool {
+	return hasCliproxyAuthFileNamePrefix(value, "xai")
+}
+
 func isCliproxyClaudeAuthFileName(value string) bool {
+	return hasCliproxyAuthFileNamePrefix(value, "claude")
+}
+
+func hasCliproxyAuthFileNamePrefix(value string, prefix string) bool {
 	normalized := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(value)), "\\", "/")
 	if normalized == "" {
 		return false
 	}
 	segments := strings.Split(normalized, "/")
 	name := segments[len(segments)-1]
-	return strings.HasPrefix(name, "claude-") || strings.HasPrefix(name, "claude_")
+	return strings.HasPrefix(name, prefix+"-") || strings.HasPrefix(name, prefix+"_")
 }
 
 func resolveCliproxyClaudeProfilePlan(profile map[string]any) string {

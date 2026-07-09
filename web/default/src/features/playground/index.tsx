@@ -22,7 +22,12 @@ import { toast } from 'sonner'
 
 import { useAuthStore } from '@/stores/auth-store'
 
-import { sendImageGeneration, sendSpeechGeneration } from './api'
+import {
+  getVideoGeneration,
+  sendImageGeneration,
+  sendSpeechGeneration,
+  sendVideoGeneration,
+} from './api'
 import { PlaygroundChat } from './components/chat/playground-chat'
 import { PlaygroundInput } from './components/input/playground-input'
 import {
@@ -35,6 +40,7 @@ import {
   appendUserMessagePair,
   buildImageGenerationMarkdown,
   buildSpeechGenerationMarkdown,
+  buildVideoGenerationMarkdown,
   completeAssistantMessage,
   getMessageContent,
   getPreviousUserMessage,
@@ -44,6 +50,23 @@ import {
   updateLastAssistantMessage,
 } from './lib'
 import type { Message, PlaygroundMode } from './types'
+
+const VIDEO_POLL_INTERVAL_MS = 2000
+const VIDEO_POLL_MAX_ATTEMPTS = 90
+
+function waitForVideoPollInterval(signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(resolve, VIDEO_POLL_INTERVAL_MS)
+    signal.addEventListener(
+      'abort',
+      () => {
+        window.clearTimeout(timeout)
+        reject(signal.reason ?? new DOMException('Aborted', 'AbortError'))
+      },
+      { once: true }
+    )
+  })
+}
 
 export function Playground() {
   const { t } = useTranslation()
@@ -89,33 +112,66 @@ export function Playground() {
       setIsTaskGenerating(true)
 
       try {
-        const content =
-          taskMode === 'image'
-            ? buildImageGenerationMarkdown(
-                await sendImageGeneration(
-                  {
-                    model: config.model,
-                    group: config.group,
-                    prompt: text,
-                    n: 1,
-                    size: '1024x1024',
-                  },
-                  abortController.signal
-                )
+        let content = ''
+        if (taskMode === 'image') {
+          content = buildImageGenerationMarkdown(
+            await sendImageGeneration(
+              {
+                model: config.model,
+                group: config.group,
+                prompt: text,
+                n: 1,
+                size: '1024x1024',
+              },
+              abortController.signal
+            )
+          )
+        } else if (taskMode === 'video') {
+          const submittedVideo = await sendVideoGeneration(
+            {
+              model: config.model,
+              group: config.group,
+              prompt: text,
+              duration: 6,
+            },
+            abortController.signal
+          )
+          const videoId = submittedVideo.id || submittedVideo.task_id
+          if (!videoId) {
+            throw new Error(t('No video task returned'))
+          }
+          let video = submittedVideo
+          for (let attempt = 0; attempt < VIDEO_POLL_MAX_ATTEMPTS; attempt++) {
+            if (video.status === 'completed') break
+            if (video.status === 'failed') {
+              throw new Error(
+                video.error?.message || t('Video generation failed')
               )
-            : buildSpeechGenerationMarkdown(
-                URL.createObjectURL(
-                  await sendSpeechGeneration(
-                    {
-                      model: config.model,
-                      group: config.group,
-                      input: text,
-                      voice: 'alloy',
-                    },
-                    abortController.signal
-                  )
-                )
+            }
+            await waitForVideoPollInterval(abortController.signal)
+            video = await getVideoGeneration(videoId, abortController.signal)
+          }
+          if (video.status !== 'completed') {
+            throw new Error(t('Video generation timed out'))
+          }
+          content = buildVideoGenerationMarkdown(
+            video.metadata?.url || `/v1/videos/${videoId}/content`
+          )
+        } else {
+          content = buildSpeechGenerationMarkdown(
+            URL.createObjectURL(
+              await sendSpeechGeneration(
+                {
+                  model: config.model,
+                  group: config.group,
+                  input: text,
+                  voice: 'alloy',
+                },
+                abortController.signal
               )
+            )
+          )
+        }
 
         if (abortController.signal.aborted) return
 

@@ -376,9 +376,9 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		return
 	}
 
-	isOpenAIVideoAPI := strings.HasPrefix(c.Request.RequestURI, "/v1/videos/")
+	isOpenAIVideoAPI := strings.HasPrefix(c.Request.RequestURI, "/v1/videos/") || strings.HasPrefix(c.Request.RequestURI, "/pg/videos/")
 
-	// Gemini/Vertex 支持实时查询：用户 fetch 时直接从上游拉取最新状态
+	// Gemini/Vertex/xAI 支持实时查询：用户 fetch 时直接从上游拉取最新状态
 	if realtimeResp := tryRealtimeFetch(originTask, isOpenAIVideoAPI); len(realtimeResp) > 0 {
 		respBody = realtimeResp
 		return
@@ -415,15 +415,17 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 	return
 }
 
-// tryRealtimeFetch 尝试从上游实时拉取 Gemini/Vertex 任务状态。
-// 仅当渠道类型为 Gemini 或 Vertex 时触发；其他渠道或出错时返回 nil。
+// tryRealtimeFetch 尝试从上游实时拉取支持实时查询的视频任务状态。
+// 仅当渠道类型支持时触发；其他渠道或出错时返回 nil。
 // 当非 OpenAI Video API 时，还会构建自定义格式的响应体。
 func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 	channelModel, err := model.GetChannelById(task.ChannelId, true)
 	if err != nil {
 		return nil
 	}
-	if channelModel.Type != constant.ChannelTypeVertexAi && channelModel.Type != constant.ChannelTypeGemini {
+	switch channelModel.Type {
+	case constant.ChannelTypeVertexAi, constant.ChannelTypeGemini, constant.ChannelTypeXai:
+	default:
 		return nil
 	}
 

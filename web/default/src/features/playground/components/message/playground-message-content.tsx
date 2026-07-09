@@ -47,6 +47,7 @@ import {
   isErrorMessage,
   extractGeneratedImageUrls,
   extractGeneratedSpeechUrl,
+  extractGeneratedVideoUrl,
   type MessageAlignment,
 } from '../../lib'
 import { getMessageContentStyles } from '../../lib/message/message-styles'
@@ -88,8 +89,12 @@ export function PlaygroundMessageContent({
   const generatedSpeechUrl = extractGeneratedSpeechUrl(displayContent, {
     allowRawBase64: message.mode === 'speech',
   })
+  const generatedVideoUrl =
+    message.mode === 'video' ? extractGeneratedVideoUrl(displayContent) : null
   const hasGeneratedMedia =
-    generatedImageUrls.length > 0 || generatedSpeechUrl !== null
+    generatedImageUrls.length > 0 ||
+    generatedSpeechUrl !== null ||
+    generatedVideoUrl !== null
   const isMessageFinal =
     message.status !== MESSAGE_STATUS.LOADING &&
     message.status !== MESSAGE_STATUS.STREAMING
@@ -183,6 +188,13 @@ export function PlaygroundMessageContent({
                       className='w-full max-w-xl'
                       controls
                       src={generatedSpeechUrl}
+                    />
+                  ) : null}
+                  {generatedVideoUrl ? (
+                    <video
+                      className='border-border/60 max-h-[640px] max-w-full rounded-lg border'
+                      controls
+                      src={generatedVideoUrl}
                     />
                   ) : null}
                 </div>

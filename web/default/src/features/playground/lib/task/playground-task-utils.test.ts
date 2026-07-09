@@ -4,8 +4,10 @@ import { describe, test } from 'node:test'
 import {
   buildImageGenerationMarkdown,
   buildSpeechGenerationMarkdown,
+  buildVideoGenerationMarkdown,
   extractGeneratedImageUrls,
   extractGeneratedSpeechUrl,
+  extractGeneratedVideoUrl,
 } from './playground-task-utils'
 
 describe('playground task utils', () => {
@@ -21,6 +23,12 @@ describe('playground task utils', () => {
     const markdown = buildSpeechGenerationMarkdown('blob:http://localhost/audio')
 
     assert.equal(markdown, '[Audio Preview](blob:http://localhost/audio)')
+  })
+
+  test('builds markdown for generated video urls', () => {
+    const markdown = buildVideoGenerationMarkdown('https://example.com/video.mp4')
+
+    assert.equal(markdown, '[Video Preview](https://example.com/video.mp4)')
   })
 
   test('extracts generated image urls for custom rendering', () => {
@@ -58,6 +66,20 @@ describe('playground task utils', () => {
     assert.equal(
       extractGeneratedSpeechUrl('[Audio Preview](blob:http://localhost/audio)'),
       'blob:http://localhost/audio'
+    )
+  })
+
+  test('extracts generated video url for custom rendering', () => {
+    assert.equal(
+      extractGeneratedVideoUrl('[Video Preview](https://example.com/video.mp4)'),
+      'https://example.com/video.mp4'
+    )
+  })
+
+  test('extracts generated video proxy paths for custom rendering', () => {
+    assert.equal(
+      extractGeneratedVideoUrl('[Video Preview](/v1/videos/task_123/content)'),
+      '/v1/videos/task_123/content'
     )
   })
 

@@ -1,4 +1,4 @@
-export type CliproxyAuthFileType = 'codex' | 'claude'
+export type CliproxyAuthFileType = 'codex' | 'claude' | 'xai'
 
 const claudePlanTypes = new Set([
   'claude',
@@ -11,6 +11,8 @@ const claudePlanTypes = new Set([
   'planfree',
   'claudefree',
 ])
+
+const xaiPlanTypes = new Set(['xai'])
 
 interface CliproxyAuthFileTypeSource {
   auth_name?: string
@@ -34,7 +36,11 @@ function isClaudePlanType(value?: string): boolean {
   return claudePlanTypes.has(normalizeCliproxyPlan(value))
 }
 
-function isClaudeAuthFileName(value?: string): boolean {
+function isXAIPlanType(value?: string): boolean {
+  return xaiPlanTypes.has(normalizeCliproxyPlan(value))
+}
+
+function hasAuthFileNamePrefix(value: string | undefined, prefix: string): boolean {
   const normalized = String(value || '')
     .trim()
     .toLowerCase()
@@ -43,16 +49,23 @@ function isClaudeAuthFileName(value?: string): boolean {
     return false
   }
   const name = normalized.split('/').at(-1) || ''
-  return name.startsWith('claude-') || name.startsWith('claude_')
+  return name.startsWith(`${prefix}-`) || name.startsWith(`${prefix}_`)
 }
 
 export function getCliproxyAuthFileType(
   source: CliproxyAuthFileTypeSource
 ): CliproxyAuthFileType {
   if (
+    isXAIPlanType(source.last_plan_type) ||
+    hasAuthFileNamePrefix(source.auth_file, 'xai') ||
+    hasAuthFileNamePrefix(source.auth_name, 'xai')
+  ) {
+    return 'xai'
+  }
+  if (
     isClaudePlanType(source.last_plan_type) ||
-    isClaudeAuthFileName(source.auth_file) ||
-    isClaudeAuthFileName(source.auth_name)
+    hasAuthFileNamePrefix(source.auth_file, 'claude') ||
+    hasAuthFileNamePrefix(source.auth_name, 'claude')
   ) {
     return 'claude'
   }
@@ -62,7 +75,9 @@ export function getCliproxyAuthFileType(
 export function getCliproxyAuthFileTypeLabel(
   type: CliproxyAuthFileType
 ): string {
-  return type === 'claude' ? 'Claude' : 'Codex'
+  if (type === 'claude') return 'Claude'
+  if (type === 'xai') return 'xAI'
+  return 'Codex'
 }
 
 function getAuthFileBaseName(value?: string): string {
@@ -76,7 +91,7 @@ function getAuthFileBaseName(value?: string): string {
 function emailFromAuthFileName(value?: string): string {
   const name = getAuthFileBaseName(value)
     .replace(/\.json$/i, '')
-    .replace(/^(codex|claude)[-_]/i, '')
+    .replace(/^(codex|claude|xai)[-_]/i, '')
     .replace(emailPlanSuffixPattern, '')
   return emailPattern.test(name) ? name : ''
 }

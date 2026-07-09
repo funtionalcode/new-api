@@ -46,6 +46,37 @@ func TestBuildCliproxyUsageRefreshRequestUsesClaudeOAuthUsage(t *testing.T) {
 	require.NotContains(t, request.Header, "Chatgpt-Account-Id")
 }
 
+func TestBuildCliproxyUsageRefreshRequestUsesXAIBilling(t *testing.T) {
+	request := buildCliproxyUsageRefreshRequest(&model.CliproxyAuthFileBinding{
+		AuthIndex: "f30c0c700f97feaf",
+		AuthFile:  "xai-gooddgege@gmail.com.json",
+		AuthName:  "xai-gooddgege@gmail.com.json",
+	})
+
+	require.Equal(t, "f30c0c700f97feaf", request.AuthIndex)
+	require.Equal(t, cliproxyXAIBillingURL, request.URL)
+	require.Equal(t, "Bearer $TOKEN$", request.Header["Authorization"])
+	require.NotContains(t, request.Header, "Chatgpt-Account-Id")
+}
+
+func TestExtractCliproxyUsageSupportsXAIBillingPayload(t *testing.T) {
+	result := &service.CliproxyAPICallResponse{
+		Body: map[string]any{
+			"config": map[string]any{
+				"monthlyLimit": map[string]any{"val": float64(15000)},
+				"used":         map[string]any{"val": float64(123)},
+			},
+		},
+	}
+
+	usage, err := extractCliproxyUsage(result)
+
+	require.NoError(t, err)
+	require.Equal(t, "xai", usage.PlanType)
+	require.Equal(t, 123, usage.UsedTokens)
+	require.Equal(t, 15000, usage.Quota)
+}
+
 func TestResolveCliproxyClaudeProfilePlan(t *testing.T) {
 	require.Equal(t, "plan_max", resolveCliproxyClaudeProfilePlan(map[string]any{
 		"account": map[string]any{"has_claude_max": true},

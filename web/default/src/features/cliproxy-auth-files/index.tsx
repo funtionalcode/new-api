@@ -246,10 +246,15 @@ function AuthFileTypeLabel(props: {
 }) {
   const type = getCliproxyAuthFileType(props.source)
   const label = getCliproxyAuthFileTypeLabel(type)
-  const className =
-    type === 'claude'
-      ? 'border-violet-300 bg-violet-50 text-violet-800 dark:border-violet-700 dark:bg-violet-950/35 dark:text-violet-200'
-      : 'border-sky-300 bg-sky-50 text-sky-800 dark:border-sky-700 dark:bg-sky-950/35 dark:text-sky-200'
+  let className =
+    'border-sky-300 bg-sky-50 text-sky-800 dark:border-sky-700 dark:bg-sky-950/35 dark:text-sky-200'
+  if (type === 'claude') {
+    className =
+      'border-violet-300 bg-violet-50 text-violet-800 dark:border-violet-700 dark:bg-violet-950/35 dark:text-violet-200'
+  } else if (type === 'xai') {
+    className =
+      'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-200'
+  }
 
   return (
     <Badge

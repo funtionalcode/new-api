@@ -25,6 +25,7 @@ type ExtractGeneratedMediaOptions = {
 const base64PayloadPattern = /^[A-Za-z0-9+/_-]+={0,2}$/
 const generatedImageMarkdownPattern = /!\[[^\]]*]\(([^)\s]+)\)/g
 const speechMarkdownPattern = /\[[^\]]*]\(([^)]+)\)/
+const videoMarkdownPattern = /\[[^\]]*]\(([^)]+)\)/
 
 function getCleanBase64Payload(value: string): string {
   return value.trim().replaceAll(/\s+/g, '')
@@ -112,6 +113,10 @@ export function buildSpeechGenerationMarkdown(audioUrl: string): string {
   return `[Audio Preview](${audioUrl})`
 }
 
+export function buildVideoGenerationMarkdown(videoUrl: string): string {
+  return `[Video Preview](${videoUrl})`
+}
+
 export function extractGeneratedImageUrls(
   content: string,
   options: ExtractGeneratedMediaOptions = {}
@@ -151,4 +156,22 @@ export function extractGeneratedSpeechUrl(
       options
     )
   )
+}
+
+export function extractGeneratedVideoUrl(content: string): string | null {
+  const trimmed = content.trim()
+  const url = videoMarkdownPattern.exec(trimmed)?.[1]?.trim() ?? ''
+  if (!url) return null
+
+  if (
+    url.startsWith('http://') ||
+    url.startsWith('https://') ||
+    url.startsWith('/') ||
+    url.startsWith('blob:') ||
+    url.startsWith('data:video/')
+  ) {
+    return url
+  }
+
+  return null
 }

@@ -68,6 +68,8 @@ func SetRelayRouter(router *gin.Engine) {
 		playgroundRouter.POST("/images/generations", func(c *gin.Context) {
 			controller.Relay(c, types.RelayFormatOpenAIImage)
 		})
+		playgroundRouter.POST("/videos", controller.RelayTask)
+		playgroundRouter.GET("/videos/:task_id", controller.RelayTaskFetch)
 		playgroundRouter.POST("/audio/speech", func(c *gin.Context) {
 			controller.Relay(c, types.RelayFormatOpenAIAudio)
 		})

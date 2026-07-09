@@ -23,7 +23,7 @@ export type MessageStatus = 'loading' | 'streaming' | 'complete' | 'error'
 
 export type PlaygroundMessageLayoutMode = 'alternating' | 'left'
 
-export type PlaygroundMode = 'chat' | 'image' | 'speech'
+export type PlaygroundMode = 'chat' | 'image' | 'speech' | 'video'
 
 export interface MessageVersion {
   id: string
@@ -140,6 +140,27 @@ export interface SpeechGenerationRequest {
   group?: string
   input: string
   voice: string
+}
+
+export interface VideoGenerationRequest {
+  model: string
+  group?: string
+  prompt: string
+  duration?: number
+}
+
+export interface VideoGenerationResponse {
+  id: string
+  task_id?: string
+  status: string
+  progress?: number
+  metadata?: {
+    url?: string
+  }
+  error?: {
+    message?: string
+    code?: string
+  }
 }
 
 // Configuration types

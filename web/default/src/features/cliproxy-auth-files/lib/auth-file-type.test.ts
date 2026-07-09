@@ -48,6 +48,17 @@ describe('cliproxy auth file type', () => {
     )
   })
 
+  test('detects xAI remote files from auth names', () => {
+    assert.equal(
+      getCliproxyAuthFileType({
+        auth_name: 'xai-gooddgege@gmail.com.json',
+        auth_file: '',
+        last_plan_type: '',
+      }),
+      'xai'
+    )
+  })
+
   test('extracts email from auth file names', () => {
     assert.equal(
       getCliproxyAuthFileEmail({
@@ -60,6 +71,14 @@ describe('cliproxy auth file type', () => {
     assert.equal(
       getCliproxyAuthFileEmail({
         auth_name: 'claude-gooddgege@gmail.com.json',
+        auth_file: '',
+        last_plan_type: '',
+      }),
+      'gooddgege@gmail.com'
+    )
+    assert.equal(
+      getCliproxyAuthFileEmail({
+        auth_name: 'xai-gooddgege@gmail.com.json',
         auth_file: '',
         last_plan_type: '',
       }),

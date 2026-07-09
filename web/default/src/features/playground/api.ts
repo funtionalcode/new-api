@@ -27,6 +27,8 @@ import type {
   ModelOption,
   GroupOption,
   SpeechGenerationRequest,
+  VideoGenerationRequest,
+  VideoGenerationResponse,
 } from './types'
 
 /**
@@ -60,6 +62,28 @@ export async function sendSpeechGeneration(
 ): Promise<Blob> {
   const res = await api.post(API_ENDPOINTS.AUDIO_SPEECH, payload, {
     responseType: 'blob',
+    signal,
+    skipErrorHandler: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+export async function sendVideoGeneration(
+  payload: VideoGenerationRequest,
+  signal?: AbortSignal
+): Promise<VideoGenerationResponse> {
+  const res = await api.post(API_ENDPOINTS.VIDEO_GENERATIONS, payload, {
+    signal,
+    skipErrorHandler: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+export async function getVideoGeneration(
+  id: string,
+  signal?: AbortSignal
+): Promise<VideoGenerationResponse> {
+  const res = await api.get(`${API_ENDPOINTS.VIDEO_GENERATIONS}/${id}`, {
     signal,
     skipErrorHandler: true,
   } as Record<string, unknown>)

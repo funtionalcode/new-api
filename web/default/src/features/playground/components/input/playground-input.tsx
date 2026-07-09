@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ImageIcon, MessageSquareIcon, Volume2Icon } from 'lucide-react'
+import { ImageIcon, MessageSquareIcon, VideoIcon, Volume2Icon } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -83,6 +83,9 @@ export function PlaygroundInput({
     if (mode === 'image') {
       return t('Describe the image to generate')
     }
+    if (mode === 'video') {
+      return t('Describe the video to generate')
+    }
     if (mode === 'speech') {
       return t('Enter text to synthesize')
     }
@@ -106,6 +109,10 @@ export function PlaygroundInput({
           <TabsTrigger value='image'>
             <ImageIcon />
             {t('Image')}
+          </TabsTrigger>
+          <TabsTrigger value='video'>
+            <VideoIcon />
+            {t('Video')}
           </TabsTrigger>
           <TabsTrigger value='speech'>
             <Volume2Icon />

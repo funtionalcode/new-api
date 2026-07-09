@@ -99,6 +99,25 @@ func TestNormalizeCliproxyAuthFilesSupportsClaudeMetadata(t *testing.T) {
 	require.Equal(t, "claude", files[0].Type)
 }
 
+func TestNormalizeCliproxyAuthFilesDetectsXAIFromName(t *testing.T) {
+	files := normalizeCliproxyAuthFiles(cliproxyAuthFilesResponse{
+		Files: []cliproxyAuthFileResponse{
+			{
+				AuthIndex:   "f30c0c700f97feaf",
+				Name:        "xai-gooddgege@gmail.com.json",
+				ID:          "xai-gooddgege@gmail.com.json",
+				AccountType: "oauth",
+			},
+		},
+	})
+
+	require.Len(t, files, 1)
+	require.Equal(t, "xai-gooddgege@gmail.com.json", files[0].AuthFile)
+	require.Equal(t, "xai", files[0].PlanType)
+	require.Equal(t, "xai", files[0].Provider)
+	require.Equal(t, "xai", files[0].Type)
+}
+
 func TestCliproxyPlanRankTreatsClaudeProAsPlusTier(t *testing.T) {
 	require.Equal(t, cliproxyPlanRank("plus"), cliproxyPlanRank("plan_pro"))
 	require.Equal(t, cliproxyPlanRank("plus"), cliproxyPlanRank("claude_pro"))

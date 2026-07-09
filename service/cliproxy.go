@@ -169,12 +169,14 @@ func normalizeCliproxyAuthFiles(result cliproxyAuthFilesResponse) []CliproxyAuth
 	}
 	files := make([]CliproxyAuthFile, 0, len(items))
 	for _, item := range items {
-		provider := firstNonEmpty(item.Provider, item.Type)
-		fileType := firstNonEmpty(item.Type, item.Provider)
+		authFile := firstNonEmpty(item.ID, item.AuthFile)
+		nameType := firstNonEmpty(cliproxyAuthFileNameType(item.Name), cliproxyAuthFileNameType(authFile))
+		provider := firstNonEmpty(item.Provider, item.Type, nameType)
+		fileType := firstNonEmpty(item.Type, item.Provider, nameType)
 		files = append(files, CliproxyAuthFile{
 			AuthIndex: firstNonEmpty(item.AuthIndex, item.CamelAuthIndex),
 			Name:      item.Name,
-			AuthFile:  firstNonEmpty(item.ID, item.AuthFile),
+			AuthFile:  authFile,
 			AccountID: firstNonEmpty(item.AccountID, item.CamelAccountID, item.IDToken.ChatGPTAccountID, item.Email, item.Account),
 			PlanType:  firstNonEmpty(item.Balance.Group, item.Group, item.IDToken.PlanType, item.PlanType, item.CamelPlanType, cliproxyProviderPlanType(provider, fileType), item.AccountType),
 			Note:      item.Note,
@@ -189,9 +191,29 @@ func normalizeCliproxyAuthFiles(result cliproxyAuthFilesResponse) []CliproxyAuth
 	return files
 }
 
+func cliproxyAuthFileNameType(value string) string {
+	normalized := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(value)), "\\", "/")
+	if normalized == "" {
+		return ""
+	}
+	segments := strings.Split(normalized, "/")
+	name := segments[len(segments)-1]
+	switch {
+	case strings.HasPrefix(name, "claude-"), strings.HasPrefix(name, "claude_"):
+		return "claude"
+	case strings.HasPrefix(name, "xai-"), strings.HasPrefix(name, "xai_"):
+		return "xai"
+	default:
+		return ""
+	}
+}
+
 func cliproxyProviderPlanType(provider string, fileType string) string {
 	if normalizeCliproxyPlan(provider) == "claude" || normalizeCliproxyPlan(fileType) == "claude" {
 		return "claude"
+	}
+	if normalizeCliproxyPlan(provider) == "xai" || normalizeCliproxyPlan(fileType) == "xai" {
+		return "xai"
 	}
 	return ""
 }
