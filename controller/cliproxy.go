@@ -17,11 +17,18 @@ import (
 )
 
 const (
-	cliproxyWhamUsageURL     = "https://chatgpt.com/backend-api/wham/usage"
-	cliproxyClaudeUsageURL   = "https://api.anthropic.com/api/oauth/usage"
-	cliproxyClaudeProfileURL = "https://api.anthropic.com/api/oauth/profile"
-	cliproxyXAIBillingURL    = "https://cli-chat-proxy.grok.com/v1/billing"
+	cliproxyWhamUsageURL         = "https://chatgpt.com/backend-api/wham/usage"
+	cliproxyClaudeUsageURL       = "https://api.anthropic.com/api/oauth/usage"
+	cliproxyClaudeProfileURL     = "https://api.anthropic.com/api/oauth/profile"
+	cliproxyXAIWeeklyBillingURL  = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
+	cliproxyXAIMonthlyBillingURL = "https://cli-chat-proxy.grok.com/v1/billing"
+	cliproxyXAIBillingURL        = cliproxyXAIMonthlyBillingURL
 )
+
+type cliproxyXAIProductUsage struct {
+	Product      string `json:"product"`
+	UsagePercent int    `json:"usage_percent"`
+}
 
 type cliproxyAuthFileBindingRequest struct {
 	UserId       int    `json:"user_id"`
@@ -35,19 +42,24 @@ type cliproxyAuthFileBindingRequest struct {
 }
 
 type cliproxyUsageRefreshBody struct {
-	UsedTokens           int
-	Quota                int
-	PlanType             string
-	FiveHourPercent      int
-	FiveHourResetAt      int64
-	WeeklyPercent        int
-	WeeklyResetAt        int64
-	CodexFiveHourPercent int
-	CodexFiveHourResetAt int64
-	CodexWeeklyPercent   int
-	CodexWeeklyResetAt   int64
-	OnDemandCap          int
-	BillingPeriodEndAt   int64
+	UsedTokens             int
+	Quota                  int
+	PlanType               string
+	FiveHourPercent        int
+	FiveHourResetAt        int64
+	WeeklyPercent          int
+	WeeklyResetAt          int64
+	CodexFiveHourPercent   int
+	CodexFiveHourResetAt   int64
+	CodexWeeklyPercent     int
+	CodexWeeklyResetAt     int64
+	OnDemandCap            int
+	BillingPeriodEndAt     int64
+	XAIWeeklyPercent       int
+	XAIWeeklyPeriodStartAt int64
+	XAIWeeklyPeriodEndAt   int64
+	XAIProductUsage        string
+	XAIOnDemandUsed        int
 }
 
 func GetCliproxyRemoteAuthFiles(c *gin.Context) {
@@ -312,12 +324,28 @@ func buildCliproxyUsageRefreshRequest(binding *model.CliproxyAuthFileBinding) se
 }
 
 func buildCliproxyXAIBillingRequest(authIndex string) service.CliproxyAPICallRequest {
+	return buildCliproxyXAIMonthlyBillingRequest(authIndex)
+}
+
+func buildCliproxyXAIWeeklyBillingRequest(authIndex string) service.CliproxyAPICallRequest {
+	return buildCliproxyXAIBillingRequestForURL(authIndex, cliproxyXAIWeeklyBillingURL)
+}
+
+func buildCliproxyXAIMonthlyBillingRequest(authIndex string) service.CliproxyAPICallRequest {
+	return buildCliproxyXAIBillingRequestForURL(authIndex, cliproxyXAIMonthlyBillingURL)
+}
+
+func buildCliproxyXAIBillingRequestForURL(authIndex string, url string) service.CliproxyAPICallRequest {
 	return service.CliproxyAPICallRequest{
 		AuthIndex: authIndex,
 		Method:    http.MethodGet,
-		URL:       cliproxyXAIBillingURL,
+		URL:       url,
 		Header: map[string]string{
-			"Authorization": "Bearer $TOKEN$",
+			"Authorization":         "Bearer $TOKEN$",
+			"x-xai-token-auth":      "xai-grok-cli",
+			"x-grok-client-version": "0.2.91",
+			"accept":                "*/*",
+			"user-agent":            "grok-pager/0.2.91 grok-shell/0.2.91 (macos; aarch64)",
 		},
 	}
 }
@@ -427,22 +455,82 @@ func resolveCliproxyClaudeUsageWindows(body map[string]any) (map[string]any, map
 }
 
 func resolveCliproxyXAIUsage(body map[string]any) (cliproxyUsageRefreshBody, bool) {
+	return resolveCliproxyXAIMonthlyUsage(body)
+}
+
+func resolveCliproxyXAIWeeklyUsage(body map[string]any) (cliproxyUsageRefreshBody, bool) {
 	config := mapFromMap(body, "config")
-	monthlyLimit := mapFromMap(config, "monthlyLimit")
-	used := mapFromMap(config, "used")
-	onDemandCap := mapFromMap(config, "onDemandCap")
-	quota := intFromMap(monthlyLimit, "val")
-	usedTokens := intFromMap(used, "val")
-	if quota == 0 && usedTokens == 0 && len(monthlyLimit) == 0 && len(used) == 0 && len(onDemandCap) == 0 {
+	currentPeriod := firstMapFromMap(config, "currentPeriod", "current_period")
+	usagePercent := firstIntFromMap(config, "creditUsagePercent", "credit_usage_percent")
+	productItems := firstSliceFromMap(config, "productUsage", "product_usage")
+	if len(currentPeriod) == 0 && usagePercent == 0 && len(productItems) == 0 {
+		return cliproxyUsageRefreshBody{}, false
+	}
+
+	productUsage := make([]cliproxyXAIProductUsage, 0, len(productItems))
+	for _, item := range productItems {
+		itemMap, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		product := firstNonEmpty(stringFromMap(itemMap, "product"), fmt.Sprintf("Product %d", len(productUsage)+1))
+		productUsage = append(productUsage, cliproxyXAIProductUsage{
+			Product:      product,
+			UsagePercent: firstIntFromMap(itemMap, "usagePercent", "usage_percent"),
+		})
+	}
+	productUsageJSON, err := common.Marshal(productUsage)
+	if err != nil {
+		return cliproxyUsageRefreshBody{}, false
+	}
+
+	return cliproxyUsageRefreshBody{
+		XAIWeeklyPercent:       usagePercent,
+		XAIWeeklyPeriodStartAt: unixFromRFC3339(firstStringFromMap(currentPeriod, "start")),
+		XAIWeeklyPeriodEndAt:   unixFromRFC3339(firstStringFromMap(currentPeriod, "end")),
+		XAIProductUsage:        string(productUsageJSON),
+	}, true
+}
+
+func resolveCliproxyXAIMonthlyUsage(body map[string]any) (cliproxyUsageRefreshBody, bool) {
+	config := mapFromMap(body, "config")
+	quota, hasQuota := cliproxyXAICents(config, "monthlyLimit", "monthly_limit")
+	usedTokens, hasUsed := cliproxyXAICents(config, "used")
+	onDemandCap, hasOnDemandCap := cliproxyXAICents(config, "onDemandCap", "on_demand_cap")
+	onDemandUsed, hasOnDemandUsed := cliproxyXAICents(config, "onDemandUsed", "on_demand_used")
+	billingPeriodEnd := firstStringFromMap(config, "billingPeriodEnd", "billing_period_end")
+	if !hasQuota && !hasUsed && !hasOnDemandCap && !hasOnDemandUsed && billingPeriodEnd == "" {
 		return cliproxyUsageRefreshBody{}, false
 	}
 	return cliproxyUsageRefreshBody{
 		UsedTokens:         usedTokens,
 		Quota:              quota,
-		PlanType:           "SuperGrok",
-		OnDemandCap:        intFromMap(onDemandCap, "val"),
-		BillingPeriodEndAt: unixFromRFC3339(stringFromMap(config, "billingPeriodEnd")),
+		PlanType:           resolveCliproxyXAIPlan(quota),
+		OnDemandCap:        onDemandCap,
+		XAIOnDemandUsed:    onDemandUsed,
+		BillingPeriodEndAt: unixFromRFC3339(billingPeriodEnd),
 	}, true
+}
+
+func resolveCliproxyXAIPlan(monthlyLimitCents int) string {
+	if monthlyLimitCents == 150000 {
+		return "SuperGrok Heavy"
+	}
+	return "SuperGrok"
+}
+
+func cliproxyXAICents(data map[string]any, keys ...string) (int, bool) {
+	for _, key := range keys {
+		value, ok := data[key]
+		if !ok {
+			continue
+		}
+		if valueMap, ok := value.(map[string]any); ok {
+			return firstIntFromMap(valueMap, "val", "value"), true
+		}
+		return int(numberFromValue(value)), true
+	}
+	return 0, false
 }
 
 func classifyCliproxyUsageWindows(primaryWindow map[string]any, secondaryWindow map[string]any) (map[string]any, map[string]any) {
@@ -578,6 +666,15 @@ func mapFromMap(data map[string]any, key string) map[string]any {
 	return typedValue
 }
 
+func firstMapFromMap(data map[string]any, keys ...string) map[string]any {
+	for _, key := range keys {
+		if value := mapFromMap(data, key); len(value) > 0 {
+			return value
+		}
+	}
+	return nil
+}
+
 func boolFromMap(data map[string]any, key string) (bool, bool) {
 	value, ok := data[key]
 	if !ok {
@@ -613,12 +710,30 @@ func sliceFromMap(data map[string]any, key string) []any {
 	return typedValue
 }
 
+func firstSliceFromMap(data map[string]any, keys ...string) []any {
+	for _, key := range keys {
+		if value := sliceFromMap(data, key); value != nil {
+			return value
+		}
+	}
+	return nil
+}
+
 func stringFromMap(data map[string]any, key string) string {
 	value, ok := data[key]
 	if !ok {
 		return ""
 	}
 	return strings.TrimSpace(fmt.Sprintf("%v", value))
+}
+
+func firstStringFromMap(data map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value := stringFromMap(data, key); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func int64FromMap(data map[string]any, key string) int64 {
@@ -643,6 +758,10 @@ func float64FromMap(data map[string]any, key string) float64 {
 	if !ok {
 		return 0
 	}
+	return numberFromValue(value)
+}
+
+func numberFromValue(value any) float64 {
 	switch typedValue := value.(type) {
 	case float64:
 		return typedValue
@@ -660,6 +779,15 @@ func float64FromMap(data map[string]any, key string) float64 {
 
 func intFromMap(data map[string]any, key string) int {
 	return int(float64FromMap(data, key))
+}
+
+func firstIntFromMap(data map[string]any, keys ...string) int {
+	for _, key := range keys {
+		if _, ok := data[key]; ok {
+			return intFromMap(data, key)
+		}
+	}
+	return 0
 }
 
 func firstNonEmpty(values ...string) string {

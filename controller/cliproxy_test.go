@@ -81,6 +81,64 @@ func TestExtractCliproxyUsageSupportsXAIBillingPayload(t *testing.T) {
 	require.Equal(t, time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC).Unix(), usage.BillingPeriodEndAt)
 }
 
+func TestResolveCliproxyXAIWeeklyUsage(t *testing.T) {
+	usage, ok := resolveCliproxyXAIWeeklyUsage(map[string]any{
+		"config": map[string]any{
+			"currentPeriod": map[string]any{
+				"type":  "weekly",
+				"start": "2026-07-09T13:16:00Z",
+				"end":   "2026-07-16T13:16:00Z",
+			},
+			"creditUsagePercent": float64(45),
+			"productUsage": []any{
+				map[string]any{"product": "Api", "usagePercent": float64(45)},
+			},
+		},
+	})
+
+	require.True(t, ok)
+	require.Equal(t, 45, usage.XAIWeeklyPercent)
+	require.Equal(t, time.Date(2026, 7, 9, 13, 16, 0, 0, time.UTC).Unix(), usage.XAIWeeklyPeriodStartAt)
+	require.Equal(t, time.Date(2026, 7, 16, 13, 16, 0, 0, time.UTC).Unix(), usage.XAIWeeklyPeriodEndAt)
+	require.JSONEq(t, `[{"product":"Api","usage_percent":45}]`, usage.XAIProductUsage)
+}
+
+func TestResolveCliproxyXAIMonthlyUsageSupportsSnakeCaseAndHeavyPlan(t *testing.T) {
+	usage, ok := resolveCliproxyXAIMonthlyUsage(map[string]any{
+		"config": map[string]any{
+			"monthly_limit":      map[string]any{"val": float64(150000)},
+			"used":               map[string]any{"val": float64(42000)},
+			"on_demand_cap":      map[string]any{"val": float64(10000)},
+			"on_demand_used":     map[string]any{"val": float64(300)},
+			"billing_period_end": "2026-08-01T00:00:00Z",
+		},
+	})
+
+	require.True(t, ok)
+	require.Equal(t, "SuperGrok Heavy", usage.PlanType)
+	require.Equal(t, 150000, usage.Quota)
+	require.Equal(t, 42000, usage.UsedTokens)
+	require.Equal(t, 10000, usage.OnDemandCap)
+	require.Equal(t, 300, usage.XAIOnDemandUsed)
+	require.Equal(t, time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC).Unix(), usage.BillingPeriodEndAt)
+}
+
+func TestBuildCliproxyXAIBillingRequestsUseGrokCLIHeaders(t *testing.T) {
+	weeklyRequest := buildCliproxyXAIWeeklyBillingRequest("auth-index")
+	monthlyRequest := buildCliproxyXAIMonthlyBillingRequest("auth-index")
+
+	require.Equal(t, cliproxyXAIWeeklyBillingURL, weeklyRequest.URL)
+	require.Equal(t, cliproxyXAIMonthlyBillingURL, monthlyRequest.URL)
+	for _, request := range []service.CliproxyAPICallRequest{weeklyRequest, monthlyRequest} {
+		require.Equal(t, "auth-index", request.AuthIndex)
+		require.Equal(t, "Bearer $TOKEN$", request.Header["Authorization"])
+		require.Equal(t, "xai-grok-cli", request.Header["x-xai-token-auth"])
+		require.Equal(t, "0.2.91", request.Header["x-grok-client-version"])
+		require.Equal(t, "*/*", request.Header["accept"])
+		require.Contains(t, request.Header["user-agent"], "grok-shell/0.2.91")
+	}
+}
+
 func TestResolveCliproxyClaudeProfilePlan(t *testing.T) {
 	require.Equal(t, "plan_max", resolveCliproxyClaudeProfilePlan(map[string]any{
 		"account": map[string]any{"has_claude_max": true},
