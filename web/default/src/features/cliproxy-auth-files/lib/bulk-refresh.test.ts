@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { refreshCliproxyAuthFileBindingsUsageAll } from './bulk-refresh'
 import type { CliproxyAuthFileBinding } from '../types'
+import { refreshCliproxyAuthFileBindingsUsageAll } from './bulk-refresh'
 
 describe('cliproxy auth file bulk refresh', () => {
   test('refreshes enabled bindings and skips disabled ones', async () => {
@@ -85,7 +85,12 @@ function createBinding(id: number, enabled: boolean): CliproxyAuthFileBinding {
     last_codex_five_hour_reset_at: 0,
     last_codex_weekly_percent: 0,
     last_codex_weekly_reset_at: 0,
+    last_xai_weekly_percent: 0,
+    last_xai_weekly_period_start_at: 0,
+    last_xai_weekly_period_end_at: 0,
+    last_xai_product_usage: '',
     last_xai_on_demand_cap: 0,
+    last_xai_on_demand_used: 0,
     last_xai_billing_period_end_at: 0,
     last_error: '',
     created_at: 0,
