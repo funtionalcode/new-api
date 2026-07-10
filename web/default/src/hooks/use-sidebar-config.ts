@@ -52,6 +52,7 @@ const DEFAULT_SIDEBAR_MODULES: SidebarModulesAdminConfig = {
     authFiles: true,
     glmQuota: true,
     deepseekQuota: true,
+    xaiQuota: true,
   },
   personal: {
     enabled: true,
@@ -120,6 +121,7 @@ const URL_TO_CONFIG_MAP: Record<string, { section: string; module: string }> = {
   '/cliproxy-auth-files': { section: 'console', module: 'authFiles' },
   '/glm-quota': { section: 'console', module: 'glmQuota' },
   '/deepseek-quota': { section: 'console', module: 'deepseekQuota' },
+  '/xai-quota': { section: 'console', module: 'xaiQuota' },
   '/user-consumption': { section: 'admin', module: 'userConsumption' },
   '/redemption-codes': { section: 'admin', module: 'redemption' },
   '/subscriptions': { section: 'admin', module: 'subscription' },

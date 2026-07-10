@@ -69,6 +69,7 @@ export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
     authFiles: true,
     glmQuota: true,
     deepseekQuota: true,
+    xaiQuota: true,
   },
   personal: {
     enabled: true,
