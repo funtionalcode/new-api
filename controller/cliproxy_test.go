@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -8,6 +10,15 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/stretchr/testify/require"
 )
+
+type fakeCliproxyAPICaller struct {
+	responses map[string]*service.CliproxyAPICallResponse
+	errors    map[string]error
+}
+
+func (f *fakeCliproxyAPICaller) CallAPI(_ context.Context, request service.CliproxyAPICallRequest) (*service.CliproxyAPICallResponse, error) {
+	return f.responses[request.URL], f.errors[request.URL]
+}
 
 func TestExtractCliproxyUsageSupportsClaudeUsagePayload(t *testing.T) {
 	result := &service.CliproxyAPICallResponse{
@@ -153,4 +164,120 @@ func TestResolveCliproxyClaudeProfilePlan(t *testing.T) {
 	require.Equal(t, "plan_free", resolveCliproxyClaudeProfilePlan(map[string]any{
 		"account": map[string]any{"has_claude_max": false, "has_claude_pro": false},
 	}))
+}
+
+func TestRefreshCliproxyXAIUsageMergesWeeklyAndMonthlySnapshots(t *testing.T) {
+	caller := &fakeCliproxyAPICaller{
+		responses: map[string]*service.CliproxyAPICallResponse{
+			cliproxyXAIWeeklyBillingURL: {
+				Body: map[string]any{"config": map[string]any{
+					"currentPeriod":      map[string]any{"start": "2026-07-09T13:16:00Z", "end": "2026-07-16T13:16:00Z"},
+					"creditUsagePercent": float64(45),
+					"productUsage":       []any{map[string]any{"product": "Api", "usagePercent": float64(45)}},
+				}},
+			},
+			cliproxyXAIMonthlyBillingURL: {
+				Body: map[string]any{"config": map[string]any{
+					"monthlyLimit":     map[string]any{"val": float64(15000)},
+					"used":             map[string]any{"val": float64(1768)},
+					"onDemandCap":      map[string]any{"val": float64(2500)},
+					"onDemandUsed":     map[string]any{"val": float64(125)},
+					"billingPeriodEnd": "2026-08-01T00:00:00Z",
+				}},
+			},
+		},
+		errors: map[string]error{},
+	}
+
+	result, err := refreshCliproxyXAIUsage(context.Background(), caller, &model.CliproxyAuthFileBinding{AuthIndex: "xai-auth"})
+
+	require.NoError(t, err)
+	require.Empty(t, result.Warning)
+	require.False(t, result.AllowPartialUsage)
+	require.Equal(t, 45, result.Usage.XAIWeeklyPercent)
+	require.Equal(t, 1768, result.Usage.UsedTokens)
+	require.Equal(t, 15000, result.Usage.Quota)
+	require.Equal(t, 2500, result.Usage.OnDemandCap)
+	require.Equal(t, 125, result.Usage.XAIOnDemandUsed)
+}
+
+func TestRefreshCliproxyXAIUsagePreservesMonthlySnapshotWhenMonthlyRefreshFails(t *testing.T) {
+	caller := &fakeCliproxyAPICaller{
+		responses: map[string]*service.CliproxyAPICallResponse{
+			cliproxyXAIWeeklyBillingURL: {
+				Body: map[string]any{"config": map[string]any{
+					"currentPeriod":      map[string]any{"start": "2026-07-09T13:16:00Z", "end": "2026-07-16T13:16:00Z"},
+					"creditUsagePercent": float64(20),
+				}},
+			},
+		},
+		errors: map[string]error{cliproxyXAIMonthlyBillingURL: errors.New("timeout")},
+	}
+	binding := &model.CliproxyAuthFileBinding{
+		AuthIndex:                 "xai-auth",
+		LastUsageTokens:           1768,
+		LastUsageQuota:            15000,
+		LastPlanType:              "SuperGrok",
+		LastXAIOnDemandCap:        2500,
+		LastXAIOnDemandUsed:       125,
+		LastXAIBillingPeriodEndAt: 1785542400,
+	}
+
+	result, err := refreshCliproxyXAIUsage(context.Background(), caller, binding)
+
+	require.NoError(t, err)
+	require.True(t, result.AllowPartialUsage)
+	require.Contains(t, result.Warning, "月度额度刷新失败")
+	require.Equal(t, 20, result.Usage.XAIWeeklyPercent)
+	require.Equal(t, 1768, result.Usage.UsedTokens)
+	require.Equal(t, 15000, result.Usage.Quota)
+	require.Equal(t, 2500, result.Usage.OnDemandCap)
+	require.Equal(t, 125, result.Usage.XAIOnDemandUsed)
+}
+
+func TestRefreshCliproxyXAIUsagePreservesWeeklySnapshotWhenWeeklyRefreshFails(t *testing.T) {
+	caller := &fakeCliproxyAPICaller{
+		responses: map[string]*service.CliproxyAPICallResponse{
+			cliproxyXAIMonthlyBillingURL: {
+				Body: map[string]any{"config": map[string]any{
+					"monthlyLimit": map[string]any{"val": float64(15000)},
+					"used":         map[string]any{"val": float64(5000)},
+				}},
+			},
+		},
+		errors: map[string]error{cliproxyXAIWeeklyBillingURL: errors.New("forbidden")},
+	}
+	binding := &model.CliproxyAuthFileBinding{
+		AuthIndex:                  "xai-auth",
+		LastXAIWeeklyPercent:       45,
+		LastXAIWeeklyPeriodStartAt: 1783599360,
+		LastXAIWeeklyPeriodEndAt:   1784204160,
+		LastXAIProductUsage:        `[{"product":"Api","usage_percent":45}]`,
+	}
+
+	result, err := refreshCliproxyXAIUsage(context.Background(), caller, binding)
+
+	require.NoError(t, err)
+	require.True(t, result.AllowPartialUsage)
+	require.Contains(t, result.Warning, "周额度刷新失败")
+	require.Equal(t, 45, result.Usage.XAIWeeklyPercent)
+	require.Equal(t, int64(1783599360), result.Usage.XAIWeeklyPeriodStartAt)
+	require.JSONEq(t, `[{"product":"Api","usage_percent":45}]`, result.Usage.XAIProductUsage)
+	require.Equal(t, 5000, result.Usage.UsedTokens)
+}
+
+func TestRefreshCliproxyXAIUsageReturnsErrorWhenBothRequestsFail(t *testing.T) {
+	caller := &fakeCliproxyAPICaller{
+		responses: map[string]*service.CliproxyAPICallResponse{},
+		errors: map[string]error{
+			cliproxyXAIWeeklyBillingURL:  errors.New("weekly failed"),
+			cliproxyXAIMonthlyBillingURL: errors.New("monthly failed"),
+		},
+	}
+
+	_, err := refreshCliproxyXAIUsage(context.Background(), caller, &model.CliproxyAuthFileBinding{AuthIndex: "xai-auth"})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "weekly failed")
+	require.Contains(t, err.Error(), "monthly failed")
 }

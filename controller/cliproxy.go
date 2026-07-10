@@ -30,6 +30,21 @@ type cliproxyXAIProductUsage struct {
 	UsagePercent int    `json:"usage_percent"`
 }
 
+type cliproxyAPICaller interface {
+	CallAPI(context.Context, service.CliproxyAPICallRequest) (*service.CliproxyAPICallResponse, error)
+}
+
+type cliproxyXAICallResult struct {
+	Response *service.CliproxyAPICallResponse
+	Err      error
+}
+
+type cliproxyXAIRefreshResult struct {
+	Usage             cliproxyUsageRefreshBody
+	Warning           string
+	AllowPartialUsage bool
+}
+
 type cliproxyAuthFileBindingRequest struct {
 	UserId       int    `json:"user_id"`
 	AuthIndex    string `json:"auth_index"`
@@ -81,6 +96,7 @@ func GetCliproxyAuthFileBindings(c *gin.Context) {
 	query := cliproxyBindingQueryForRole(model.CliproxyAuthFileBindingQuery{
 		Username:  c.Query("username"),
 		AuthIndex: c.Query("auth_index"),
+		Type:      c.Query("type"),
 		Enabled:   parseOptionalBool(c.Query("enabled")),
 	}, c.GetInt("id"), c.GetInt("role"))
 	bindings, total, err := model.GetCliproxyAuthFileBindings(query, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
@@ -180,6 +196,38 @@ func RefreshCliproxyAuthFileBindingUsage(c *gin.Context) {
 	client, err := newCliproxyClientFromOptions()
 	if err != nil {
 		common.ApiError(c, err)
+		return
+	}
+	if isCliproxyXAIAuthFile(binding) {
+		refresh, refreshErr := refreshCliproxyXAIUsage(c.Request.Context(), client, binding)
+		if refreshErr != nil {
+			updatedBinding, updateErr := model.UpdateCliproxyAuthFileBindingUsage(id, model.CliproxyUsageRefreshUpdate{LastError: refreshErr.Error()})
+			if updateErr != nil {
+				common.ApiError(c, fmt.Errorf("刷新额度失败: %s；保存错误失败: %w", refreshErr.Error(), updateErr))
+				return
+			}
+			common.ApiSuccess(c, updatedBinding)
+			return
+		}
+		updatedBinding, updateErr := model.UpdateCliproxyAuthFileBindingUsage(id, model.CliproxyUsageRefreshUpdate{
+			LastUsageTokens:            refresh.Usage.UsedTokens,
+			LastUsageQuota:             refresh.Usage.Quota,
+			LastPlanType:               refresh.Usage.PlanType,
+			LastXAIWeeklyPercent:       refresh.Usage.XAIWeeklyPercent,
+			LastXAIWeeklyPeriodStartAt: refresh.Usage.XAIWeeklyPeriodStartAt,
+			LastXAIWeeklyPeriodEndAt:   refresh.Usage.XAIWeeklyPeriodEndAt,
+			LastXAIProductUsage:        refresh.Usage.XAIProductUsage,
+			LastXAIOnDemandCap:         refresh.Usage.OnDemandCap,
+			LastXAIOnDemandUsed:        refresh.Usage.XAIOnDemandUsed,
+			LastXAIBillingPeriodEndAt:  refresh.Usage.BillingPeriodEndAt,
+			LastError:                  refresh.Warning,
+			AllowPartialUsage:          refresh.AllowPartialUsage,
+		})
+		if updateErr != nil {
+			common.ApiError(c, updateErr)
+			return
+		}
+		common.ApiSuccess(c, updatedBinding)
 		return
 	}
 	result, err := client.CallAPI(c.Request.Context(), buildCliproxyUsageRefreshRequest(binding))
@@ -348,6 +396,83 @@ func buildCliproxyXAIBillingRequestForURL(authIndex string, url string) service.
 			"user-agent":            "grok-pager/0.2.91 grok-shell/0.2.91 (macos; aarch64)",
 		},
 	}
+}
+
+func refreshCliproxyXAIUsage(ctx context.Context, caller cliproxyAPICaller, binding *model.CliproxyAuthFileBinding) (cliproxyXAIRefreshResult, error) {
+	weeklyResultChannel := make(chan cliproxyXAICallResult, 1)
+	monthlyResultChannel := make(chan cliproxyXAICallResult, 1)
+	go func() {
+		response, err := caller.CallAPI(ctx, buildCliproxyXAIWeeklyBillingRequest(binding.AuthIndex))
+		weeklyResultChannel <- cliproxyXAICallResult{Response: response, Err: err}
+	}()
+	go func() {
+		response, err := caller.CallAPI(ctx, buildCliproxyXAIMonthlyBillingRequest(binding.AuthIndex))
+		monthlyResultChannel <- cliproxyXAICallResult{Response: response, Err: err}
+	}()
+
+	weeklyResult := <-weeklyResultChannel
+	monthlyResult := <-monthlyResultChannel
+	weeklyUsage, weeklyErr := extractCliproxyXAIUsageResult(weeklyResult, resolveCliproxyXAIWeeklyUsage)
+	monthlyUsage, monthlyErr := extractCliproxyXAIUsageResult(monthlyResult, resolveCliproxyXAIMonthlyUsage)
+	if weeklyErr != nil && monthlyErr != nil {
+		return cliproxyXAIRefreshResult{}, fmt.Errorf("周额度刷新失败: %v；月度额度刷新失败: %v", weeklyErr, monthlyErr)
+	}
+
+	usage := cliproxyUsageRefreshBody{
+		UsedTokens:             binding.LastUsageTokens,
+		Quota:                  binding.LastUsageQuota,
+		PlanType:               binding.LastPlanType,
+		OnDemandCap:            binding.LastXAIOnDemandCap,
+		BillingPeriodEndAt:     binding.LastXAIBillingPeriodEndAt,
+		XAIWeeklyPercent:       binding.LastXAIWeeklyPercent,
+		XAIWeeklyPeriodStartAt: binding.LastXAIWeeklyPeriodStartAt,
+		XAIWeeklyPeriodEndAt:   binding.LastXAIWeeklyPeriodEndAt,
+		XAIProductUsage:        binding.LastXAIProductUsage,
+		XAIOnDemandUsed:        binding.LastXAIOnDemandUsed,
+	}
+	if weeklyErr == nil {
+		usage.XAIWeeklyPercent = weeklyUsage.XAIWeeklyPercent
+		usage.XAIWeeklyPeriodStartAt = weeklyUsage.XAIWeeklyPeriodStartAt
+		usage.XAIWeeklyPeriodEndAt = weeklyUsage.XAIWeeklyPeriodEndAt
+		usage.XAIProductUsage = weeklyUsage.XAIProductUsage
+	}
+	if monthlyErr == nil {
+		usage.UsedTokens = monthlyUsage.UsedTokens
+		usage.Quota = monthlyUsage.Quota
+		usage.PlanType = monthlyUsage.PlanType
+		usage.OnDemandCap = monthlyUsage.OnDemandCap
+		usage.XAIOnDemandUsed = monthlyUsage.XAIOnDemandUsed
+		usage.BillingPeriodEndAt = monthlyUsage.BillingPeriodEndAt
+	}
+
+	refresh := cliproxyXAIRefreshResult{Usage: usage}
+	if weeklyErr != nil {
+		refresh.Warning = fmt.Sprintf("周额度刷新失败: %v", weeklyErr)
+		refresh.AllowPartialUsage = true
+	}
+	if monthlyErr != nil {
+		refresh.Warning = fmt.Sprintf("月度额度刷新失败: %v", monthlyErr)
+		refresh.AllowPartialUsage = true
+	}
+	return refresh, nil
+}
+
+func extractCliproxyXAIUsageResult(result cliproxyXAICallResult, resolver func(map[string]any) (cliproxyUsageRefreshBody, bool)) (cliproxyUsageRefreshBody, error) {
+	if result.Err != nil {
+		return cliproxyUsageRefreshBody{}, result.Err
+	}
+	if result.Response == nil {
+		return cliproxyUsageRefreshBody{}, fmt.Errorf("刷新结果为空")
+	}
+	body := result.Response.Body
+	if len(body) == 0 {
+		body = result.Response.Data
+	}
+	usage, ok := resolver(body)
+	if !ok {
+		return cliproxyUsageRefreshBody{}, fmt.Errorf("刷新结果格式无效")
+	}
+	return usage, nil
 }
 
 func buildCliproxyClaudeUsageRequest(authIndex string) service.CliproxyAPICallRequest {
