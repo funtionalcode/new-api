@@ -36,7 +36,7 @@ type CliproxyAuthFileBinding struct {
 	LastXAIWeeklyPercent       int    `json:"last_xai_weekly_percent" gorm:"default:0"`
 	LastXAIWeeklyPeriodStartAt int64  `json:"last_xai_weekly_period_start_at" gorm:"bigint;default:0"`
 	LastXAIWeeklyPeriodEndAt   int64  `json:"last_xai_weekly_period_end_at" gorm:"bigint;default:0"`
-	LastXAIProductUsage        string `json:"last_xai_product_usage" gorm:"type:text"`
+	LastXAIProductUsage        string `json:"last_xai_product_usage" gorm:"column:last_xai_product_usage;type:text"`
 	LastXAIOnDemandCap         int    `json:"last_xai_on_demand_cap" gorm:"default:0"`
 	LastXAIOnDemandUsed        int    `json:"last_xai_on_demand_used" gorm:"default:0"`
 	LastXAIBillingPeriodEndAt  int64  `json:"last_xai_billing_period_end_at" gorm:"bigint;default:0"`

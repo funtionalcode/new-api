@@ -135,6 +135,15 @@ func TestGetCliproxyAuthFileBindingsFiltersXAIAndUser(t *testing.T) {
 	require.ElementsMatch(t, []string{"xai-name", "xai-plan"}, []string{bindings[0].AuthIndex, bindings[1].AuthIndex})
 }
 
+func TestCliproxyAuthFileBindingUsesStableXAIProductUsageColumn(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&CliproxyAuthFileBinding{}))
+
+	require.True(t, db.Migrator().HasColumn(&CliproxyAuthFileBinding{}, "last_xai_product_usage"))
+	require.False(t, db.Migrator().HasColumn(&CliproxyAuthFileBinding{}, "last_xa_iproduct_usage"))
+}
+
 func TestMigrateCliproxyAuthFileBindingNoteRenamesLegacyDescription(t *testing.T) {
 	originalDB := DB
 	originalMainDatabaseType := common.MainDatabaseType()
