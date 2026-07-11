@@ -121,11 +121,6 @@ export function useSidebarData(): SidebarData {
             url: '/deepseek-quota',
             icon: Gauge,
           },
-          {
-            title: t('xAI Quota'),
-            url: '/xai-quota',
-            icon: Gauge,
-          },
         ],
       },
       {

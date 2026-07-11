@@ -104,66 +104,6 @@ func TestGetCliproxyAuthFileBindingsIncludesUserRemark(t *testing.T) {
 	require.Equal(t, "重点用户", bindings[0].Remark)
 }
 
-func TestGetCliproxyAuthFileBindingsFiltersXAIAndUser(t *testing.T) {
-	originalDB := DB
-	t.Cleanup(func() {
-		DB = originalDB
-	})
-
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&User{}, &CliproxyAuthFileBinding{}))
-	DB = db
-
-	for _, binding := range []*CliproxyAuthFileBinding{
-		{UserId: 1, Username: "one", AuthIndex: "xai-name", AuthName: "xai-one@example.com.json", Enabled: true},
-		{UserId: 1, Username: "one", AuthIndex: "xai-plan", AuthName: "custom.json", LastPlanType: "SuperGrok Heavy", Enabled: true},
-		{UserId: 1, Username: "one", AuthIndex: "codex", AuthName: "codex-one@example.com.json", LastPlanType: "pro", Enabled: true},
-		{UserId: 2, Username: "two", AuthIndex: "xai-other", AuthFile: "xai_two@example.com.json", Enabled: true},
-		{UserId: 1, Username: "one", AuthIndex: "xai-name-path", AuthName: "/keys/xai-user.json", Enabled: true},
-		{UserId: 1, Username: "one", AuthIndex: "xai-file-path", AuthFile: `C:\\keys\\xai_user.json`, Enabled: true},
-		{UserId: 1, Username: "one", AuthIndex: "not-xai-name-directory", AuthName: "xai-folder/normal.json", Enabled: true},
-		{UserId: 1, Username: "one", AuthIndex: "not-xai-file-directory", AuthFile: "dir/xai-folder/normal.json", Enabled: true},
-	} {
-		require.NoError(t, db.Create(binding).Error)
-	}
-
-	bindings, total, err := GetCliproxyAuthFileBindings(CliproxyAuthFileBindingQuery{Type: "xai"}, 0, 20)
-	require.NoError(t, err)
-	require.Equal(t, int64(5), total)
-	require.Len(t, bindings, 5)
-
-	bindings, total, err = GetCliproxyAuthFileBindings(CliproxyAuthFileBindingQuery{UserId: 1, Type: "xai"}, 0, 20)
-	require.NoError(t, err)
-	require.Equal(t, int64(4), total)
-	require.ElementsMatch(t, []string{"xai-name", "xai-plan", "xai-name-path", "xai-file-path"}, []string{bindings[0].AuthIndex, bindings[1].AuthIndex, bindings[2].AuthIndex, bindings[3].AuthIndex})
-}
-
-func TestGetCliproxyAuthFileBindingsClampsNegativeXAIPagination(t *testing.T) {
-	originalDB := DB
-	t.Cleanup(func() {
-		DB = originalDB
-	})
-
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&User{}, &CliproxyAuthFileBinding{}))
-	DB = db
-
-	require.NoError(t, db.Create(&CliproxyAuthFileBinding{
-		UserId:    1,
-		Username:  "one",
-		AuthIndex: "xai-auth",
-		AuthName:  "xai-user.json",
-		Enabled:   true,
-	}).Error)
-
-	bindings, total, err := GetCliproxyAuthFileBindings(CliproxyAuthFileBindingQuery{Type: "xai"}, -1, -1)
-	require.NoError(t, err)
-	require.Equal(t, int64(1), total)
-	require.Empty(t, bindings)
-}
-
 func TestCliproxyAuthFileBindingUsesStableXAIProductUsageColumn(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)

@@ -80,7 +80,6 @@ export interface GetCliproxyAuthFileBindingsParams {
   page_size?: number
   username?: string
   auth_index?: string
-  type?: 'xai'
   enabled?: string
 }
 

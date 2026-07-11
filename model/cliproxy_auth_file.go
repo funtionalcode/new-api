@@ -50,7 +50,6 @@ type CliproxyAuthFileBindingQuery struct {
 	UserId    int
 	Username  string
 	AuthIndex string
-	Type      string
 	Enabled   *bool
 }
 
@@ -170,33 +169,6 @@ func GetCliproxyAuthFileBindingById(id int) (*CliproxyAuthFileBinding, error) {
 func GetCliproxyAuthFileBindings(query CliproxyAuthFileBindingQuery, startIdx int, num int) ([]*CliproxyAuthFileBinding, int64, error) {
 	var bindings []*CliproxyAuthFileBinding
 	dbQuery := buildCliproxyAuthFileBindingQuery(query)
-	if strings.EqualFold(strings.TrimSpace(query.Type), "xai") {
-		var candidates []*CliproxyAuthFileBinding
-		if err := dbQuery.Order(cliproxyAuthFileBindingOrderClause()).Find(&candidates).Error; err != nil {
-			return nil, 0, err
-		}
-		for _, binding := range candidates {
-			if isXAICliproxyAuthFileBinding(binding) {
-				bindings = append(bindings, binding)
-			}
-		}
-		if startIdx < 0 {
-			startIdx = 0
-		}
-		if num < 0 {
-			num = 0
-		}
-		total := int64(len(bindings))
-		if startIdx >= len(bindings) {
-			return bindings[:0], total, nil
-		}
-		endIdx := startIdx + num
-		if endIdx > len(bindings) {
-			endIdx = len(bindings)
-		}
-		bindings = bindings[startIdx:endIdx]
-		return bindings, total, enrichCliproxyAuthFileBindingRemarks(bindings)
-	}
 	var total int64
 	if err := dbQuery.Count(&total).Error; err != nil {
 		return nil, 0, err
@@ -255,28 +227,6 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func isXAICliproxyAuthFileBinding(binding *CliproxyAuthFileBinding) bool {
-	if binding == nil {
-		return false
-	}
-	switch strings.NewReplacer("-", "", "_", "", " ", "").Replace(strings.ToLower(strings.TrimSpace(binding.LastPlanType))) {
-	case "xai", "supergrok", "supergrokheavy":
-		return true
-	}
-	for _, value := range []string{binding.AuthFile, binding.AuthName} {
-		normalized := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(value)), "\\", "/")
-		if normalized == "" {
-			continue
-		}
-		segments := strings.Split(normalized, "/")
-		name := segments[len(segments)-1]
-		if strings.HasPrefix(name, "xai-") || strings.HasPrefix(name, "xai_") {
-			return true
-		}
-	}
-	return false
-}
-
 func buildCliproxyAuthFileBindingQuery(query CliproxyAuthFileBindingQuery) *gorm.DB {
 	dbQuery := DB.Model(&CliproxyAuthFileBinding{})
 	if query.UserId > 0 {
@@ -287,32 +237,6 @@ func buildCliproxyAuthFileBindingQuery(query CliproxyAuthFileBindingQuery) *gorm
 	}
 	if strings.TrimSpace(query.AuthIndex) != "" {
 		dbQuery = dbQuery.Where("auth_index = ?", strings.TrimSpace(query.AuthIndex))
-	}
-	if strings.EqualFold(strings.TrimSpace(query.Type), "xai") {
-		planExpr := "lower(replace(replace(replace(last_plan_type, '-', ''), '_', ''), ' ', ''))"
-		authNameExpr := "lower(replace(auth_name, ?, '/'))"
-		authFileExpr := "lower(replace(auth_file, ?, '/'))"
-		dbQuery = dbQuery.Where(
-			"("+
-				authNameExpr+" LIKE ? ESCAPE ? OR "+
-				authNameExpr+" LIKE ? ESCAPE ? OR "+
-				authNameExpr+" LIKE ? ESCAPE ? OR "+
-				authNameExpr+" LIKE ? ESCAPE ? OR "+
-				authFileExpr+" LIKE ? ESCAPE ? OR "+
-				authFileExpr+" LIKE ? ESCAPE ? OR "+
-				authFileExpr+" LIKE ? ESCAPE ? OR "+
-				authFileExpr+" LIKE ? ESCAPE ? OR "+
-				planExpr+" IN ?)",
-			"\\", "xai-%", "\\",
-			"\\", `xai\_%`, "\\",
-			"\\", "%/xai-%", "\\",
-			"\\", `%/xai\_%`, "\\",
-			"\\", "xai-%", "\\",
-			"\\", `xai\_%`, "\\",
-			"\\", "%/xai-%", "\\",
-			"\\", `%/xai\_%`, "\\",
-			[]string{"xai", "supergrok", "supergrokheavy"},
-		)
 	}
 	if query.Enabled != nil {
 		dbQuery = dbQuery.Where("enabled = ?", *query.Enabled)

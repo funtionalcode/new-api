@@ -41,9 +41,18 @@ export type CliproxyXAIUsageSummaryInput = Pick<
   CliproxyAuthFileBinding,
   | 'last_usage_tokens'
   | 'last_usage_quota'
+  | 'last_xai_weekly_percent'
+  | 'last_xai_weekly_period_end_at'
+  | 'last_xai_product_usage'
   | 'last_xai_on_demand_cap'
   | 'last_xai_billing_period_end_at'
 >
+
+export type CliproxyXAIUsageWindow = {
+  key: 'weekly' | 'api' | 'monthly'
+  percent: number
+  resetAt: number
+}
 
 export type CliproxyXAIUsageSummary = {
   usedCents: number
@@ -55,6 +64,7 @@ export type CliproxyXAIUsageSummary = {
   remainingLabel: string
   onDemandCapLabel: string
   billingPeriodEndAt: number
+  primaryWindows: CliproxyXAIUsageWindow[]
 }
 
 function normalizeCents(value: number): number {
@@ -71,6 +81,32 @@ function formatUSDCents(value: number): string {
   }).format(normalizeCents(value) / 100)
 }
 
+function xaiAPIUsagePercent(rawProductUsage: string): number {
+  try {
+    const productUsage: unknown = JSON.parse(rawProductUsage)
+    if (!Array.isArray(productUsage)) return 0
+
+    for (const item of productUsage) {
+      if (!item || typeof item !== 'object') continue
+      const product = item as Record<string, unknown>
+      if (
+        String(product.product || '')
+          .trim()
+          .toLowerCase() !== 'api'
+      ) {
+        continue
+      }
+
+      const percent = Number(product.usage_percent ?? product.usagePercent)
+      if (!Number.isFinite(percent)) return 0
+      return Math.min(100, Math.max(0, Math.round(percent)))
+    }
+  } catch {
+    return 0
+  }
+  return 0
+}
+
 export function buildCliproxyXAIUsageSummary(
   binding: CliproxyXAIUsageSummaryInput
 ): CliproxyXAIUsageSummary {
@@ -79,6 +115,11 @@ export function buildCliproxyXAIUsageSummary(
   const remainingCents = Math.max(0, quotaCents - usedCents)
   const remainingPercent =
     quotaCents > 0 ? Math.round((remainingCents / quotaCents) * 100) : 0
+  const monthlyPercent =
+    quotaCents > 0
+      ? Math.min(100, Math.round((usedCents / quotaCents) * 100))
+      : 0
+  const apiUsagePercent = xaiAPIUsagePercent(binding.last_xai_product_usage)
 
   return {
     usedCents,
@@ -90,6 +131,23 @@ export function buildCliproxyXAIUsageSummary(
     remainingLabel: formatUSDCents(remainingCents),
     onDemandCapLabel: formatUSDCents(binding.last_xai_on_demand_cap),
     billingPeriodEndAt: binding.last_xai_billing_period_end_at,
+    primaryWindows: [
+      {
+        key: 'weekly',
+        percent: binding.last_xai_weekly_percent,
+        resetAt: binding.last_xai_weekly_period_end_at,
+      },
+      {
+        key: 'api',
+        percent: apiUsagePercent,
+        resetAt: 0,
+      },
+      {
+        key: 'monthly',
+        percent: monthlyPercent,
+        resetAt: binding.last_xai_billing_period_end_at,
+      },
+    ],
   }
 }
 

@@ -101,6 +101,7 @@ import {
 import {
   buildCliproxyUsageSummary,
   buildCliproxyXAIUsageSummary,
+  type CliproxyXAIUsageWindow,
   type CliproxyUsageWindowKey,
 } from './lib/usage-summary'
 import { refreshCliproxyAuthFileBindingsUsageAll } from './lib/bulk-refresh'
@@ -205,7 +206,7 @@ const getPlanLabelConfig = (value: unknown): PlanLabelConfig | null => {
     }
   }
 
-  if (key === 'supergrok') {
+  if (key === 'supergrok' || key === 'supergrokheavy') {
     return {
       label: 'SuperGrok',
       className:
@@ -359,6 +360,19 @@ function usageWindowLabel(
   return labels.codexWeekly
 }
 
+function xaiUsageWindowLabel(
+  key: CliproxyXAIUsageWindow['key'],
+  labels: {
+    weekly: string
+    api: string
+    monthly: string
+  }
+): string {
+  if (key === 'weekly') return labels.weekly
+  if (key === 'api') return labels.api
+  return labels.monthly
+}
+
 function BindingUsageCell({
   binding,
   labels,
@@ -377,44 +391,38 @@ function BindingUsageCell({
   const type = getCliproxyAuthFileType(binding)
   if (type === 'xai') {
     const xaiSummary = buildCliproxyXAIUsageSummary(binding)
+    const xaiUsageLabels = {
+      weekly: t('Weekly Limit'),
+      api: t('{{product}} Usage', { product: 'Api' }),
+      monthly: t('Monthly Billing Limit'),
+    }
 
     return (
-      <div className='min-w-[220px] space-y-2'>
-        <div className='flex items-center gap-2'>
+      <div className='min-w-[300px] space-y-2'>
+        <div className='grid gap-2 sm:grid-cols-2'>
+          {xaiSummary.primaryWindows.map((window) => (
+            <UsageLimitBar
+              key={window.key}
+              label={xaiUsageWindowLabel(window.key, xaiUsageLabels)}
+              percent={window.percent}
+            />
+          ))}
+        </div>
+        <div className='flex flex-wrap items-center gap-x-3 gap-y-1'>
           <PlanLabel value={binding.last_plan_type || 'SuperGrok'} />
           {binding.last_error ? (
             <Badge variant='destructive' className='h-5 px-1.5 text-[11px]'>
               {t('Error')}
             </Badge>
           ) : null}
-        </div>
-        <div className='space-y-1'>
-          <div className='flex items-center justify-between gap-3 text-xs'>
-            <span className='text-muted-foreground'>
-              {t('Monthly Billing Limit')}
-            </span>
-            <span className='font-mono font-medium'>
-              {xaiSummary.remainingPercent}% {t('Remaining')}{' '}
-              {xaiSummary.remainingLabel} / {xaiSummary.quotaLabel}
-            </span>
-          </div>
-          <Progress
-            value={xaiSummary.remainingPercent}
-            className={cn(
-              'h-1.5',
-              usageProgressColor(100 - xaiSummary.remainingPercent)
-            )}
-          />
-          <div className='text-muted-foreground flex items-center justify-between gap-3 text-xs'>
-            <span>
-              {t('On-demand Cap')} {xaiSummary.onDemandCapLabel}
-            </span>
-            <span>
-              {xaiSummary.billingPeriodEndAt > 0
-                ? formatTimestampToDate(xaiSummary.billingPeriodEndAt)
-                : '-'}
-            </span>
-          </div>
+          <span className='text-muted-foreground text-xs'>
+            {t('On-demand Cap')} {xaiSummary.onDemandCapLabel}
+          </span>
+          <span className='text-muted-foreground text-xs'>
+            {xaiSummary.billingPeriodEndAt > 0
+              ? formatTimestampToDate(xaiSummary.billingPeriodEndAt)
+              : '-'}
+          </span>
         </div>
       </div>
     )

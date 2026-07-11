@@ -97,7 +97,6 @@ func GetCliproxyAuthFileBindings(c *gin.Context) {
 	query := cliproxyBindingQueryForRole(model.CliproxyAuthFileBindingQuery{
 		Username:  c.Query("username"),
 		AuthIndex: c.Query("auth_index"),
-		Type:      c.Query("type"),
 		Enabled:   parseOptionalBool(c.Query("enabled")),
 	}, c.GetInt("id"), c.GetInt("role"))
 	bindings, total, err := model.GetCliproxyAuthFileBindings(query, pageInfo.GetStartIdx(), pageInfo.GetPageSize())

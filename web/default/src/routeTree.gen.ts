@@ -36,7 +36,6 @@ import { Route as authOauthRouteImport } from './routes/(auth)/oauth'
 import { Route as authForgotPasswordRouteImport } from './routes/(auth)/forgot-password'
 import { Route as AuthenticatedSystemSettingsRouteRouteImport } from './routes/_authenticated/system-settings/route'
 import { Route as PricingModelIdIndexRouteImport } from './routes/pricing/$modelId/index'
-import { Route as AuthenticatedXaiQuotaIndexRouteImport } from './routes/_authenticated/xai-quota/index'
 import { Route as AuthenticatedWalletIndexRouteImport } from './routes/_authenticated/wallet/index'
 import { Route as AuthenticatedUsersIndexRouteImport } from './routes/_authenticated/users/index'
 import { Route as AuthenticatedUserConsumptionIndexRouteImport } from './routes/_authenticated/user-consumption/index'
@@ -209,12 +208,6 @@ const PricingModelIdIndexRoute = PricingModelIdIndexRouteImport.update({
   path: '/pricing/$modelId/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedXaiQuotaIndexRoute =
-  AuthenticatedXaiQuotaIndexRouteImport.update({
-    id: '/xai-quota/',
-    path: '/xai-quota/',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
 const AuthenticatedWalletIndexRoute =
   AuthenticatedWalletIndexRouteImport.update({
     id: '/wallet/',
@@ -482,7 +475,6 @@ export interface FileRoutesByFullPath {
   '/user-consumption/': typeof AuthenticatedUserConsumptionIndexRoute
   '/users/': typeof AuthenticatedUsersIndexRoute
   '/wallet/': typeof AuthenticatedWalletIndexRoute
-  '/xai-quota/': typeof AuthenticatedXaiQuotaIndexRoute
   '/pricing/$modelId/': typeof PricingModelIdIndexRoute
   '/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
   '/system-settings/billing/$section': typeof AuthenticatedSystemSettingsBillingSectionRoute
@@ -546,7 +538,6 @@ export interface FileRoutesByTo {
   '/user-consumption': typeof AuthenticatedUserConsumptionIndexRoute
   '/users': typeof AuthenticatedUsersIndexRoute
   '/wallet': typeof AuthenticatedWalletIndexRoute
-  '/xai-quota': typeof AuthenticatedXaiQuotaIndexRoute
   '/pricing/$modelId': typeof PricingModelIdIndexRoute
   '/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
   '/system-settings/billing/$section': typeof AuthenticatedSystemSettingsBillingSectionRoute
@@ -614,7 +605,6 @@ export interface FileRoutesById {
   '/_authenticated/user-consumption/': typeof AuthenticatedUserConsumptionIndexRoute
   '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
   '/_authenticated/wallet/': typeof AuthenticatedWalletIndexRoute
-  '/_authenticated/xai-quota/': typeof AuthenticatedXaiQuotaIndexRoute
   '/pricing/$modelId/': typeof PricingModelIdIndexRoute
   '/_authenticated/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
   '/_authenticated/system-settings/billing/$section': typeof AuthenticatedSystemSettingsBillingSectionRoute
@@ -681,7 +671,6 @@ export interface FileRouteTypes {
     | '/user-consumption/'
     | '/users/'
     | '/wallet/'
-    | '/xai-quota/'
     | '/pricing/$modelId/'
     | '/system-settings/auth/$section'
     | '/system-settings/billing/$section'
@@ -745,7 +734,6 @@ export interface FileRouteTypes {
     | '/user-consumption'
     | '/users'
     | '/wallet'
-    | '/xai-quota'
     | '/pricing/$modelId'
     | '/system-settings/auth/$section'
     | '/system-settings/billing/$section'
@@ -812,7 +800,6 @@ export interface FileRouteTypes {
     | '/_authenticated/user-consumption/'
     | '/_authenticated/users/'
     | '/_authenticated/wallet/'
-    | '/_authenticated/xai-quota/'
     | '/pricing/$modelId/'
     | '/_authenticated/system-settings/auth/$section'
     | '/_authenticated/system-settings/billing/$section'
@@ -1041,13 +1028,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/pricing/$modelId/'
       preLoaderRoute: typeof PricingModelIdIndexRouteImport
       parentRoute: typeof rootRouteImport
-    }
-    '/_authenticated/xai-quota/': {
-      id: '/_authenticated/xai-quota/'
-      path: '/xai-quota'
-      fullPath: '/xai-quota/'
-      preLoaderRoute: typeof AuthenticatedXaiQuotaIndexRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/wallet/': {
       id: '/_authenticated/wallet/'
@@ -1418,7 +1398,6 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedUserConsumptionIndexRoute: typeof AuthenticatedUserConsumptionIndexRoute
   AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
   AuthenticatedWalletIndexRoute: typeof AuthenticatedWalletIndexRoute
-  AuthenticatedXaiQuotaIndexRoute: typeof AuthenticatedXaiQuotaIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -1449,7 +1428,6 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
     AuthenticatedUserConsumptionIndexRoute,
   AuthenticatedUsersIndexRoute: AuthenticatedUsersIndexRoute,
   AuthenticatedWalletIndexRoute: AuthenticatedWalletIndexRoute,
-  AuthenticatedXaiQuotaIndexRoute: AuthenticatedXaiQuotaIndexRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
