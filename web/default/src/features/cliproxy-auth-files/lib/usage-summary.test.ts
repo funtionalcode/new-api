@@ -99,7 +99,7 @@ describe('cliproxy auth file usage summary', () => {
       {
         key: 'api',
         percent: 63,
-        resetAt: 0,
+        resetAt: 1784204160,
       },
       {
         key: 'monthly',

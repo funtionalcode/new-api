@@ -398,33 +398,75 @@ function BindingUsageCell({
     }
 
     return (
-      <div className='min-w-[300px] space-y-2'>
-        <div className='grid gap-2 sm:grid-cols-2'>
-          {xaiSummary.primaryWindows.map((window) => (
-            <UsageLimitBar
-              key={window.key}
-              label={xaiUsageWindowLabel(window.key, xaiUsageLabels)}
-              percent={window.percent}
-            />
-          ))}
-        </div>
-        <div className='flex flex-wrap items-center gap-x-3 gap-y-1'>
-          <PlanLabel value={binding.last_plan_type || 'SuperGrok'} />
-          {binding.last_error ? (
-            <Badge variant='destructive' className='h-5 px-1.5 text-[11px]'>
-              {t('Error')}
-            </Badge>
-          ) : null}
-          <span className='text-muted-foreground text-xs'>
-            {t('On-demand Cap')} {xaiSummary.onDemandCapLabel}
-          </span>
-          <span className='text-muted-foreground text-xs'>
-            {xaiSummary.billingPeriodEndAt > 0
-              ? formatTimestampToDate(xaiSummary.billingPeriodEndAt)
-              : '-'}
-          </span>
-        </div>
-      </div>
+      <TooltipProvider delay={150}>
+        <Tooltip>
+          <TooltipTrigger
+            render={<div className='min-w-[300px] cursor-help space-y-2' />}
+          >
+            <div className='grid gap-2 sm:grid-cols-2'>
+              {xaiSummary.primaryWindows.map((window) => (
+                <UsageLimitBar
+                  key={window.key}
+                  label={xaiUsageWindowLabel(window.key, xaiUsageLabels)}
+                  percent={window.percent}
+                />
+              ))}
+            </div>
+            <div className='flex flex-wrap items-center gap-x-3 gap-y-1'>
+              <PlanLabel value={binding.last_plan_type || 'SuperGrok'} />
+              {binding.last_error ? (
+                <Badge variant='destructive' className='h-5 px-1.5 text-[11px]'>
+                  {t('Error')}
+                </Badge>
+              ) : null}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent
+            side='top'
+            align='start'
+            className='max-w-[min(34rem,calc(100vw-2rem))] p-3 whitespace-normal'
+          >
+            <div className='grid gap-2'>
+              {xaiSummary.primaryWindows.map((window) => (
+                <div
+                  key={window.key}
+                  className='grid grid-cols-[minmax(8rem,1fr)_auto] gap-x-4 gap-y-0.5'
+                >
+                  <span>{xaiUsageWindowLabel(window.key, xaiUsageLabels)}</span>
+                  <span className='font-mono font-semibold'>
+                    {normalizeUsagePercent(window.percent)}%
+                  </span>
+                  <span className='text-background/70 col-span-2'>
+                    {labels.reset}:{' '}
+                    {window.resetAt > 0
+                      ? formatTimestampToDate(window.resetAt)
+                      : '-'}
+                  </span>
+                </div>
+              ))}
+              <div className='grid grid-cols-[minmax(8rem,1fr)_auto] gap-x-4 gap-y-0.5'>
+                <span>{t('On-demand Cap')}</span>
+                <span className='font-mono font-semibold'>
+                  {xaiSummary.onDemandCapLabel}
+                </span>
+                <span className='text-background/70 col-span-2'>
+                  {labels.reset}:{' '}
+                  {xaiSummary.billingPeriodEndAt > 0
+                    ? formatTimestampToDate(xaiSummary.billingPeriodEndAt)
+                    : '-'}
+                </span>
+              </div>
+              {binding.last_error ? (
+                <div className='border-background/15 border-t pt-2'>
+                  <div className='text-background/80 break-words whitespace-pre-wrap'>
+                    {binding.last_error}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     )
   }
 

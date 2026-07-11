@@ -56,7 +56,7 @@
 | Cliproxy 认证文件 | 普通用户只能查看并刷新自己的认证文件绑定，管理员才可配置服务、拉取远程认证文件、新建绑定、编辑和删除绑定 | `controller/cliproxy.go`、`model/cliproxy_auth_file.go`、`web/default/src/features/cliproxy-auth-files` | 本次同步 |
 | Cliproxy 认证文件 | 识别 `xai-*` / `xai_*` 认证文件并按 xAI billing 响应刷新额度，认证文件列表区分 Codex、Claude 和 xAI 类型 | `controller/cliproxy.go`、`service/cliproxy.go`、`web/default/src/features/cliproxy-auth-files` | 本次同步 |
 | Cliproxy 认证文件 | xAI 额度按金额账单口径展示，解析 SuperGrok、月度账单限额、按需上限和账期结束时间 | `controller/cliproxy.go`、`model/cliproxy_auth_file.go`、`web/default/src/features/cliproxy-auth-files` | 本次同步 |
-| Cliproxy 认证文件 | xAI 认证文件沿用认证文件表格展示，按 Claude/Codex 的进度条样式展示周限额、Api 使用和月度额度；刷新时并行同步两类 billing 快照并保留部分成功数据 | `controller/cliproxy.go`、`model/cliproxy_auth_file.go`、`web/default/src/features/cliproxy-auth-files` | 本次同步 |
+| Cliproxy 认证文件 | xAI 认证文件沿用认证文件表格展示，按 Claude/Codex 的进度条样式展示周限额、Api 使用和月度额度；悬浮展示各项重置时间、按需上限和账期结束时间，刷新时并行同步两类 billing 快照并保留部分成功数据 | `controller/cliproxy.go`、`model/cliproxy_auth_file.go`、`web/default/src/features/cliproxy-auth-files` | 本次同步 |
 | 游乐场 | 恢复图片生成和 TTS 生成模式，复用当前模型/分组，生成结果写回对话消息 | `router/relay-router.go`、`web/default/src/features/playground` | 本次同步 |
 | 游乐场 | 图片/TTS 模式下重试和编辑后提交继续走对应生成接口，图片和音频结果直接渲染为媒体控件，兼容裸 base64 返回，并按登录用户隔离本地会话历史 | `web/default/src/features/playground` | 本次同步 |
 | 游乐场 | 图片生成历史保留 data URL 内容并增加内存兜底，避免切换菜单后因 base64 图片过大导致聊天消息丢失 | `web/default/src/features/playground/lib/storage` | 本次同步 |

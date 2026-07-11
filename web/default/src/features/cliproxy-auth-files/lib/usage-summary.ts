@@ -140,7 +140,7 @@ export function buildCliproxyXAIUsageSummary(
       {
         key: 'api',
         percent: apiUsagePercent,
-        resetAt: 0,
+        resetAt: binding.last_xai_weekly_period_end_at,
       },
       {
         key: 'monthly',
