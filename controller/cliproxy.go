@@ -57,24 +57,25 @@ type cliproxyAuthFileBindingRequest struct {
 }
 
 type cliproxyUsageRefreshBody struct {
-	UsedTokens             int
-	Quota                  int
-	PlanType               string
-	FiveHourPercent        int
-	FiveHourResetAt        int64
-	WeeklyPercent          int
-	WeeklyResetAt          int64
-	CodexFiveHourPercent   int
-	CodexFiveHourResetAt   int64
-	CodexWeeklyPercent     int
-	CodexWeeklyResetAt     int64
-	OnDemandCap            int
-	BillingPeriodEndAt     int64
-	XAIWeeklyPercent       int
-	XAIWeeklyPeriodStartAt int64
-	XAIWeeklyPeriodEndAt   int64
-	XAIProductUsage        string
-	XAIOnDemandUsed        int
+	UsedTokens               int
+	Quota                    int
+	PlanType                 string
+	FiveHourPercent          int
+	FiveHourResetAt          int64
+	WeeklyPercent            int
+	WeeklyResetAt            int64
+	CodexFiveHourPercent     int
+	CodexFiveHourResetAt     int64
+	CodexWeeklyPercent       int
+	CodexWeeklyResetAt       int64
+	OnDemandCap              int
+	BillingPeriodEndAt       int64
+	XAIWeeklyPercent         int
+	XAIWeeklyPeriodStartAt   int64
+	XAIWeeklyPeriodEndAt     int64
+	XAIProductUsage          string
+	XAIOnDemandUsed          int
+	XAIOnDemandUsedRefreshed bool
 }
 
 func GetCliproxyRemoteAuthFiles(c *gin.Context) {
@@ -201,27 +202,31 @@ func RefreshCliproxyAuthFileBindingUsage(c *gin.Context) {
 	if isCliproxyXAIAuthFile(binding) {
 		refresh, refreshErr := refreshCliproxyXAIUsage(c.Request.Context(), client, binding)
 		if refreshErr != nil {
-			updatedBinding, updateErr := model.UpdateCliproxyAuthFileBindingUsage(id, model.CliproxyUsageRefreshUpdate{LastError: refreshErr.Error()})
+			_, updateErr := model.UpdateCliproxyAuthFileBindingUsage(id, model.CliproxyUsageRefreshUpdate{
+				LastError:               refreshErr.Error(),
+				PreserveLastRefreshedAt: true,
+			})
 			if updateErr != nil {
 				common.ApiError(c, fmt.Errorf("刷新额度失败: %s；保存错误失败: %w", refreshErr.Error(), updateErr))
 				return
 			}
-			common.ApiSuccess(c, updatedBinding)
+			common.ApiError(c, refreshErr)
 			return
 		}
 		updatedBinding, updateErr := model.UpdateCliproxyAuthFileBindingUsage(id, model.CliproxyUsageRefreshUpdate{
-			LastUsageTokens:            refresh.Usage.UsedTokens,
-			LastUsageQuota:             refresh.Usage.Quota,
-			LastPlanType:               refresh.Usage.PlanType,
-			LastXAIWeeklyPercent:       refresh.Usage.XAIWeeklyPercent,
-			LastXAIWeeklyPeriodStartAt: refresh.Usage.XAIWeeklyPeriodStartAt,
-			LastXAIWeeklyPeriodEndAt:   refresh.Usage.XAIWeeklyPeriodEndAt,
-			LastXAIProductUsage:        refresh.Usage.XAIProductUsage,
-			LastXAIOnDemandCap:         refresh.Usage.OnDemandCap,
-			LastXAIOnDemandUsed:        refresh.Usage.XAIOnDemandUsed,
-			LastXAIBillingPeriodEndAt:  refresh.Usage.BillingPeriodEndAt,
-			LastError:                  refresh.Warning,
-			AllowPartialUsage:          refresh.AllowPartialUsage,
+			LastUsageTokens:              refresh.Usage.UsedTokens,
+			LastUsageQuota:               refresh.Usage.Quota,
+			LastPlanType:                 refresh.Usage.PlanType,
+			LastXAIWeeklyPercent:         refresh.Usage.XAIWeeklyPercent,
+			LastXAIWeeklyPeriodStartAt:   refresh.Usage.XAIWeeklyPeriodStartAt,
+			LastXAIWeeklyPeriodEndAt:     refresh.Usage.XAIWeeklyPeriodEndAt,
+			LastXAIProductUsage:          refresh.Usage.XAIProductUsage,
+			LastXAIOnDemandCap:           refresh.Usage.OnDemandCap,
+			LastXAIOnDemandUsed:          refresh.Usage.XAIOnDemandUsed,
+			LastXAIOnDemandUsedRefreshed: refresh.Usage.XAIOnDemandUsedRefreshed,
+			LastXAIBillingPeriodEndAt:    refresh.Usage.BillingPeriodEndAt,
+			LastError:                    refresh.Warning,
+			AllowPartialUsage:            refresh.AllowPartialUsage,
 		})
 		if updateErr != nil {
 			common.ApiError(c, updateErr)
@@ -419,16 +424,17 @@ func refreshCliproxyXAIUsage(ctx context.Context, caller cliproxyAPICaller, bind
 	}
 
 	usage := cliproxyUsageRefreshBody{
-		UsedTokens:             binding.LastUsageTokens,
-		Quota:                  binding.LastUsageQuota,
-		PlanType:               binding.LastPlanType,
-		OnDemandCap:            binding.LastXAIOnDemandCap,
-		BillingPeriodEndAt:     binding.LastXAIBillingPeriodEndAt,
-		XAIWeeklyPercent:       binding.LastXAIWeeklyPercent,
-		XAIWeeklyPeriodStartAt: binding.LastXAIWeeklyPeriodStartAt,
-		XAIWeeklyPeriodEndAt:   binding.LastXAIWeeklyPeriodEndAt,
-		XAIProductUsage:        binding.LastXAIProductUsage,
-		XAIOnDemandUsed:        binding.LastXAIOnDemandUsed,
+		UsedTokens:               binding.LastUsageTokens,
+		Quota:                    binding.LastUsageQuota,
+		PlanType:                 binding.LastPlanType,
+		OnDemandCap:              binding.LastXAIOnDemandCap,
+		BillingPeriodEndAt:       binding.LastXAIBillingPeriodEndAt,
+		XAIWeeklyPercent:         binding.LastXAIWeeklyPercent,
+		XAIWeeklyPeriodStartAt:   binding.LastXAIWeeklyPeriodStartAt,
+		XAIWeeklyPeriodEndAt:     binding.LastXAIWeeklyPeriodEndAt,
+		XAIProductUsage:          binding.LastXAIProductUsage,
+		XAIOnDemandUsed:          binding.LastXAIOnDemandUsed,
+		XAIOnDemandUsedRefreshed: binding.LastXAIOnDemandUsedRefreshed,
 	}
 	if weeklyErr == nil {
 		usage.XAIWeeklyPercent = weeklyUsage.XAIWeeklyPercent
@@ -442,6 +448,7 @@ func refreshCliproxyXAIUsage(ctx context.Context, caller cliproxyAPICaller, bind
 		usage.PlanType = monthlyUsage.PlanType
 		usage.OnDemandCap = monthlyUsage.OnDemandCap
 		usage.XAIOnDemandUsed = monthlyUsage.XAIOnDemandUsed
+		usage.XAIOnDemandUsedRefreshed = monthlyUsage.XAIOnDemandUsedRefreshed
 		usage.BillingPeriodEndAt = monthlyUsage.BillingPeriodEndAt
 	}
 
@@ -628,12 +635,13 @@ func resolveCliproxyXAIMonthlyUsage(body map[string]any) (cliproxyUsageRefreshBo
 		return cliproxyUsageRefreshBody{}, false
 	}
 	return cliproxyUsageRefreshBody{
-		UsedTokens:         usedTokens,
-		Quota:              quota,
-		PlanType:           resolveCliproxyXAIPlan(quota),
-		OnDemandCap:        onDemandCap,
-		XAIOnDemandUsed:    onDemandUsed,
-		BillingPeriodEndAt: unixFromRFC3339(billingPeriodEnd),
+		UsedTokens:               usedTokens,
+		Quota:                    quota,
+		PlanType:                 resolveCliproxyXAIPlan(quota),
+		OnDemandCap:              onDemandCap,
+		XAIOnDemandUsed:          onDemandUsed,
+		XAIOnDemandUsedRefreshed: hasOnDemandUsed,
+		BillingPeriodEndAt:       unixFromRFC3339(billingPeriodEnd),
 	}, true
 }
 
@@ -721,7 +729,7 @@ func isCliproxyXAIAuthFile(binding *model.CliproxyAuthFileBinding) bool {
 		return false
 	}
 	switch normalizeCliproxyPlan(binding.LastPlanType) {
-	case "xai", "supergrok":
+	case "xai", "supergrok", "supergrokheavy":
 		return true
 	}
 	return isCliproxyXAIAuthFileName(binding.AuthFile) || isCliproxyXAIAuthFileName(binding.AuthName)

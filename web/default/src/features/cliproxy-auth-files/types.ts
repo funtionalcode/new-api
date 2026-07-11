@@ -68,6 +68,7 @@ export interface CliproxyAuthFileBinding {
   last_xai_product_usage: string
   last_xai_on_demand_cap: number
   last_xai_on_demand_used: number
+  last_xai_on_demand_used_refreshed?: boolean
   last_xai_billing_period_end_at: number
   last_error: string
   created_at: number

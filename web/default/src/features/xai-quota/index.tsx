@@ -45,6 +45,7 @@ import {
   refreshCliproxyAuthFileBindingUsage,
 } from '../cliproxy-auth-files/api'
 import type { CliproxyAuthFileBinding } from '../cliproxy-auth-files/types'
+import { fetchAllXAIQuotaBindings } from './lib/xai-bindings'
 import {
   buildXAIQuotaSummary,
   maskXAIAccountName,
@@ -276,8 +277,7 @@ export function XAIQuotaPage() {
   const [refreshingIds, setRefreshingIds] = useState<Set<number>>(new Set())
   const query = useQuery({
     queryKey: xaiBindingsQueryKey,
-    queryFn: () =>
-      getCliproxyAuthFileBindings({ p: 1, page_size: 100, type: 'xai' }),
+    queryFn: () => fetchAllXAIQuotaBindings(getCliproxyAuthFileBindings),
   })
 
   const responseError =
@@ -307,6 +307,12 @@ export function XAIQuotaPage() {
     setRefreshingIds((current) => new Set(current).add(binding.id))
     try {
       const response = await refreshCliproxyAuthFileBindingUsage(binding.id)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: xaiBindingsQueryKey }),
+        queryClient.invalidateQueries({
+          queryKey: ['cliproxy-auth-file-bindings'],
+        }),
+      ])
       if (!response.success) {
         toast.error(response.message || t('Refresh failed'))
         return
@@ -316,12 +322,6 @@ export function XAIQuotaPage() {
       } else {
         toast.success(t('Quota refreshed successfully'))
       }
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: xaiBindingsQueryKey }),
-        queryClient.invalidateQueries({
-          queryKey: ['cliproxy-auth-file-bindings'],
-        }),
-      ])
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('Refresh failed'))
     } finally {

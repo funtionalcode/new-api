@@ -11,38 +11,39 @@ import (
 )
 
 type CliproxyAuthFileBinding struct {
-	Id                         int    `json:"id" gorm:"primaryKey"`
-	UserId                     int    `json:"user_id" gorm:"index;not null"`
-	Username                   string `json:"username" gorm:"size:64;index;default:''"`
-	Remark                     string `json:"remark" gorm:"-"`
-	AuthIndex                  string `json:"auth_index" gorm:"size:128;uniqueIndex;not null"`
-	AuthName                   string `json:"auth_name" gorm:"size:255;default:''"`
-	AuthFile                   string `json:"auth_file" gorm:"type:text"`
-	Note                       string `json:"note" gorm:"type:text"`
-	AccountId                  string `json:"account_id" gorm:"size:128;index;default:''"`
-	Enabled                    bool   `json:"enabled" gorm:"default:true"`
-	LastRefreshedAt            int64  `json:"last_refreshed_at" gorm:"bigint;default:0"`
-	LastUsageTokens            int    `json:"last_usage_tokens" gorm:"default:0"`
-	LastUsageQuota             int    `json:"last_usage_quota" gorm:"default:0"`
-	LastPlanType               string `json:"last_plan_type" gorm:"size:64;default:''"`
-	LastFiveHourPercent        int    `json:"last_five_hour_percent" gorm:"default:0"`
-	LastFiveHourResetAt        int64  `json:"last_five_hour_reset_at" gorm:"bigint;default:0"`
-	LastWeeklyPercent          int    `json:"last_weekly_percent" gorm:"default:0"`
-	LastWeeklyResetAt          int64  `json:"last_weekly_reset_at" gorm:"bigint;default:0"`
-	LastCodexFiveHourPercent   int    `json:"last_codex_five_hour_percent" gorm:"default:0"`
-	LastCodexFiveHourResetAt   int64  `json:"last_codex_five_hour_reset_at" gorm:"bigint;default:0"`
-	LastCodexWeeklyPercent     int    `json:"last_codex_weekly_percent" gorm:"default:0"`
-	LastCodexWeeklyResetAt     int64  `json:"last_codex_weekly_reset_at" gorm:"bigint;default:0"`
-	LastXAIWeeklyPercent       int    `json:"last_xai_weekly_percent" gorm:"default:0"`
-	LastXAIWeeklyPeriodStartAt int64  `json:"last_xai_weekly_period_start_at" gorm:"bigint;default:0"`
-	LastXAIWeeklyPeriodEndAt   int64  `json:"last_xai_weekly_period_end_at" gorm:"bigint;default:0"`
-	LastXAIProductUsage        string `json:"last_xai_product_usage" gorm:"column:last_xai_product_usage;type:text"`
-	LastXAIOnDemandCap         int    `json:"last_xai_on_demand_cap" gorm:"default:0"`
-	LastXAIOnDemandUsed        int    `json:"last_xai_on_demand_used" gorm:"default:0"`
-	LastXAIBillingPeriodEndAt  int64  `json:"last_xai_billing_period_end_at" gorm:"bigint;default:0"`
-	LastError                  string `json:"last_error" gorm:"type:text"`
-	CreatedAt                  int64  `json:"created_at" gorm:"bigint;index"`
-	UpdatedAt                  int64  `json:"updated_at" gorm:"bigint"`
+	Id                           int    `json:"id" gorm:"primaryKey"`
+	UserId                       int    `json:"user_id" gorm:"index;not null"`
+	Username                     string `json:"username" gorm:"size:64;index;default:''"`
+	Remark                       string `json:"remark" gorm:"-"`
+	AuthIndex                    string `json:"auth_index" gorm:"size:128;uniqueIndex;not null"`
+	AuthName                     string `json:"auth_name" gorm:"size:255;default:''"`
+	AuthFile                     string `json:"auth_file" gorm:"type:text"`
+	Note                         string `json:"note" gorm:"type:text"`
+	AccountId                    string `json:"account_id" gorm:"size:128;index;default:''"`
+	Enabled                      bool   `json:"enabled" gorm:"default:true"`
+	LastRefreshedAt              int64  `json:"last_refreshed_at" gorm:"bigint;default:0"`
+	LastUsageTokens              int    `json:"last_usage_tokens" gorm:"default:0"`
+	LastUsageQuota               int    `json:"last_usage_quota" gorm:"default:0"`
+	LastPlanType                 string `json:"last_plan_type" gorm:"size:64;default:''"`
+	LastFiveHourPercent          int    `json:"last_five_hour_percent" gorm:"default:0"`
+	LastFiveHourResetAt          int64  `json:"last_five_hour_reset_at" gorm:"bigint;default:0"`
+	LastWeeklyPercent            int    `json:"last_weekly_percent" gorm:"default:0"`
+	LastWeeklyResetAt            int64  `json:"last_weekly_reset_at" gorm:"bigint;default:0"`
+	LastCodexFiveHourPercent     int    `json:"last_codex_five_hour_percent" gorm:"default:0"`
+	LastCodexFiveHourResetAt     int64  `json:"last_codex_five_hour_reset_at" gorm:"bigint;default:0"`
+	LastCodexWeeklyPercent       int    `json:"last_codex_weekly_percent" gorm:"default:0"`
+	LastCodexWeeklyResetAt       int64  `json:"last_codex_weekly_reset_at" gorm:"bigint;default:0"`
+	LastXAIWeeklyPercent         int    `json:"last_xai_weekly_percent" gorm:"default:0"`
+	LastXAIWeeklyPeriodStartAt   int64  `json:"last_xai_weekly_period_start_at" gorm:"bigint;default:0"`
+	LastXAIWeeklyPeriodEndAt     int64  `json:"last_xai_weekly_period_end_at" gorm:"bigint;default:0"`
+	LastXAIProductUsage          string `json:"last_xai_product_usage" gorm:"column:last_xai_product_usage;type:text"`
+	LastXAIOnDemandCap           int    `json:"last_xai_on_demand_cap" gorm:"default:0"`
+	LastXAIOnDemandUsed          int    `json:"last_xai_on_demand_used" gorm:"default:0"`
+	LastXAIOnDemandUsedRefreshed bool   `json:"last_xai_on_demand_used_refreshed"`
+	LastXAIBillingPeriodEndAt    int64  `json:"last_xai_billing_period_end_at" gorm:"bigint;default:0"`
+	LastError                    string `json:"last_error" gorm:"type:text"`
+	CreatedAt                    int64  `json:"created_at" gorm:"bigint;index"`
+	UpdatedAt                    int64  `json:"updated_at" gorm:"bigint"`
 }
 
 type CliproxyAuthFileBindingQuery struct {
@@ -66,26 +67,28 @@ type CliproxyAuthFileBindingUpdate struct {
 }
 
 type CliproxyUsageRefreshUpdate struct {
-	LastUsageTokens            int
-	LastUsageQuota             int
-	LastPlanType               string
-	LastFiveHourPercent        int
-	LastFiveHourResetAt        int64
-	LastWeeklyPercent          int
-	LastWeeklyResetAt          int64
-	LastCodexFiveHourPercent   int
-	LastCodexFiveHourResetAt   int64
-	LastCodexWeeklyPercent     int
-	LastCodexWeeklyResetAt     int64
-	LastXAIWeeklyPercent       int
-	LastXAIWeeklyPeriodStartAt int64
-	LastXAIWeeklyPeriodEndAt   int64
-	LastXAIProductUsage        string
-	LastXAIOnDemandCap         int
-	LastXAIOnDemandUsed        int
-	LastXAIBillingPeriodEndAt  int64
-	LastError                  string
-	AllowPartialUsage          bool
+	LastUsageTokens              int
+	LastUsageQuota               int
+	LastPlanType                 string
+	LastFiveHourPercent          int
+	LastFiveHourResetAt          int64
+	LastWeeklyPercent            int
+	LastWeeklyResetAt            int64
+	LastCodexFiveHourPercent     int
+	LastCodexFiveHourResetAt     int64
+	LastCodexWeeklyPercent       int
+	LastCodexWeeklyResetAt       int64
+	LastXAIWeeklyPercent         int
+	LastXAIWeeklyPeriodStartAt   int64
+	LastXAIWeeklyPeriodEndAt     int64
+	LastXAIProductUsage          string
+	LastXAIOnDemandCap           int
+	LastXAIOnDemandUsed          int
+	LastXAIOnDemandUsedRefreshed bool
+	LastXAIBillingPeriodEndAt    int64
+	LastError                    string
+	AllowPartialUsage            bool
+	PreserveLastRefreshedAt      bool
 }
 
 type UserTokenUsageSummary struct {
@@ -167,6 +170,33 @@ func GetCliproxyAuthFileBindingById(id int) (*CliproxyAuthFileBinding, error) {
 func GetCliproxyAuthFileBindings(query CliproxyAuthFileBindingQuery, startIdx int, num int) ([]*CliproxyAuthFileBinding, int64, error) {
 	var bindings []*CliproxyAuthFileBinding
 	dbQuery := buildCliproxyAuthFileBindingQuery(query)
+	if strings.EqualFold(strings.TrimSpace(query.Type), "xai") {
+		var candidates []*CliproxyAuthFileBinding
+		if err := dbQuery.Order(cliproxyAuthFileBindingOrderClause()).Find(&candidates).Error; err != nil {
+			return nil, 0, err
+		}
+		for _, binding := range candidates {
+			if isXAICliproxyAuthFileBinding(binding) {
+				bindings = append(bindings, binding)
+			}
+		}
+		if startIdx < 0 {
+			startIdx = 0
+		}
+		if num < 0 {
+			num = 0
+		}
+		total := int64(len(bindings))
+		if startIdx >= len(bindings) {
+			return bindings[:0], total, nil
+		}
+		endIdx := startIdx + num
+		if endIdx > len(bindings) {
+			endIdx = len(bindings)
+		}
+		bindings = bindings[startIdx:endIdx]
+		return bindings, total, enrichCliproxyAuthFileBindingRemarks(bindings)
+	}
 	var total int64
 	if err := dbQuery.Count(&total).Error; err != nil {
 		return nil, 0, err
@@ -225,6 +255,28 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+func isXAICliproxyAuthFileBinding(binding *CliproxyAuthFileBinding) bool {
+	if binding == nil {
+		return false
+	}
+	switch strings.NewReplacer("-", "", "_", "", " ", "").Replace(strings.ToLower(strings.TrimSpace(binding.LastPlanType))) {
+	case "xai", "supergrok", "supergrokheavy":
+		return true
+	}
+	for _, value := range []string{binding.AuthFile, binding.AuthName} {
+		normalized := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(value)), "\\", "/")
+		if normalized == "" {
+			continue
+		}
+		segments := strings.Split(normalized, "/")
+		name := segments[len(segments)-1]
+		if strings.HasPrefix(name, "xai-") || strings.HasPrefix(name, "xai_") {
+			return true
+		}
+	}
+	return false
+}
+
 func buildCliproxyAuthFileBindingQuery(query CliproxyAuthFileBindingQuery) *gorm.DB {
 	dbQuery := DB.Model(&CliproxyAuthFileBinding{})
 	if query.UserId > 0 {
@@ -238,10 +290,27 @@ func buildCliproxyAuthFileBindingQuery(query CliproxyAuthFileBindingQuery) *gorm
 	}
 	if strings.EqualFold(strings.TrimSpace(query.Type), "xai") {
 		planExpr := "lower(replace(replace(replace(last_plan_type, '-', ''), '_', ''), ' ', ''))"
+		authNameExpr := "lower(replace(auth_name, ?, '/'))"
+		authFileExpr := "lower(replace(auth_file, ?, '/'))"
 		dbQuery = dbQuery.Where(
-			"(lower(substr(auth_name, 1, 4)) IN ? OR lower(substr(auth_file, 1, 4)) IN ? OR "+planExpr+" IN ?)",
-			[]string{"xai-", "xai_"},
-			[]string{"xai-", "xai_"},
+			"("+
+				authNameExpr+" LIKE ? ESCAPE ? OR "+
+				authNameExpr+" LIKE ? ESCAPE ? OR "+
+				authNameExpr+" LIKE ? ESCAPE ? OR "+
+				authNameExpr+" LIKE ? ESCAPE ? OR "+
+				authFileExpr+" LIKE ? ESCAPE ? OR "+
+				authFileExpr+" LIKE ? ESCAPE ? OR "+
+				authFileExpr+" LIKE ? ESCAPE ? OR "+
+				authFileExpr+" LIKE ? ESCAPE ? OR "+
+				planExpr+" IN ?)",
+			"\\", "xai-%", "\\",
+			"\\", `xai\_%`, "\\",
+			"\\", "%/xai-%", "\\",
+			"\\", `%/xai\_%`, "\\",
+			"\\", "xai-%", "\\",
+			"\\", `xai\_%`, "\\",
+			"\\", "%/xai-%", "\\",
+			"\\", `%/xai\_%`, "\\",
 			[]string{"xai", "supergrok", "supergrokheavy"},
 		)
 	}
@@ -257,37 +326,38 @@ func UpdateCliproxyAuthFileBinding(id int, update CliproxyAuthFileBindingUpdate)
 		return nil, err
 	}
 	updatedBinding := &CliproxyAuthFileBinding{
-		Id:                         binding.Id,
-		UserId:                     update.UserId,
-		Username:                   update.Username,
-		AuthIndex:                  update.AuthIndex,
-		AuthName:                   update.AuthName,
-		AuthFile:                   update.AuthFile,
-		Note:                       update.Note,
-		AccountId:                  update.AccountId,
-		Enabled:                    update.Enabled,
-		LastRefreshedAt:            binding.LastRefreshedAt,
-		LastUsageTokens:            binding.LastUsageTokens,
-		LastUsageQuota:             binding.LastUsageQuota,
-		LastPlanType:               firstNonEmpty(update.LastPlanType, binding.LastPlanType),
-		LastFiveHourPercent:        binding.LastFiveHourPercent,
-		LastFiveHourResetAt:        binding.LastFiveHourResetAt,
-		LastWeeklyPercent:          binding.LastWeeklyPercent,
-		LastWeeklyResetAt:          binding.LastWeeklyResetAt,
-		LastCodexFiveHourPercent:   binding.LastCodexFiveHourPercent,
-		LastCodexFiveHourResetAt:   binding.LastCodexFiveHourResetAt,
-		LastCodexWeeklyPercent:     binding.LastCodexWeeklyPercent,
-		LastCodexWeeklyResetAt:     binding.LastCodexWeeklyResetAt,
-		LastXAIWeeklyPercent:       binding.LastXAIWeeklyPercent,
-		LastXAIWeeklyPeriodStartAt: binding.LastXAIWeeklyPeriodStartAt,
-		LastXAIWeeklyPeriodEndAt:   binding.LastXAIWeeklyPeriodEndAt,
-		LastXAIProductUsage:        binding.LastXAIProductUsage,
-		LastXAIOnDemandCap:         binding.LastXAIOnDemandCap,
-		LastXAIOnDemandUsed:        binding.LastXAIOnDemandUsed,
-		LastXAIBillingPeriodEndAt:  binding.LastXAIBillingPeriodEndAt,
-		LastError:                  binding.LastError,
-		CreatedAt:                  binding.CreatedAt,
-		UpdatedAt:                  time.Now().Unix(),
+		Id:                           binding.Id,
+		UserId:                       update.UserId,
+		Username:                     update.Username,
+		AuthIndex:                    update.AuthIndex,
+		AuthName:                     update.AuthName,
+		AuthFile:                     update.AuthFile,
+		Note:                         update.Note,
+		AccountId:                    update.AccountId,
+		Enabled:                      update.Enabled,
+		LastRefreshedAt:              binding.LastRefreshedAt,
+		LastUsageTokens:              binding.LastUsageTokens,
+		LastUsageQuota:               binding.LastUsageQuota,
+		LastPlanType:                 firstNonEmpty(update.LastPlanType, binding.LastPlanType),
+		LastFiveHourPercent:          binding.LastFiveHourPercent,
+		LastFiveHourResetAt:          binding.LastFiveHourResetAt,
+		LastWeeklyPercent:            binding.LastWeeklyPercent,
+		LastWeeklyResetAt:            binding.LastWeeklyResetAt,
+		LastCodexFiveHourPercent:     binding.LastCodexFiveHourPercent,
+		LastCodexFiveHourResetAt:     binding.LastCodexFiveHourResetAt,
+		LastCodexWeeklyPercent:       binding.LastCodexWeeklyPercent,
+		LastCodexWeeklyResetAt:       binding.LastCodexWeeklyResetAt,
+		LastXAIWeeklyPercent:         binding.LastXAIWeeklyPercent,
+		LastXAIWeeklyPeriodStartAt:   binding.LastXAIWeeklyPeriodStartAt,
+		LastXAIWeeklyPeriodEndAt:     binding.LastXAIWeeklyPeriodEndAt,
+		LastXAIProductUsage:          binding.LastXAIProductUsage,
+		LastXAIOnDemandCap:           binding.LastXAIOnDemandCap,
+		LastXAIOnDemandUsed:          binding.LastXAIOnDemandUsed,
+		LastXAIOnDemandUsedRefreshed: binding.LastXAIOnDemandUsedRefreshed,
+		LastXAIBillingPeriodEndAt:    binding.LastXAIBillingPeriodEndAt,
+		LastError:                    binding.LastError,
+		CreatedAt:                    binding.CreatedAt,
+		UpdatedAt:                    time.Now().Unix(),
 	}
 	return updatedBinding, DB.Save(updatedBinding).Error
 }
@@ -315,42 +385,48 @@ func UpdateCliproxyAuthFileBindingUsage(id int, update CliproxyUsageRefreshUpdat
 		update.LastXAIProductUsage = binding.LastXAIProductUsage
 		update.LastXAIOnDemandCap = binding.LastXAIOnDemandCap
 		update.LastXAIOnDemandUsed = binding.LastXAIOnDemandUsed
+		update.LastXAIOnDemandUsedRefreshed = binding.LastXAIOnDemandUsedRefreshed
 		update.LastXAIBillingPeriodEndAt = binding.LastXAIBillingPeriodEndAt
 	} else if strings.TrimSpace(update.LastPlanType) == "" {
 		update.LastPlanType = binding.LastPlanType
 	}
+	lastRefreshedAt := time.Now().Unix()
+	if update.PreserveLastRefreshedAt {
+		lastRefreshedAt = binding.LastRefreshedAt
+	}
 	updatedBinding := &CliproxyAuthFileBinding{
-		Id:                         binding.Id,
-		UserId:                     binding.UserId,
-		Username:                   binding.Username,
-		AuthIndex:                  binding.AuthIndex,
-		AuthName:                   binding.AuthName,
-		AuthFile:                   binding.AuthFile,
-		Note:                       binding.Note,
-		AccountId:                  binding.AccountId,
-		Enabled:                    binding.Enabled,
-		LastRefreshedAt:            time.Now().Unix(),
-		LastUsageTokens:            update.LastUsageTokens,
-		LastUsageQuota:             update.LastUsageQuota,
-		LastPlanType:               update.LastPlanType,
-		LastFiveHourPercent:        update.LastFiveHourPercent,
-		LastFiveHourResetAt:        update.LastFiveHourResetAt,
-		LastWeeklyPercent:          update.LastWeeklyPercent,
-		LastWeeklyResetAt:          update.LastWeeklyResetAt,
-		LastCodexFiveHourPercent:   update.LastCodexFiveHourPercent,
-		LastCodexFiveHourResetAt:   update.LastCodexFiveHourResetAt,
-		LastCodexWeeklyPercent:     update.LastCodexWeeklyPercent,
-		LastCodexWeeklyResetAt:     update.LastCodexWeeklyResetAt,
-		LastXAIWeeklyPercent:       update.LastXAIWeeklyPercent,
-		LastXAIWeeklyPeriodStartAt: update.LastXAIWeeklyPeriodStartAt,
-		LastXAIWeeklyPeriodEndAt:   update.LastXAIWeeklyPeriodEndAt,
-		LastXAIProductUsage:        update.LastXAIProductUsage,
-		LastXAIOnDemandCap:         update.LastXAIOnDemandCap,
-		LastXAIOnDemandUsed:        update.LastXAIOnDemandUsed,
-		LastXAIBillingPeriodEndAt:  update.LastXAIBillingPeriodEndAt,
-		LastError:                  update.LastError,
-		CreatedAt:                  binding.CreatedAt,
-		UpdatedAt:                  time.Now().Unix(),
+		Id:                           binding.Id,
+		UserId:                       binding.UserId,
+		Username:                     binding.Username,
+		AuthIndex:                    binding.AuthIndex,
+		AuthName:                     binding.AuthName,
+		AuthFile:                     binding.AuthFile,
+		Note:                         binding.Note,
+		AccountId:                    binding.AccountId,
+		Enabled:                      binding.Enabled,
+		LastRefreshedAt:              lastRefreshedAt,
+		LastUsageTokens:              update.LastUsageTokens,
+		LastUsageQuota:               update.LastUsageQuota,
+		LastPlanType:                 update.LastPlanType,
+		LastFiveHourPercent:          update.LastFiveHourPercent,
+		LastFiveHourResetAt:          update.LastFiveHourResetAt,
+		LastWeeklyPercent:            update.LastWeeklyPercent,
+		LastWeeklyResetAt:            update.LastWeeklyResetAt,
+		LastCodexFiveHourPercent:     update.LastCodexFiveHourPercent,
+		LastCodexFiveHourResetAt:     update.LastCodexFiveHourResetAt,
+		LastCodexWeeklyPercent:       update.LastCodexWeeklyPercent,
+		LastCodexWeeklyResetAt:       update.LastCodexWeeklyResetAt,
+		LastXAIWeeklyPercent:         update.LastXAIWeeklyPercent,
+		LastXAIWeeklyPeriodStartAt:   update.LastXAIWeeklyPeriodStartAt,
+		LastXAIWeeklyPeriodEndAt:     update.LastXAIWeeklyPeriodEndAt,
+		LastXAIProductUsage:          update.LastXAIProductUsage,
+		LastXAIOnDemandCap:           update.LastXAIOnDemandCap,
+		LastXAIOnDemandUsed:          update.LastXAIOnDemandUsed,
+		LastXAIOnDemandUsedRefreshed: update.LastXAIOnDemandUsedRefreshed,
+		LastXAIBillingPeriodEndAt:    update.LastXAIBillingPeriodEndAt,
+		LastError:                    update.LastError,
+		CreatedAt:                    binding.CreatedAt,
+		UpdatedAt:                    time.Now().Unix(),
 	}
 	return updatedBinding, DB.Save(updatedBinding).Error
 }

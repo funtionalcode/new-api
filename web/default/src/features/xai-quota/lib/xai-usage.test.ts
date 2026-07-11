@@ -57,12 +57,50 @@ describe('xAI quota card helpers', () => {
     assert.equal(summary.payAsYouGo.limitLabel, '$50.00')
   })
 
+  test('preserves an explicit zero on-demand usage while legacy snapshots derive it', () => {
+    const explicitZero = buildXAIQuotaSummary({
+      last_usage_tokens: 17000,
+      last_usage_quota: 15000,
+      last_plan_type: 'SuperGrok',
+      last_xai_weekly_percent: 0,
+      last_xai_weekly_period_start_at: 0,
+      last_xai_weekly_period_end_at: 0,
+      last_xai_product_usage: '',
+      last_xai_on_demand_cap: 5000,
+      last_xai_on_demand_used: 0,
+      last_xai_on_demand_used_refreshed: true,
+      last_xai_billing_period_end_at: 0,
+    })
+    const legacy = buildXAIQuotaSummary({
+      last_usage_tokens: 17000,
+      last_usage_quota: 15000,
+      last_plan_type: 'SuperGrok',
+      last_xai_weekly_percent: 0,
+      last_xai_weekly_period_start_at: 0,
+      last_xai_weekly_period_end_at: 0,
+      last_xai_product_usage: '',
+      last_xai_on_demand_cap: 5000,
+      last_xai_on_demand_used: 0,
+      last_xai_on_demand_used_refreshed: false,
+      last_xai_billing_period_end_at: 0,
+    })
+
+    assert.equal(explicitZero.payAsYouGo.remainingPercent, 100)
+    assert.equal(explicitZero.payAsYouGo.remainingLabel, '$50.00')
+    assert.equal(legacy.payAsYouGo.remainingPercent, 60)
+    assert.equal(legacy.payAsYouGo.remainingLabel, '$30.00')
+  })
+
   test('masks the email local part while preserving the auth file shape', () => {
     assert.equal(
       maskXAIAccountName('xai-duboislee1988@gmail.com.json'),
       'xai-d***********8@gmail.com.json'
     )
     assert.equal(maskXAIAccountName('xai-a@b.com.json'), 'xai-*@b.com.json')
+    assert.equal(
+      maskXAIAccountName('supergrok.member@example.com.json'),
+      's**************r@example.com.json'
+    )
     assert.equal(maskXAIAccountName('custom.json'), 'custom.json')
   })
 

@@ -11,6 +11,7 @@ type XAIQuotaSnapshot = Pick<
   | 'last_xai_product_usage'
   | 'last_xai_on_demand_cap'
   | 'last_xai_on_demand_used'
+  | 'last_xai_on_demand_used_refreshed'
   | 'last_xai_billing_period_end_at'
 >
 
@@ -119,7 +120,7 @@ export function buildXAIQuotaSummary(
     snapshot.last_xai_on_demand_used
   )
   const onDemandUsedCents =
-    explicitOnDemandUsedCents > 0
+    snapshot.last_xai_on_demand_used_refreshed || explicitOnDemandUsedCents > 0
       ? explicitOnDemandUsedCents
       : Math.max(0, usedCents - monthlyLimitCents)
   const onDemandRemainingCents = Math.max(
@@ -167,9 +168,11 @@ export function buildXAIQuotaSummary(
 }
 
 export function maskXAIAccountName(value: string): string {
-  const match = value.match(/^(xai[-_])([^@]+)(@.+)$/i)
+  const prefixMatch = value.match(/^xai[-_]/i)
+  const prefix = prefixMatch?.[0] || ''
+  const match = value.slice(prefix.length).match(/^([^@]+)(@.+)$/)
   if (!match) return value
-  const [, prefix, localPart, suffix] = match
+  const [, localPart, suffix] = match
   if (localPart.length <= 2) {
     return `${prefix}${'*'.repeat(localPart.length)}${suffix}`
   }
