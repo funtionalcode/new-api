@@ -17,11 +17,33 @@ import (
 )
 
 const (
-	cliproxyWhamUsageURL     = "https://chatgpt.com/backend-api/wham/usage"
-	cliproxyClaudeUsageURL   = "https://api.anthropic.com/api/oauth/usage"
-	cliproxyClaudeProfileURL = "https://api.anthropic.com/api/oauth/profile"
-	cliproxyXAIBillingURL    = "https://cli-chat-proxy.grok.com/v1/billing"
+	cliproxyWhamUsageURL         = "https://chatgpt.com/backend-api/wham/usage"
+	cliproxyClaudeUsageURL       = "https://api.anthropic.com/api/oauth/usage"
+	cliproxyClaudeProfileURL     = "https://api.anthropic.com/api/oauth/profile"
+	cliproxyXAIWeeklyBillingURL  = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
+	cliproxyXAIMonthlyBillingURL = "https://cli-chat-proxy.grok.com/v1/billing"
+	cliproxyXAIBillingURL        = cliproxyXAIMonthlyBillingURL
 )
+
+type cliproxyXAIProductUsage struct {
+	Product      string `json:"product"`
+	UsagePercent int    `json:"usage_percent"`
+}
+
+type cliproxyAPICaller interface {
+	CallAPI(context.Context, service.CliproxyAPICallRequest) (*service.CliproxyAPICallResponse, error)
+}
+
+type cliproxyXAICallResult struct {
+	Response *service.CliproxyAPICallResponse
+	Err      error
+}
+
+type cliproxyXAIRefreshResult struct {
+	Usage             cliproxyUsageRefreshBody
+	Warning           string
+	AllowPartialUsage bool
+}
 
 type cliproxyAuthFileBindingRequest struct {
 	UserId       int    `json:"user_id"`
@@ -35,19 +57,25 @@ type cliproxyAuthFileBindingRequest struct {
 }
 
 type cliproxyUsageRefreshBody struct {
-	UsedTokens           int
-	Quota                int
-	PlanType             string
-	FiveHourPercent      int
-	FiveHourResetAt      int64
-	WeeklyPercent        int
-	WeeklyResetAt        int64
-	CodexFiveHourPercent int
-	CodexFiveHourResetAt int64
-	CodexWeeklyPercent   int
-	CodexWeeklyResetAt   int64
-	OnDemandCap          int
-	BillingPeriodEndAt   int64
+	UsedTokens               int
+	Quota                    int
+	PlanType                 string
+	FiveHourPercent          int
+	FiveHourResetAt          int64
+	WeeklyPercent            int
+	WeeklyResetAt            int64
+	CodexFiveHourPercent     int
+	CodexFiveHourResetAt     int64
+	CodexWeeklyPercent       int
+	CodexWeeklyResetAt       int64
+	OnDemandCap              int
+	BillingPeriodEndAt       int64
+	XAIWeeklyPercent         int
+	XAIWeeklyPeriodStartAt   int64
+	XAIWeeklyPeriodEndAt     int64
+	XAIProductUsage          string
+	XAIOnDemandUsed          int
+	XAIOnDemandUsedRefreshed bool
 }
 
 func GetCliproxyRemoteAuthFiles(c *gin.Context) {
@@ -69,6 +97,7 @@ func GetCliproxyAuthFileBindings(c *gin.Context) {
 	query := cliproxyBindingQueryForRole(model.CliproxyAuthFileBindingQuery{
 		Username:  c.Query("username"),
 		AuthIndex: c.Query("auth_index"),
+		Type:      c.Query("type"),
 		Enabled:   parseOptionalBool(c.Query("enabled")),
 	}, c.GetInt("id"), c.GetInt("role"))
 	bindings, total, err := model.GetCliproxyAuthFileBindings(query, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
@@ -168,6 +197,42 @@ func RefreshCliproxyAuthFileBindingUsage(c *gin.Context) {
 	client, err := newCliproxyClientFromOptions()
 	if err != nil {
 		common.ApiError(c, err)
+		return
+	}
+	if isCliproxyXAIAuthFile(binding) {
+		refresh, refreshErr := refreshCliproxyXAIUsage(c.Request.Context(), client, binding)
+		if refreshErr != nil {
+			_, updateErr := model.UpdateCliproxyAuthFileBindingUsage(id, model.CliproxyUsageRefreshUpdate{
+				LastError:               refreshErr.Error(),
+				PreserveLastRefreshedAt: true,
+			})
+			if updateErr != nil {
+				common.ApiError(c, fmt.Errorf("刷新额度失败: %s；保存错误失败: %w", refreshErr.Error(), updateErr))
+				return
+			}
+			common.ApiError(c, refreshErr)
+			return
+		}
+		updatedBinding, updateErr := model.UpdateCliproxyAuthFileBindingUsage(id, model.CliproxyUsageRefreshUpdate{
+			LastUsageTokens:              refresh.Usage.UsedTokens,
+			LastUsageQuota:               refresh.Usage.Quota,
+			LastPlanType:                 refresh.Usage.PlanType,
+			LastXAIWeeklyPercent:         refresh.Usage.XAIWeeklyPercent,
+			LastXAIWeeklyPeriodStartAt:   refresh.Usage.XAIWeeklyPeriodStartAt,
+			LastXAIWeeklyPeriodEndAt:     refresh.Usage.XAIWeeklyPeriodEndAt,
+			LastXAIProductUsage:          refresh.Usage.XAIProductUsage,
+			LastXAIOnDemandCap:           refresh.Usage.OnDemandCap,
+			LastXAIOnDemandUsed:          refresh.Usage.XAIOnDemandUsed,
+			LastXAIOnDemandUsedRefreshed: refresh.Usage.XAIOnDemandUsedRefreshed,
+			LastXAIBillingPeriodEndAt:    refresh.Usage.BillingPeriodEndAt,
+			LastError:                    refresh.Warning,
+			AllowPartialUsage:            refresh.AllowPartialUsage,
+		})
+		if updateErr != nil {
+			common.ApiError(c, updateErr)
+			return
+		}
+		common.ApiSuccess(c, updatedBinding)
 		return
 	}
 	result, err := client.CallAPI(c.Request.Context(), buildCliproxyUsageRefreshRequest(binding))
@@ -312,14 +377,109 @@ func buildCliproxyUsageRefreshRequest(binding *model.CliproxyAuthFileBinding) se
 }
 
 func buildCliproxyXAIBillingRequest(authIndex string) service.CliproxyAPICallRequest {
+	return buildCliproxyXAIMonthlyBillingRequest(authIndex)
+}
+
+func buildCliproxyXAIWeeklyBillingRequest(authIndex string) service.CliproxyAPICallRequest {
+	return buildCliproxyXAIBillingRequestForURL(authIndex, cliproxyXAIWeeklyBillingURL)
+}
+
+func buildCliproxyXAIMonthlyBillingRequest(authIndex string) service.CliproxyAPICallRequest {
+	return buildCliproxyXAIBillingRequestForURL(authIndex, cliproxyXAIMonthlyBillingURL)
+}
+
+func buildCliproxyXAIBillingRequestForURL(authIndex string, url string) service.CliproxyAPICallRequest {
 	return service.CliproxyAPICallRequest{
 		AuthIndex: authIndex,
 		Method:    http.MethodGet,
-		URL:       cliproxyXAIBillingURL,
+		URL:       url,
 		Header: map[string]string{
-			"Authorization": "Bearer $TOKEN$",
+			"Authorization":         "Bearer $TOKEN$",
+			"x-xai-token-auth":      "xai-grok-cli",
+			"x-grok-client-version": "0.2.91",
+			"accept":                "*/*",
+			"user-agent":            "grok-pager/0.2.91 grok-shell/0.2.91 (macos; aarch64)",
 		},
 	}
+}
+
+func refreshCliproxyXAIUsage(ctx context.Context, caller cliproxyAPICaller, binding *model.CliproxyAuthFileBinding) (cliproxyXAIRefreshResult, error) {
+	weeklyResultChannel := make(chan cliproxyXAICallResult, 1)
+	monthlyResultChannel := make(chan cliproxyXAICallResult, 1)
+	go func() {
+		response, err := caller.CallAPI(ctx, buildCliproxyXAIWeeklyBillingRequest(binding.AuthIndex))
+		weeklyResultChannel <- cliproxyXAICallResult{Response: response, Err: err}
+	}()
+	go func() {
+		response, err := caller.CallAPI(ctx, buildCliproxyXAIMonthlyBillingRequest(binding.AuthIndex))
+		monthlyResultChannel <- cliproxyXAICallResult{Response: response, Err: err}
+	}()
+
+	weeklyResult := <-weeklyResultChannel
+	monthlyResult := <-monthlyResultChannel
+	weeklyUsage, weeklyErr := extractCliproxyXAIUsageResult(weeklyResult, resolveCliproxyXAIWeeklyUsage)
+	monthlyUsage, monthlyErr := extractCliproxyXAIUsageResult(monthlyResult, resolveCliproxyXAIMonthlyUsage)
+	if weeklyErr != nil && monthlyErr != nil {
+		return cliproxyXAIRefreshResult{}, fmt.Errorf("周额度刷新失败: %v；月度额度刷新失败: %v", weeklyErr, monthlyErr)
+	}
+
+	usage := cliproxyUsageRefreshBody{
+		UsedTokens:               binding.LastUsageTokens,
+		Quota:                    binding.LastUsageQuota,
+		PlanType:                 binding.LastPlanType,
+		OnDemandCap:              binding.LastXAIOnDemandCap,
+		BillingPeriodEndAt:       binding.LastXAIBillingPeriodEndAt,
+		XAIWeeklyPercent:         binding.LastXAIWeeklyPercent,
+		XAIWeeklyPeriodStartAt:   binding.LastXAIWeeklyPeriodStartAt,
+		XAIWeeklyPeriodEndAt:     binding.LastXAIWeeklyPeriodEndAt,
+		XAIProductUsage:          binding.LastXAIProductUsage,
+		XAIOnDemandUsed:          binding.LastXAIOnDemandUsed,
+		XAIOnDemandUsedRefreshed: binding.LastXAIOnDemandUsedRefreshed,
+	}
+	if weeklyErr == nil {
+		usage.XAIWeeklyPercent = weeklyUsage.XAIWeeklyPercent
+		usage.XAIWeeklyPeriodStartAt = weeklyUsage.XAIWeeklyPeriodStartAt
+		usage.XAIWeeklyPeriodEndAt = weeklyUsage.XAIWeeklyPeriodEndAt
+		usage.XAIProductUsage = weeklyUsage.XAIProductUsage
+	}
+	if monthlyErr == nil {
+		usage.UsedTokens = monthlyUsage.UsedTokens
+		usage.Quota = monthlyUsage.Quota
+		usage.PlanType = monthlyUsage.PlanType
+		usage.OnDemandCap = monthlyUsage.OnDemandCap
+		usage.XAIOnDemandUsed = monthlyUsage.XAIOnDemandUsed
+		usage.XAIOnDemandUsedRefreshed = monthlyUsage.XAIOnDemandUsedRefreshed
+		usage.BillingPeriodEndAt = monthlyUsage.BillingPeriodEndAt
+	}
+
+	refresh := cliproxyXAIRefreshResult{Usage: usage}
+	if weeklyErr != nil {
+		refresh.Warning = fmt.Sprintf("周额度刷新失败: %v", weeklyErr)
+		refresh.AllowPartialUsage = true
+	}
+	if monthlyErr != nil {
+		refresh.Warning = fmt.Sprintf("月度额度刷新失败: %v", monthlyErr)
+		refresh.AllowPartialUsage = true
+	}
+	return refresh, nil
+}
+
+func extractCliproxyXAIUsageResult(result cliproxyXAICallResult, resolver func(map[string]any) (cliproxyUsageRefreshBody, bool)) (cliproxyUsageRefreshBody, error) {
+	if result.Err != nil {
+		return cliproxyUsageRefreshBody{}, result.Err
+	}
+	if result.Response == nil {
+		return cliproxyUsageRefreshBody{}, fmt.Errorf("刷新结果为空")
+	}
+	body := result.Response.Body
+	if len(body) == 0 {
+		body = result.Response.Data
+	}
+	usage, ok := resolver(body)
+	if !ok {
+		return cliproxyUsageRefreshBody{}, fmt.Errorf("刷新结果格式无效")
+	}
+	return usage, nil
 }
 
 func buildCliproxyClaudeUsageRequest(authIndex string) service.CliproxyAPICallRequest {
@@ -427,22 +587,83 @@ func resolveCliproxyClaudeUsageWindows(body map[string]any) (map[string]any, map
 }
 
 func resolveCliproxyXAIUsage(body map[string]any) (cliproxyUsageRefreshBody, bool) {
+	return resolveCliproxyXAIMonthlyUsage(body)
+}
+
+func resolveCliproxyXAIWeeklyUsage(body map[string]any) (cliproxyUsageRefreshBody, bool) {
 	config := mapFromMap(body, "config")
-	monthlyLimit := mapFromMap(config, "monthlyLimit")
-	used := mapFromMap(config, "used")
-	onDemandCap := mapFromMap(config, "onDemandCap")
-	quota := intFromMap(monthlyLimit, "val")
-	usedTokens := intFromMap(used, "val")
-	if quota == 0 && usedTokens == 0 && len(monthlyLimit) == 0 && len(used) == 0 && len(onDemandCap) == 0 {
+	currentPeriod := firstMapFromMap(config, "currentPeriod", "current_period")
+	usagePercent := firstIntFromMap(config, "creditUsagePercent", "credit_usage_percent")
+	productItems := firstSliceFromMap(config, "productUsage", "product_usage")
+	if len(currentPeriod) == 0 && usagePercent == 0 && len(productItems) == 0 {
+		return cliproxyUsageRefreshBody{}, false
+	}
+
+	productUsage := make([]cliproxyXAIProductUsage, 0, len(productItems))
+	for _, item := range productItems {
+		itemMap, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		product := firstNonEmpty(stringFromMap(itemMap, "product"), fmt.Sprintf("Product %d", len(productUsage)+1))
+		productUsage = append(productUsage, cliproxyXAIProductUsage{
+			Product:      product,
+			UsagePercent: firstIntFromMap(itemMap, "usagePercent", "usage_percent"),
+		})
+	}
+	productUsageJSON, err := common.Marshal(productUsage)
+	if err != nil {
+		return cliproxyUsageRefreshBody{}, false
+	}
+
+	return cliproxyUsageRefreshBody{
+		XAIWeeklyPercent:       usagePercent,
+		XAIWeeklyPeriodStartAt: unixFromRFC3339(firstStringFromMap(currentPeriod, "start")),
+		XAIWeeklyPeriodEndAt:   unixFromRFC3339(firstStringFromMap(currentPeriod, "end")),
+		XAIProductUsage:        string(productUsageJSON),
+	}, true
+}
+
+func resolveCliproxyXAIMonthlyUsage(body map[string]any) (cliproxyUsageRefreshBody, bool) {
+	config := mapFromMap(body, "config")
+	quota, hasQuota := cliproxyXAICents(config, "monthlyLimit", "monthly_limit")
+	usedTokens, hasUsed := cliproxyXAICents(config, "used")
+	onDemandCap, hasOnDemandCap := cliproxyXAICents(config, "onDemandCap", "on_demand_cap")
+	onDemandUsed, hasOnDemandUsed := cliproxyXAICents(config, "onDemandUsed", "on_demand_used")
+	billingPeriodEnd := firstStringFromMap(config, "billingPeriodEnd", "billing_period_end")
+	if !hasQuota && !hasUsed && !hasOnDemandCap && !hasOnDemandUsed && billingPeriodEnd == "" {
 		return cliproxyUsageRefreshBody{}, false
 	}
 	return cliproxyUsageRefreshBody{
-		UsedTokens:         usedTokens,
-		Quota:              quota,
-		PlanType:           "SuperGrok",
-		OnDemandCap:        intFromMap(onDemandCap, "val"),
-		BillingPeriodEndAt: unixFromRFC3339(stringFromMap(config, "billingPeriodEnd")),
+		UsedTokens:               usedTokens,
+		Quota:                    quota,
+		PlanType:                 resolveCliproxyXAIPlan(quota),
+		OnDemandCap:              onDemandCap,
+		XAIOnDemandUsed:          onDemandUsed,
+		XAIOnDemandUsedRefreshed: hasOnDemandUsed,
+		BillingPeriodEndAt:       unixFromRFC3339(billingPeriodEnd),
 	}, true
+}
+
+func resolveCliproxyXAIPlan(monthlyLimitCents int) string {
+	if monthlyLimitCents == 150000 {
+		return "SuperGrok Heavy"
+	}
+	return "SuperGrok"
+}
+
+func cliproxyXAICents(data map[string]any, keys ...string) (int, bool) {
+	for _, key := range keys {
+		value, ok := data[key]
+		if !ok {
+			continue
+		}
+		if valueMap, ok := value.(map[string]any); ok {
+			return firstIntFromMap(valueMap, "val", "value"), true
+		}
+		return int(numberFromValue(value)), true
+	}
+	return 0, false
 }
 
 func classifyCliproxyUsageWindows(primaryWindow map[string]any, secondaryWindow map[string]any) (map[string]any, map[string]any) {
@@ -508,7 +729,7 @@ func isCliproxyXAIAuthFile(binding *model.CliproxyAuthFileBinding) bool {
 		return false
 	}
 	switch normalizeCliproxyPlan(binding.LastPlanType) {
-	case "xai", "supergrok":
+	case "xai", "supergrok", "supergrokheavy":
 		return true
 	}
 	return isCliproxyXAIAuthFileName(binding.AuthFile) || isCliproxyXAIAuthFileName(binding.AuthName)
@@ -578,6 +799,15 @@ func mapFromMap(data map[string]any, key string) map[string]any {
 	return typedValue
 }
 
+func firstMapFromMap(data map[string]any, keys ...string) map[string]any {
+	for _, key := range keys {
+		if value := mapFromMap(data, key); len(value) > 0 {
+			return value
+		}
+	}
+	return nil
+}
+
 func boolFromMap(data map[string]any, key string) (bool, bool) {
 	value, ok := data[key]
 	if !ok {
@@ -613,12 +843,30 @@ func sliceFromMap(data map[string]any, key string) []any {
 	return typedValue
 }
 
+func firstSliceFromMap(data map[string]any, keys ...string) []any {
+	for _, key := range keys {
+		if value := sliceFromMap(data, key); value != nil {
+			return value
+		}
+	}
+	return nil
+}
+
 func stringFromMap(data map[string]any, key string) string {
 	value, ok := data[key]
 	if !ok {
 		return ""
 	}
 	return strings.TrimSpace(fmt.Sprintf("%v", value))
+}
+
+func firstStringFromMap(data map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value := stringFromMap(data, key); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func int64FromMap(data map[string]any, key string) int64 {
@@ -643,6 +891,10 @@ func float64FromMap(data map[string]any, key string) float64 {
 	if !ok {
 		return 0
 	}
+	return numberFromValue(value)
+}
+
+func numberFromValue(value any) float64 {
 	switch typedValue := value.(type) {
 	case float64:
 		return typedValue
@@ -660,6 +912,15 @@ func float64FromMap(data map[string]any, key string) float64 {
 
 func intFromMap(data map[string]any, key string) int {
 	return int(float64FromMap(data, key))
+}
+
+func firstIntFromMap(data map[string]any, keys ...string) int {
+	for _, key := range keys {
+		if _, ok := data[key]; ok {
+			return intFromMap(data, key)
+		}
+	}
+	return 0
 }
 
 func firstNonEmpty(values ...string) string {
