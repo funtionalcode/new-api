@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"unsafe"
@@ -14,9 +15,8 @@ import (
 )
 
 var (
-	maskURLPattern    = regexp.MustCompile(`(http|https)://[^\s/$.?#].[^\s]*`)
-	maskDomainPattern = regexp.MustCompile(`\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}\b`)
-	maskIPPattern     = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
+	maskURLPattern = regexp.MustCompile(`https?://[^\s"'<>]+`)
+	maskIPPattern  = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
 	// maskApiKeyPattern matches patterns like 'api_key:xxx' or "api_key:xxx" to mask the API key value
 	maskApiKeyPattern = regexp.MustCompile(`(['"]?)api_key:([^\s'"]+)(['"]?)`)
 )
@@ -145,57 +145,13 @@ func MaskEmail(email string) string {
 	return "***@" + email[atIndex+1:]
 }
 
-// maskHostTail returns the tail parts of a domain/host that should be preserved.
-// It keeps 2 parts for likely country-code TLDs (e.g., co.uk, com.cn), otherwise keeps only the TLD.
-func maskHostTail(parts []string) []string {
-	if len(parts) < 2 {
-		return parts
-	}
-	lastPart := parts[len(parts)-1]
-	secondLastPart := parts[len(parts)-2]
-	if len(lastPart) == 2 && len(secondLastPart) <= 3 {
-		// Likely country code TLD like co.uk, com.cn
-		return []string{secondLastPart, lastPart}
-	}
-	return []string{lastPart}
-}
-
-// maskHostForURL collapses subdomains and keeps only masked prefix + preserved tail.
-// Example: api.openai.com -> ***.com, sub.domain.co.uk -> ***.co.uk
-func maskHostForURL(host string) string {
-	parts := strings.Split(host, ".")
-	if len(parts) < 2 {
-		return "***"
-	}
-	tail := maskHostTail(parts)
-	return "***." + strings.Join(tail, ".")
-}
-
-// maskHostForPlainDomain masks a plain domain and reflects subdomain depth with multiple ***.
-// Example: openai.com -> ***.com, api.openai.com -> ***.***.com, sub.domain.co.uk -> ***.***.co.uk
-func maskHostForPlainDomain(domain string) string {
-	parts := strings.Split(domain, ".")
-	if len(parts) < 2 {
-		return domain
-	}
-	tail := maskHostTail(parts)
-	numStars := len(parts) - len(tail)
-	if numStars < 1 {
-		numStars = 1
-	}
-	stars := strings.TrimSuffix(strings.Repeat("***.", numStars), ".")
-	return stars + "." + strings.Join(tail, ".")
-}
-
-// MaskSensitiveInfo masks sensitive information like URLs, IPs, and domain names in a string
+// MaskSensitiveInfo masks sensitive URL path/query values, IPs, and API keys while preserving domains.
 // Example:
-// http://example.com -> http://***.com
-// https://api.test.org/v1/users/123?key=secret -> https://***.org/***/***/?key=***
-// https://sub.domain.co.uk/path/to/resource -> https://***.co.uk/***/***
+// http://example.com -> http://example.com
+// https://api.test.org/v1/users/123?key=secret -> https://api.test.org/***/***/***?key=***
+// https://sub.domain.co.uk/path/to/resource -> https://sub.domain.co.uk/***/***/***
 // 192.168.1.1 -> ***.***.***.***
-// openai.com -> ***.com
-// www.openai.com -> ***.***.com
-// api.openai.com -> ***.***.com
+// api_key:secret -> api_key:***
 func MaskSensitiveInfo(str string) string {
 	// Mask URLs
 	str = maskURLPattern.ReplaceAllStringFunc(str, func(urlStr string) string {
@@ -209,10 +165,7 @@ func MaskSensitiveInfo(str string) string {
 			return urlStr
 		}
 
-		// Mask host with unified logic
-		maskedHost := maskHostForURL(host)
-
-		result := u.Scheme + "://" + maskedHost
+		result := u.Scheme + "://" + host
 
 		// Mask path
 		if u.Path != "" && u.Path != "/" {
@@ -241,6 +194,7 @@ func MaskSensitiveInfo(str string) string {
 				for key := range values {
 					maskedParams = append(maskedParams, key+"=***")
 				}
+				sort.Strings(maskedParams)
 				if len(maskedParams) > 0 {
 					result += "?" + strings.Join(maskedParams, "&")
 				}
@@ -248,11 +202,6 @@ func MaskSensitiveInfo(str string) string {
 		}
 
 		return result
-	})
-
-	// Mask domain names without protocol (like openai.com, www.openai.com)
-	str = maskDomainPattern.ReplaceAllStringFunc(str, func(domain string) string {
-		return maskHostForPlainDomain(domain)
 	})
 
 	// Mask IP addresses
