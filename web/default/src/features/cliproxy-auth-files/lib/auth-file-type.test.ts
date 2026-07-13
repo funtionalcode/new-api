@@ -3,6 +3,7 @@ import { describe, test } from 'node:test'
 
 import {
   getCliproxyAuthFileEmail,
+  getCliproxyPlanLabel,
   getCliproxyAuthFileType,
 } from './auth-file-type'
 
@@ -57,6 +58,18 @@ describe('cliproxy auth file type', () => {
       }),
       'xai'
     )
+  })
+
+  test('keeps upgraded xAI plans distinguishable', () => {
+    assert.equal(
+      getCliproxyAuthFileType({
+        auth_name: 'account.json',
+        auth_file: '',
+        last_plan_type: 'SuperGrok Heavy',
+      }),
+      'xai'
+    )
+    assert.equal(getCliproxyPlanLabel('SuperGrok Heavy'), 'SuperGrok Heavy')
   })
 
   test('extracts email from auth file names', () => {

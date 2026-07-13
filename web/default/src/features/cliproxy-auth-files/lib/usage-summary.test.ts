@@ -69,6 +69,8 @@ describe('cliproxy auth file usage summary', () => {
       last_xai_weekly_period_end_at: 0,
       last_xai_product_usage: '',
       last_xai_on_demand_cap: 0,
+      last_xai_on_demand_used: 0,
+      last_xai_on_demand_used_refreshed: false,
       last_xai_billing_period_end_at: 1785542400,
     })
 
@@ -87,6 +89,8 @@ describe('cliproxy auth file usage summary', () => {
       last_xai_weekly_period_end_at: 1784204160,
       last_xai_product_usage: '[{"product":"Api","usage_percent":63}]',
       last_xai_on_demand_cap: 2500,
+      last_xai_on_demand_used: 125,
+      last_xai_on_demand_used_refreshed: true,
       last_xai_billing_period_end_at: 1785542400,
     })
 
@@ -107,5 +111,7 @@ describe('cliproxy auth file usage summary', () => {
         resetAt: 1785542400,
       },
     ])
+    assert.equal(summary.monthlyUsageLabel, '$132.32 / $150.00')
+    assert.equal(summary.onDemandUsageLabel, '$23.75 / $25.00')
   })
 })

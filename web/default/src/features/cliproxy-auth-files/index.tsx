@@ -109,6 +109,7 @@ import {
   getCliproxyAuthFileEmail,
   getCliproxyAuthFileType,
   getCliproxyAuthFileTypeLabel,
+  getCliproxyPlanLabel,
 } from './lib/auth-file-type'
 import type {
   CliproxyAuthFile,
@@ -208,7 +209,7 @@ const getPlanLabelConfig = (value: unknown): PlanLabelConfig | null => {
 
   if (key === 'supergrok' || key === 'supergrokheavy') {
     return {
-      label: 'SuperGrok',
+      label: getCliproxyPlanLabel(String(value)),
       className:
         'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-200',
     }
@@ -419,6 +420,9 @@ function BindingUsageCell({
                   {t('Error')}
                 </Badge>
               ) : null}
+              <span className='text-muted-foreground text-xs'>
+                {t('Remaining')}: {xaiSummary.monthlyUsageLabel}
+              </span>
             </div>
           </TooltipTrigger>
           <TooltipContent
@@ -442,15 +446,22 @@ function BindingUsageCell({
                       ? formatTimestampToDate(window.resetAt)
                       : '-'}
                   </span>
+                  {window.key === 'monthly' ? (
+                    <span className='text-background/70 col-span-2'>
+                      {t('Used')}: {xaiSummary.usedLabel}; {t('Remaining')}:{' '}
+                      {xaiSummary.monthlyUsageLabel}
+                    </span>
+                  ) : null}
                 </div>
               ))}
               <div className='grid grid-cols-[minmax(8rem,1fr)_auto] gap-x-4 gap-y-0.5'>
                 <span>{t('On-demand Cap')}</span>
                 <span className='font-mono font-semibold'>
-                  {xaiSummary.onDemandCapLabel}
+                  {xaiSummary.onDemandUsageLabel}
                 </span>
                 <span className='text-background/70 col-span-2'>
-                  {labels.reset}:{' '}
+                  {t('Used')}: {xaiSummary.onDemandUsedLabel} /{' '}
+                  {xaiSummary.onDemandCapLabel}; {labels.reset}:{' '}
                   {xaiSummary.billingPeriodEndAt > 0
                     ? formatTimestampToDate(xaiSummary.billingPeriodEndAt)
                     : '-'}

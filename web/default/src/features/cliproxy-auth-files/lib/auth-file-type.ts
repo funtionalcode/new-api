@@ -12,7 +12,7 @@ const claudePlanTypes = new Set([
   'claudefree',
 ])
 
-const xaiPlanTypes = new Set(['xai', 'supergrok'])
+const xaiPlanTypes = new Set(['xai', 'supergrok', 'supergrokheavy'])
 
 interface CliproxyAuthFileTypeSource {
   auth_name?: string
@@ -30,6 +30,18 @@ function normalizeCliproxyPlan(value?: string): string {
     .replaceAll('-', '')
     .replaceAll('_', '')
     .replaceAll(' ', '')
+}
+
+export function getCliproxyPlanLabel(value?: string): string {
+  const label = String(value || '').trim()
+  switch (normalizeCliproxyPlan(label)) {
+    case 'supergrok':
+      return 'SuperGrok'
+    case 'supergrokheavy':
+      return 'SuperGrok Heavy'
+    default:
+      return label
+  }
 }
 
 function isClaudePlanType(value?: string): boolean {

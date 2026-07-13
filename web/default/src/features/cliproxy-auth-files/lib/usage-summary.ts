@@ -45,6 +45,8 @@ export type CliproxyXAIUsageSummaryInput = Pick<
   | 'last_xai_weekly_period_end_at'
   | 'last_xai_product_usage'
   | 'last_xai_on_demand_cap'
+  | 'last_xai_on_demand_used'
+  | 'last_xai_on_demand_used_refreshed'
   | 'last_xai_billing_period_end_at'
 >
 
@@ -62,6 +64,10 @@ export type CliproxyXAIUsageSummary = {
   usedLabel: string
   quotaLabel: string
   remainingLabel: string
+  monthlyUsageLabel: string
+  onDemandUsedLabel: string
+  onDemandRemainingLabel: string
+  onDemandUsageLabel: string
   onDemandCapLabel: string
   billingPeriodEndAt: number
   primaryWindows: CliproxyXAIUsageWindow[]
@@ -115,6 +121,20 @@ export function buildCliproxyXAIUsageSummary(
   const remainingCents = Math.max(0, quotaCents - usedCents)
   const remainingPercent =
     quotaCents > 0 ? Math.round((remainingCents / quotaCents) * 100) : 0
+  const includedUsedCents = Math.min(usedCents, quotaCents)
+  const monthlyRemainingCents = Math.max(0, quotaCents - includedUsedCents)
+  const explicitOnDemandUsedCents = normalizeCents(
+    binding.last_xai_on_demand_used
+  )
+  const onDemandUsedCents =
+    binding.last_xai_on_demand_used_refreshed || explicitOnDemandUsedCents > 0
+      ? explicitOnDemandUsedCents
+      : Math.max(0, usedCents - quotaCents)
+  const onDemandCapCents = normalizeCents(binding.last_xai_on_demand_cap)
+  const onDemandRemainingCents = Math.max(
+    0,
+    onDemandCapCents - onDemandUsedCents
+  )
   const monthlyPercent =
     quotaCents > 0
       ? Math.min(100, Math.round((usedCents / quotaCents) * 100))
@@ -129,7 +149,11 @@ export function buildCliproxyXAIUsageSummary(
     usedLabel: formatUSDCents(usedCents),
     quotaLabel: formatUSDCents(quotaCents),
     remainingLabel: formatUSDCents(remainingCents),
-    onDemandCapLabel: formatUSDCents(binding.last_xai_on_demand_cap),
+    monthlyUsageLabel: `${formatUSDCents(monthlyRemainingCents)} / ${formatUSDCents(quotaCents)}`,
+    onDemandUsedLabel: formatUSDCents(onDemandUsedCents),
+    onDemandRemainingLabel: formatUSDCents(onDemandRemainingCents),
+    onDemandUsageLabel: `${formatUSDCents(onDemandRemainingCents)} / ${formatUSDCents(onDemandCapCents)}`,
+    onDemandCapLabel: formatUSDCents(onDemandCapCents),
     billingPeriodEndAt: binding.last_xai_billing_period_end_at,
     primaryWindows: [
       {
