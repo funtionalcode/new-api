@@ -54,13 +54,13 @@ export function getDashboardChartColors(domainLength: number): string[] {
 
 function renderQuotaCompat(rawQuota: number, digits = 4): string {
   const { config, meta } = getCurrencyDisplay()
-  if (meta.kind === 'tokens') return rawQuota.toLocaleString()
+  if (meta.kind === 'tokens') return formatTokens(rawQuota)
   const usd = rawQuota / config.quotaPerUnit
   const rate = 'exchangeRate' in meta ? meta.exchangeRate : 1
   const symbol = 'symbol' in meta ? meta.symbol : '$'
   const value = usd * rate
   const fixed = value.toFixed(digits)
-  if (parseFloat(fixed) === 0 && rawQuota > 0 && value > 0) {
+  if (Number.parseFloat(fixed) === 0 && rawQuota > 0 && value > 0) {
     return symbol + Math.pow(10, -digits).toFixed(digits)
   }
   return symbol + fixed
@@ -82,6 +82,7 @@ export function processChartData(
     Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value)
   const formatQuotaValue = (value: number) => renderQuotaCompat(value, 4)
   const formatQuotaTotal = (value: number) => renderQuotaCompat(value, 2)
+  const formatTokenValue = (value: number) => formatTokens(value)
 
   const MAX_TOOLTIP_MODELS = 15
   const isOtherTooltipKey = (key: string) =>
@@ -769,7 +770,7 @@ export function processChartData(
               {
                 key: (datum: Record<string, unknown>) => datum?.type,
                 value: (datum: Record<string, unknown>) =>
-                  formatInt(Number(datum?.value) || 0),
+                  formatTokenValue(Number(datum?.value) || 0),
               },
             ],
           },
@@ -836,13 +837,24 @@ export function processChartData(
           visible: true,
           text: tt('Token Trend'),
         },
+        axes: [
+          { orient: 'bottom', type: 'band' },
+          {
+            orient: 'left',
+            type: 'linear',
+            title: { visible: true, text: tt('Tokens') },
+            label: {
+              formatMethod: (value: number) => formatTokenValue(value),
+            },
+          },
+        ],
         tooltip: {
           mark: {
             content: [
               {
                 key: (datum: Record<string, unknown>) => datum?.Model,
                 value: (datum: Record<string, unknown>) =>
-                  formatInt(Number(datum?.Tokens) || 0),
+                  formatTokenValue(Number(datum?.Tokens) || 0),
               },
             ],
           },
@@ -875,11 +887,11 @@ export function processChartData(
               for (let i = 0; i < array.length; i++) {
                 const v = Number(array[i].value) || 0
                 sum += v
-                array[i].value = formatInt(v)
+                array[i].value = formatTokenValue(v)
               }
               array.unshift({
                 key: tt('Total:'),
-                value: formatInt(sum),
+                value: formatTokenValue(sum),
               })
               return array
             },
@@ -938,6 +950,17 @@ export function processChartData(
           visible: true,
           text: tt('Token Ranking'),
         },
+        axes: [
+          { orient: 'bottom', type: 'band' },
+          {
+            orient: 'left',
+            type: 'linear',
+            title: { visible: true, text: tt('Tokens') },
+            label: {
+              formatMethod: (value: number) => formatTokenValue(value),
+            },
+          },
+        ],
         bar: {
           state: {
             hover: { stroke: '#000', lineWidth: 1 },
@@ -949,7 +972,7 @@ export function processChartData(
               {
                 key: (datum: Record<string, unknown>) => datum?.Model,
                 value: (datum: Record<string, unknown>) =>
-                  formatInt(Number(datum?.Tokens) || 0),
+                  formatTokenValue(Number(datum?.Tokens) || 0),
               },
             ],
           },

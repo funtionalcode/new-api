@@ -85,6 +85,8 @@ import {
   type CurrencyDisplayType,
 } from '@/stores/system-config-store'
 
+import { formatTokens } from './token-format'
+
 export interface CurrencyFormatOptions {
   /** Fraction digits to use when |value| >= 1 */
   digitsLarge?: number
@@ -244,27 +246,6 @@ function mergeOptions(
   }
 }
 
-function removeTrailingZeros(str: string): string {
-  if (!str.includes('.')) return str
-  return str.replace(/(\.[0-9]*?)0+$/, '$1').replace(/\.$/, '')
-}
-
-function formatNumberWithSuffix(
-  value: number,
-  digitsLarge: number,
-  digitsSmall: number,
-  abbreviate: boolean
-): string {
-  const abs = Math.abs(value)
-  if (abbreviate && abs >= 1000) {
-    const result = value / 1000
-    return `${removeTrailingZeros(result.toFixed(1))}k`
-  }
-
-  const digits = abs >= 1 ? digitsLarge : digitsSmall
-  return removeTrailingZeros(value.toFixed(digits))
-}
-
 function adjustForMinimum(
   value: number,
   digits: number,
@@ -286,18 +267,7 @@ function formatCurrencyValue(
   meta: DisplayMeta
 ): string {
   if (meta.kind === 'tokens') {
-    if (options.compact) {
-      return new Intl.NumberFormat(options.locale, {
-        notation: 'compact',
-        maximumFractionDigits: 1,
-      }).format(value)
-    }
-    return formatNumberWithSuffix(
-      value,
-      options.digitsLarge,
-      options.digitsSmall,
-      options.abbreviate
-    )
+    return formatTokens(value)
   }
 
   const digits =
@@ -368,7 +338,7 @@ export function getCurrencyDisplay() {
  *
  * @example
  * // With quotaDisplayType: 'TOKENS', quotaPerUnit: 500000
- * formatCurrencyFromUSD(10) → "5,000,000"
+ * formatCurrencyFromUSD(10) → "500万"
  *
  * @example
  * // With quotaDisplayType: 'CUSTOM', customCurrencySymbol: '€', customCurrencyExchangeRate: 0.9
@@ -396,18 +366,7 @@ export function formatCurrencyFromUSD(
 
   if (meta.kind === 'tokens') {
     const tokens = amountUSD * config.quotaPerUnit
-    if (merged.compact) {
-      return new Intl.NumberFormat(merged.locale, {
-        notation: 'compact',
-        maximumFractionDigits: 1,
-      }).format(tokens)
-    }
-    return formatNumberWithSuffix(
-      tokens,
-      0,
-      merged.digitsSmall,
-      merged.abbreviate
-    )
+    return formatTokens(tokens)
   }
 
   const value =

@@ -1,7 +1,24 @@
 import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
+import { afterEach, describe, test } from 'node:test'
 
-import { formatTokenDetails, formatTokens } from './format'
+import { DEFAULT_SYSTEM_NAME, DEFAULT_LOGO } from '@/lib/constants'
+import {
+  DEFAULT_CURRENCY_CONFIG,
+  useSystemConfigStore,
+} from '@/stores/system-config-store'
+
+import { formatQuota, formatTokenDetails, formatTokens } from './format'
+
+afterEach(() => {
+  useSystemConfigStore.setState((state) => ({
+    config: {
+      ...state.config,
+      systemName: DEFAULT_SYSTEM_NAME,
+      logo: DEFAULT_LOGO,
+      currency: { ...DEFAULT_CURRENCY_CONFIG },
+    },
+  }))
+})
 
 describe('token formatting', () => {
   test('uses Chinese token units for dashboard-sized values', () => {
@@ -20,5 +37,19 @@ describe('token formatting', () => {
 
   test('keeps exact token details for tooltips', () => {
     assert.equal(formatTokenDetails(123_456_789), '123,456,789 token')
+  })
+
+  test('uses Chinese token units when quota display mode is tokens', () => {
+    useSystemConfigStore.setState((state) => ({
+      config: {
+        ...state.config,
+        currency: {
+          ...DEFAULT_CURRENCY_CONFIG,
+          quotaDisplayType: 'TOKENS',
+        },
+      },
+    }))
+
+    assert.equal(formatQuota(413_000_000), '4.1亿')
   })
 })
