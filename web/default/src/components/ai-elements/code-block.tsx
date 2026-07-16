@@ -311,21 +311,28 @@ function CodeMirrorCodeView({
   const editorViewRef = useRef<EditorView | null>(null)
   const initialValueRef = useRef(value)
   const onChangeRef = useRef(onChange)
+  const onKeyDownRef = useRef(onKeyDown)
   const editorMinHeight = `${Math.max(4, rows) * 1.5 + 2}rem`
   const editorExtensions = useMemo(
     () =>
       getCodeMirrorExtensions({
         language,
-        onKeyDown,
+        onKeyDown(event) {
+          onKeyDownRef.current?.(event)
+        },
         readOnly,
         showLineNumbers,
       }),
-    [language, onKeyDown, readOnly, showLineNumbers]
+    [language, readOnly, showLineNumbers]
   )
 
   useEffect(() => {
     onChangeRef.current = onChange
   }, [onChange])
+
+  useEffect(() => {
+    onKeyDownRef.current = onKeyDown
+  }, [onKeyDown])
 
   useEffect(() => {
     const editorHost = editorHostRef.current
@@ -335,6 +342,9 @@ function CodeMirrorCodeView({
 
     const editorView = new EditorView({
       doc: initialValueRef.current,
+      selection: autoFocus
+        ? { anchor: initialValueRef.current.length }
+        : undefined,
       extensions: [
         ...editorExtensions,
         EditorView.updateListener.of((update) => {
