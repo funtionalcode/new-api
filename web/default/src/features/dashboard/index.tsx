@@ -32,6 +32,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { ROLE } from '@/lib/roles'
+import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { ModelsChartPreferences } from './components/models/models-chart-preferences'
@@ -58,9 +59,22 @@ import type {
 } from './types'
 
 const route = getRouteApi('/_authenticated/dashboard/$section')
-const LOG_STAT_FALLBACK_KEYS = ['quota', 'tokens', 'requests', 'rpm', 'tpm']
-const PERFORMANCE_STAT_FALLBACK_KEYS = ['latency', 'success', 'throughput']
-const PERFORMANCE_BADGE_FALLBACK_KEYS = ['primary', 'secondary']
+const LOG_STAT_CARD_FALLBACK_KEYS = [
+  'count',
+  'quota',
+  'tokens',
+  'average-rpm',
+  'average-tpm',
+] as const
+const PERFORMANCE_METRIC_FALLBACK_KEYS = [
+  'success-rate',
+  'average-latency',
+  'throughput',
+] as const
+const PERFORMANCE_MODEL_FALLBACK_KEYS = [
+  'primary-model',
+  'secondary-model',
+] as const
 
 const LazyLogStatCards = lazy(() =>
   import('./components/models/log-stat-cards').then((m) => ({
@@ -114,11 +128,21 @@ function LogStatCardsFallback() {
   return (
     <div className='overflow-hidden rounded-lg border'>
       <div className='divide-border/60 grid grid-cols-2 divide-x sm:grid-cols-3 lg:grid-cols-5'>
-        {LOG_STAT_FALLBACK_KEYS.map((key) => (
-          <div key={key} className='px-4 py-3.5 sm:px-5 sm:py-4'>
-            <Skeleton className='h-3.5 w-16' />
-            <Skeleton className='mt-2 h-7 w-20' />
-            <Skeleton className='mt-1.5 h-3.5 w-28' />
+        {LOG_STAT_CARD_FALLBACK_KEYS.map((key, index) => (
+          <div
+            key={key}
+            className={cn(
+              'px-2.5 py-1.5 sm:px-5 sm:py-4',
+              index === LOG_STAT_CARD_FALLBACK_KEYS.length - 1 &&
+                'col-span-2 sm:col-span-1'
+            )}
+          >
+            <div className='flex items-center gap-1.5 sm:gap-2'>
+              <Skeleton className='size-4 rounded-sm sm:size-7 sm:rounded-md' />
+              <Skeleton className='h-4 w-16' />
+            </div>
+            <Skeleton className='mt-1 h-5 w-16 sm:mt-2 sm:h-7 sm:w-20' />
+            <Skeleton className='mt-1 hidden h-3.5 w-28 md:block' />
           </div>
         ))}
       </div>
@@ -147,14 +171,14 @@ function PerformanceOverviewFallback() {
         <div className='flex items-center gap-2'>
           <Skeleton className='h-4 w-24' />
         </div>
-        {PERFORMANCE_STAT_FALLBACK_KEYS.map((key) => (
+        {PERFORMANCE_METRIC_FALLBACK_KEYS.map((key) => (
           <div key={key} className='flex items-center gap-1.5'>
             <Skeleton className='h-3 w-14' />
             <Skeleton className='h-4 w-16' />
           </div>
         ))}
         <div className='ml-auto flex items-center gap-2'>
-          {PERFORMANCE_BADGE_FALLBACK_KEYS.map((key) => (
+          {PERFORMANCE_MODEL_FALLBACK_KEYS.map((key) => (
             <Skeleton key={key} className='h-5 w-28 rounded-full' />
           ))}
         </div>
@@ -237,8 +261,7 @@ export function Dashboard() {
   const meta = SECTION_META[activeSection] ?? SECTION_META.overview
   const isAdmin = Boolean(userRole && userRole >= ROLE.ADMIN)
   const visibleSections = useMemo(
-    () =>
-      DASHBOARD_SECTION_IDS.filter((section) => section !== 'overview'),
+    () => DASHBOARD_SECTION_IDS.filter((section) => section !== 'overview'),
     []
   )
   const handleSectionChange = useCallback(

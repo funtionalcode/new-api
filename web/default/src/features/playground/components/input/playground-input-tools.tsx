@@ -45,17 +45,33 @@ import {
   getSearchActionNotice,
   readClipboardImageFiles,
 } from '../../lib'
+import type { ParameterEnabled, PlaygroundConfig } from '../../types'
+import { PlaygroundParameterPanel } from './playground-parameter-panel'
 
 type PlaygroundInputToolsProps = {
+  config: PlaygroundConfig
   disabled?: boolean
   hasMessages?: boolean
   onClearMessages?: () => void
+  onConfigChange: <K extends keyof PlaygroundConfig>(
+    key: K,
+    value: PlaygroundConfig[K]
+  ) => void
+  onParameterEnabledChange: (
+    key: keyof ParameterEnabled,
+    value: boolean
+  ) => void
+  parameterEnabled: ParameterEnabled
 }
 
 export function PlaygroundInputTools({
+  config,
   disabled,
   hasMessages = false,
   onClearMessages,
+  onConfigChange,
+  onParameterEnabledChange,
+  parameterEnabled,
 }: PlaygroundInputToolsProps) {
   const { t } = useTranslation()
   const attachments = usePromptInputAttachments()
@@ -194,6 +210,14 @@ export function PlaygroundInputTools({
             <p>{t('Search')}</p>
           </TooltipContent>
         </Tooltip>
+
+        <PlaygroundParameterPanel
+          config={config}
+          disabled={disabled}
+          onConfigChange={onConfigChange}
+          onParameterEnabledChange={onParameterEnabledChange}
+          parameterEnabled={parameterEnabled}
+        />
 
         <Tooltip>
           <TooltipTrigger

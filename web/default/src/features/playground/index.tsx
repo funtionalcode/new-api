@@ -87,6 +87,7 @@ export function Playground() {
     setModels,
     setGroups,
     updateConfig,
+    updateParameterEnabled,
     clearMessages,
   } = usePlaygroundState(userId)
 
@@ -232,7 +233,12 @@ export function Playground() {
 
   const handleSubmitMessage = useCallback(
     (text: string, imageUrls: string[] = []) => {
-      const nextMessages = appendUserMessagePair(messages, text, mode, imageUrls)
+      const nextMessages = appendUserMessagePair(
+        messages,
+        text,
+        mode,
+        imageUrls
+      )
       updateMessages(nextMessages)
       sendMessages(nextMessages, mode)
     },
@@ -290,6 +296,7 @@ export function Playground() {
       {/* Input area: center content and constrain to the same container width */}
       <div className='mx-auto w-full max-w-4xl'>
         <PlaygroundInput
+          config={config}
           disabled={isBusy}
           groups={groups}
           groupValue={config.group}
@@ -299,11 +306,14 @@ export function Playground() {
           modelValue={config.model}
           models={models}
           onGroupChange={(value) => updateConfig('group', value)}
+          onConfigChange={updateConfig}
           onClearMessages={handleClearMessages}
           onModeChange={setMode}
           onModelChange={(value) => updateConfig('model', value)}
+          onParameterEnabledChange={updateParameterEnabled}
           onStop={mode === 'chat' ? stopGeneration : stopTaskGeneration}
           onSubmit={handleSubmitMessage}
+          parameterEnabled={parameterEnabled}
           hasMessages={messages.length > 0}
         />
       </div>

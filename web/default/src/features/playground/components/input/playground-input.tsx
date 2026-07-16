@@ -16,7 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ImageIcon, MessageSquareIcon, VideoIcon, Volume2Icon } from 'lucide-react'
+import {
+  ImageIcon,
+  MessageSquareIcon,
+  VideoIcon,
+  Volume2Icon,
+} from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -29,11 +34,18 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import { getPromptInputImageUrls, getSubmittableInputText } from '../../lib'
-import type { ModelOption, GroupOption, PlaygroundMode } from '../../types'
+import type {
+  ModelOption,
+  GroupOption,
+  ParameterEnabled,
+  PlaygroundConfig,
+  PlaygroundMode,
+} from '../../types'
 import { PlaygroundInputControls } from './playground-input-controls'
 import { PlaygroundInputTools } from './playground-input-tools'
 
 interface PlaygroundInputProps {
+  config: PlaygroundConfig
   onSubmit: (text: string, imageUrls?: string[]) => void
   onStop?: () => void
   disabled?: boolean
@@ -48,10 +60,20 @@ interface PlaygroundInputProps {
   mode: PlaygroundMode
   onModeChange: (value: PlaygroundMode) => void
   hasMessages?: boolean
+  onConfigChange: <K extends keyof PlaygroundConfig>(
+    key: K,
+    value: PlaygroundConfig[K]
+  ) => void
   onClearMessages?: () => void
+  onParameterEnabledChange: (
+    key: keyof ParameterEnabled,
+    value: boolean
+  ) => void
+  parameterEnabled: ParameterEnabled
 }
 
 export function PlaygroundInput({
+  config,
   onSubmit,
   onStop,
   disabled,
@@ -66,7 +88,10 @@ export function PlaygroundInput({
   mode,
   onModeChange,
   hasMessages = false,
+  onConfigChange,
   onClearMessages,
+  onParameterEnabledChange,
+  parameterEnabled,
 }: PlaygroundInputProps) {
   const { t } = useTranslation()
   const [text, setText] = useState('')
@@ -158,9 +183,13 @@ export function PlaygroundInput({
             text={text}
             tools={
               <PlaygroundInputTools
+                config={config}
                 disabled={disabled}
                 hasMessages={hasMessages}
+                onConfigChange={onConfigChange}
                 onClearMessages={onClearMessages}
+                onParameterEnabledChange={onParameterEnabledChange}
+                parameterEnabled={parameterEnabled}
               />
             }
           />

@@ -19,17 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import { VChart } from '@visactor/react-vchart'
 import { CalendarRange, Users, Loader2 } from 'lucide-react'
-import {
-  Fragment,
-  useEffect,
-  useMemo,
-  useState,
-  useRef,
-  useCallback,
-} from 'react'
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { DateTimePicker } from '@/components/datetime-picker'
+import { IconBadge } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useTheme } from '@/context/theme-provider'
@@ -330,35 +324,36 @@ export function UserCharts(props: UserChartsProps) {
           const spec = chartData[chart.specKey]
 
           return (
-            <Fragment key={chart.value}>
-              <div className='overflow-hidden rounded-lg border'>
-                <div className='flex w-full items-center gap-2 border-b px-3 py-2 sm:px-5 sm:py-3'>
-                  <Users className='text-muted-foreground/60 size-4' />
-                  <div className='text-sm font-semibold'>
-                    {t(chart.labelKey)}
-                  </div>
-                </div>
-
-                <div className='h-[300px] p-1.5 sm:h-96 sm:p-2'>
-                  {isLoading ? (
-                    <Skeleton className='h-full w-full' />
-                  ) : (
-                    themeReady &&
-                    spec && (
-                      <VChart
-                        key={`user-${chart.value}-${chartRenderKey}-${metric}-${topUserLimit}-${resolvedTheme}`}
-                        spec={{
-                          ...spec,
-                          theme: resolvedTheme === 'dark' ? 'dark' : 'light',
-                          background: 'transparent',
-                        }}
-                        option={VCHART_OPTION}
-                      />
-                    )
-                  )}
-                </div>
+            <div
+              key={chart.value}
+              className='overflow-hidden rounded-lg border'
+            >
+              <div className='flex w-full items-center gap-2 border-b px-3 py-2 sm:px-5 sm:py-3'>
+                <IconBadge tone='info' size='sm'>
+                  <Users />
+                </IconBadge>
+                <div className='text-sm font-semibold'>{t(chart.labelKey)}</div>
               </div>
-            </Fragment>
+
+              <div className='h-[300px] p-1.5 sm:h-96 sm:p-2'>
+                {isLoading ? (
+                  <Skeleton className='h-full w-full' />
+                ) : (
+                  themeReady &&
+                  spec && (
+                    <VChart
+                      key={`user-${chart.value}-${chartRenderKey}-${metric}-${topUserLimit}-${resolvedTheme}`}
+                      spec={{
+                        ...spec,
+                        theme: resolvedTheme === 'dark' ? 'dark' : 'light',
+                        background: 'transparent',
+                      }}
+                      option={VCHART_OPTION}
+                    />
+                  )
+                )}
+              </div>
+            </div>
           )
         })}
       </div>
