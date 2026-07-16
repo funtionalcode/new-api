@@ -256,6 +256,45 @@ func TestRefreshCliproxyXAIUsageMergesWeeklyAndMonthlySnapshots(t *testing.T) {
 	require.Equal(t, 125, result.Usage.XAIOnDemandUsed)
 }
 
+func TestRefreshCliproxyXAIUsageFallsBackToMonthlyUsedPercentWhenWeeklyResponseOmitsPercent(t *testing.T) {
+	caller := &fakeCliproxyAPICaller{
+		responses: map[string]*service.CliproxyAPICallResponse{
+			cliproxyXAIWeeklyBillingURL: {
+				Body: map[string]any{"config": map[string]any{
+					"currentPeriod": map[string]any{
+						"type":  "USAGE_PERIOD_TYPE_WEEKLY",
+						"start": "2026-07-09T13:16:07.977968+00:00",
+						"end":   "2026-07-16T13:16:07.977968+00:00",
+					},
+					"onDemandCap":        map[string]any{"val": float64(0)},
+					"onDemandUsed":       map[string]any{"val": float64(0)},
+					"billingPeriodStart": "2026-07-09T13:16:07.977968+00:00",
+					"billingPeriodEnd":   "2026-07-16T13:16:07.977968+00:00",
+				}},
+			},
+			cliproxyXAIMonthlyBillingURL: {
+				Body: map[string]any{"config": map[string]any{
+					"monthlyLimit":       map[string]any{"val": float64(15000)},
+					"used":               map[string]any{"val": float64(6134)},
+					"onDemandCap":        map[string]any{"val": float64(0)},
+					"billingPeriodStart": "2026-07-01T00:00:00+00:00",
+					"billingPeriodEnd":   "2026-08-01T00:00:00+00:00",
+				}},
+			},
+		},
+		errors: map[string]error{},
+	}
+
+	result, err := refreshCliproxyXAIUsage(context.Background(), caller, &model.CliproxyAuthFileBinding{AuthIndex: "xai-auth"})
+
+	require.NoError(t, err)
+	require.Equal(t, 41, result.Usage.XAIWeeklyPercent)
+	require.Equal(t, time.Date(2026, 7, 9, 13, 16, 7, 0, time.UTC).Unix(), result.Usage.XAIWeeklyPeriodStartAt)
+	require.Equal(t, time.Date(2026, 7, 16, 13, 16, 7, 0, time.UTC).Unix(), result.Usage.XAIWeeklyPeriodEndAt)
+	require.Equal(t, 6134, result.Usage.UsedTokens)
+	require.Equal(t, 15000, result.Usage.Quota)
+}
+
 func TestRefreshCliproxyXAIUsagePreservesMonthlySnapshotWhenMonthlyRefreshFails(t *testing.T) {
 	caller := &fakeCliproxyAPICaller{
 		responses: map[string]*service.CliproxyAPICallResponse{

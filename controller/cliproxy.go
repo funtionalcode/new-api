@@ -71,6 +71,7 @@ type cliproxyUsageRefreshBody struct {
 	OnDemandCap              int
 	BillingPeriodEndAt       int64
 	XAIWeeklyPercent         int
+	XAIWeeklyPercentSet      bool
 	XAIWeeklyPeriodStartAt   int64
 	XAIWeeklyPeriodEndAt     int64
 	XAIProductUsage          string
@@ -450,6 +451,10 @@ func refreshCliproxyXAIUsage(ctx context.Context, caller cliproxyAPICaller, bind
 		usage.XAIOnDemandUsedRefreshed = monthlyUsage.XAIOnDemandUsedRefreshed
 		usage.BillingPeriodEndAt = monthlyUsage.BillingPeriodEndAt
 	}
+	if weeklyErr == nil && monthlyErr == nil && !weeklyUsage.XAIWeeklyPercentSet && usage.Quota > 0 {
+		weeklyPercent := math.Round(float64(usage.UsedTokens) / float64(usage.Quota) * 100)
+		usage.XAIWeeklyPercent = int(math.Max(0, math.Min(100, weeklyPercent)))
+	}
 
 	refresh := cliproxyXAIRefreshResult{Usage: usage}
 	if weeklyErr != nil {
@@ -592,6 +597,8 @@ func resolveCliproxyXAIUsage(body map[string]any) (cliproxyUsageRefreshBody, boo
 func resolveCliproxyXAIWeeklyUsage(body map[string]any) (cliproxyUsageRefreshBody, bool) {
 	config := cliproxyXAIPayload(body)
 	currentPeriod := firstMapFromMap(config, "currentPeriod", "current_period")
+	_, hasCamelCaseUsagePercent := config["creditUsagePercent"]
+	_, hasSnakeCaseUsagePercent := config["credit_usage_percent"]
 	usagePercent := firstIntFromMap(config, "creditUsagePercent", "credit_usage_percent")
 	productItems := firstSliceFromMap(config, "productUsage", "product_usage")
 	if len(currentPeriod) == 0 && usagePercent == 0 && len(productItems) == 0 {
@@ -617,6 +624,7 @@ func resolveCliproxyXAIWeeklyUsage(body map[string]any) (cliproxyUsageRefreshBod
 
 	return cliproxyUsageRefreshBody{
 		XAIWeeklyPercent:       usagePercent,
+		XAIWeeklyPercentSet:    hasCamelCaseUsagePercent || hasSnakeCaseUsagePercent,
 		XAIWeeklyPeriodStartAt: unixFromRFC3339(firstStringFromMap(currentPeriod, "start")),
 		XAIWeeklyPeriodEndAt:   unixFromRFC3339(firstStringFromMap(currentPeriod, "end")),
 		XAIProductUsage:        string(productUsageJSON),
