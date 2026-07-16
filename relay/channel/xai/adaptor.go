@@ -51,7 +51,14 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
-	return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, info.RequestURLPath, info.ChannelType), nil
+	requestURLPath := info.RequestURLPath
+	switch info.RelayMode {
+	case constant.RelayModeImagesGenerations:
+		requestURLPath = "/v1/images/generations"
+	case constant.RelayModeImagesEdits:
+		requestURLPath = "/v1/images/edits"
+	}
+	return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, requestURLPath, info.ChannelType), nil
 }
 
 func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *relaycommon.RelayInfo) error {

@@ -87,10 +87,10 @@ function formatUSDCents(value: number): string {
   }).format(normalizeCents(value) / 100)
 }
 
-function xaiAPIUsagePercent(rawProductUsage: string): number {
+function xaiAPIUsagePercent(rawProductUsage: string): number | undefined {
   try {
     const productUsage: unknown = JSON.parse(rawProductUsage)
-    if (!Array.isArray(productUsage)) return 0
+    if (!Array.isArray(productUsage)) return undefined
 
     for (const item of productUsage) {
       if (!item || typeof item !== 'object') continue
@@ -104,13 +104,13 @@ function xaiAPIUsagePercent(rawProductUsage: string): number {
       }
 
       const percent = Number(product.usage_percent ?? product.usagePercent)
-      if (!Number.isFinite(percent)) return 0
+      if (!Number.isFinite(percent)) return undefined
       return Math.min(100, Math.max(0, Math.round(percent)))
     }
   } catch {
-    return 0
+    return undefined
   }
-  return 0
+  return undefined
 }
 
 export function buildCliproxyXAIUsageSummary(
@@ -135,11 +135,26 @@ export function buildCliproxyXAIUsageSummary(
     0,
     onDemandCapCents - onDemandUsedCents
   )
-  const monthlyPercent =
-    quotaCents > 0
-      ? Math.min(100, Math.round((usedCents / quotaCents) * 100))
-      : 0
   const apiUsagePercent = xaiAPIUsagePercent(binding.last_xai_product_usage)
+  const primaryWindows: CliproxyXAIUsageWindow[] = [
+    {
+      key: 'weekly',
+      percent: binding.last_xai_weekly_percent,
+      resetAt: binding.last_xai_weekly_period_end_at,
+    },
+  ]
+  if (apiUsagePercent !== undefined) {
+    primaryWindows.push({
+      key: 'api',
+      percent: apiUsagePercent,
+      resetAt: binding.last_xai_weekly_period_end_at,
+    })
+  }
+  primaryWindows.push({
+    key: 'monthly',
+    percent: remainingPercent,
+    resetAt: binding.last_xai_billing_period_end_at,
+  })
 
   return {
     usedCents,
@@ -155,23 +170,7 @@ export function buildCliproxyXAIUsageSummary(
     onDemandUsageLabel: `${formatUSDCents(onDemandRemainingCents)} / ${formatUSDCents(onDemandCapCents)}`,
     onDemandCapLabel: formatUSDCents(onDemandCapCents),
     billingPeriodEndAt: binding.last_xai_billing_period_end_at,
-    primaryWindows: [
-      {
-        key: 'weekly',
-        percent: binding.last_xai_weekly_percent,
-        resetAt: binding.last_xai_weekly_period_end_at,
-      },
-      {
-        key: 'api',
-        percent: apiUsagePercent,
-        resetAt: binding.last_xai_weekly_period_end_at,
-      },
-      {
-        key: 'monthly',
-        percent: monthlyPercent,
-        resetAt: binding.last_xai_billing_period_end_at,
-      },
-    ],
+    primaryWindows,
   }
 }
 

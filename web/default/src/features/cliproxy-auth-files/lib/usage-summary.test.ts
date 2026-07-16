@@ -81,15 +81,15 @@ describe('cliproxy auth file usage summary', () => {
     assert.equal(summary.billingPeriodEndAt, 1785542400)
   })
 
-  test('builds xAI weekly, API, and monthly windows for the auth file table', () => {
+  test('shows xAI weekly usage and monthly remaining quota without a removed API window', () => {
     const summary = buildCliproxyXAIUsageSummary({
-      last_usage_tokens: 1768,
+      last_usage_tokens: 6109,
       last_usage_quota: 15000,
-      last_xai_weekly_percent: 45,
+      last_xai_weekly_percent: 41,
       last_xai_weekly_period_end_at: 1784204160,
-      last_xai_product_usage: '[{"product":"Api","usage_percent":63}]',
-      last_xai_on_demand_cap: 2500,
-      last_xai_on_demand_used: 125,
+      last_xai_product_usage: '[]',
+      last_xai_on_demand_cap: 0,
+      last_xai_on_demand_used: 0,
       last_xai_on_demand_used_refreshed: true,
       last_xai_billing_period_end_at: 1785542400,
     })
@@ -97,21 +97,16 @@ describe('cliproxy auth file usage summary', () => {
     assert.deepEqual(summary.primaryWindows, [
       {
         key: 'weekly',
-        percent: 45,
-        resetAt: 1784204160,
-      },
-      {
-        key: 'api',
-        percent: 63,
+        percent: 41,
         resetAt: 1784204160,
       },
       {
         key: 'monthly',
-        percent: 12,
+        percent: 59,
         resetAt: 1785542400,
       },
     ])
-    assert.equal(summary.monthlyUsageLabel, '$132.32 / $150.00')
-    assert.equal(summary.onDemandUsageLabel, '$23.75 / $25.00')
+    assert.equal(summary.monthlyUsageLabel, '$88.91 / $150.00')
+    assert.equal(summary.onDemandUsageLabel, '$0.00 / $0.00')
   })
 })
