@@ -44,6 +44,7 @@ import {
   completeAssistantMessage,
   getMessageContent,
   getPreviousUserMessage,
+  getPlaygroundGenerationMode,
   parseRequestErrorDetails,
   getPlaygroundTaskModel,
   pollVideoGeneration,
@@ -214,14 +215,19 @@ export function Playground() {
 
   const sendMessages = useCallback(
     (nextMessages: Message[], generationMode: PlaygroundMode = 'chat') => {
-      if (generationMode === 'chat') {
+      const effectiveMode = getPlaygroundGenerationMode(
+        generationMode,
+        config.model
+      )
+
+      if (effectiveMode === 'chat') {
         sendChat(nextMessages)
         return
       }
 
-      void sendTaskMessages(nextMessages, generationMode)
+      void sendTaskMessages(nextMessages, effectiveMode)
     },
-    [sendChat, sendTaskMessages]
+    [config.model, sendChat, sendTaskMessages]
   )
 
   const handleSubmitMessage = useCallback(

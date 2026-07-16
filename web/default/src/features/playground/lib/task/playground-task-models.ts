@@ -22,3 +22,22 @@ export function getPlaygroundTaskModel(
 
   return model
 }
+
+export function getPlaygroundGenerationMode(
+  mode: PlaygroundMode,
+  model: string
+): PlaygroundMode {
+  if (mode !== 'chat') {
+    return mode
+  }
+
+  if (isXAIImageModel(model)) {
+    return 'image'
+  }
+
+  if (isXAIVideoModel(model)) {
+    return 'video'
+  }
+
+  return mode
+}
