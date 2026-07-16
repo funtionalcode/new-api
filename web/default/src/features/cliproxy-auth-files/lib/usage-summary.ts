@@ -123,6 +123,10 @@ export function buildCliproxyXAIUsageSummary(
     quotaCents > 0 ? Math.round((remainingCents / quotaCents) * 100) : 0
   const includedUsedCents = Math.min(usedCents, quotaCents)
   const monthlyRemainingCents = Math.max(0, quotaCents - includedUsedCents)
+  const monthlyUsedPercent =
+    quotaCents > 0
+      ? Math.round((includedUsedCents / quotaCents) * 100)
+      : 0
   const explicitOnDemandUsedCents = normalizeCents(
     binding.last_xai_on_demand_used
   )
@@ -152,7 +156,7 @@ export function buildCliproxyXAIUsageSummary(
   }
   primaryWindows.push({
     key: 'monthly',
-    percent: remainingPercent,
+    percent: monthlyUsedPercent,
     resetAt: binding.last_xai_billing_period_end_at,
   })
 

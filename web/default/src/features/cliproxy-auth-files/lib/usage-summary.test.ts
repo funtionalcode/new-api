@@ -81,7 +81,7 @@ describe('cliproxy auth file usage summary', () => {
     assert.equal(summary.billingPeriodEndAt, 1785542400)
   })
 
-  test('shows xAI weekly usage and monthly remaining quota without a removed API window', () => {
+  test('shows xAI weekly and monthly used percentages without a removed API window', () => {
     const summary = buildCliproxyXAIUsageSummary({
       last_usage_tokens: 6109,
       last_usage_quota: 15000,
@@ -102,7 +102,7 @@ describe('cliproxy auth file usage summary', () => {
       },
       {
         key: 'monthly',
-        percent: 59,
+        percent: 41,
         resetAt: 1785542400,
       },
     ])
