@@ -149,6 +149,31 @@ func TestResolveCliproxyXAIMonthlyUsageSupportsSnakeCaseAndHeavyPlan(t *testing.
 	require.Equal(t, time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC).Unix(), usage.BillingPeriodEndAt)
 }
 
+func TestResolveCliproxyXAIMonthlyUsageSupportsBillingCycleUsagePayload(t *testing.T) {
+	usage, ok := resolveCliproxyXAIMonthlyUsage(map[string]any{
+		"billingCycle": map[string]any{
+			"billingPeriodStart": "2026-07-01T00:00:00Z",
+			"billingPeriodEnd":   "2026-08-01T00:00:00Z",
+		},
+		"monthlyLimit": map[string]any{"val": float64(150000)},
+		"onDemandCap":  map[string]any{"val": float64(0)},
+		"usage": map[string]any{
+			"includedUsed": map[string]any{"val": float64(9383)},
+			"onDemandUsed": map[string]any{"val": float64(0)},
+			"totalUsed":    map[string]any{"val": float64(9383)},
+		},
+	})
+
+	require.True(t, ok)
+	require.Equal(t, "SuperGrok Heavy", usage.PlanType)
+	require.Equal(t, 150000, usage.Quota)
+	require.Equal(t, 9383, usage.UsedTokens)
+	require.Zero(t, usage.OnDemandCap)
+	require.Zero(t, usage.XAIOnDemandUsed)
+	require.True(t, usage.XAIOnDemandUsedRefreshed)
+	require.Equal(t, time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC).Unix(), usage.BillingPeriodEndAt)
+}
+
 func TestResolveCliproxyXAIMonthlyUsageMarksExplicitZeroOnDemandUsageAsRefreshed(t *testing.T) {
 	usage, ok := resolveCliproxyXAIMonthlyUsage(map[string]any{
 		"config": map[string]any{

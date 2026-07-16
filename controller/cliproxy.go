@@ -590,7 +590,7 @@ func resolveCliproxyXAIUsage(body map[string]any) (cliproxyUsageRefreshBody, boo
 }
 
 func resolveCliproxyXAIWeeklyUsage(body map[string]any) (cliproxyUsageRefreshBody, bool) {
-	config := mapFromMap(body, "config")
+	config := cliproxyXAIPayload(body)
 	currentPeriod := firstMapFromMap(config, "currentPeriod", "current_period")
 	usagePercent := firstIntFromMap(config, "creditUsagePercent", "credit_usage_percent")
 	productItems := firstSliceFromMap(config, "productUsage", "product_usage")
@@ -624,12 +624,36 @@ func resolveCliproxyXAIWeeklyUsage(body map[string]any) (cliproxyUsageRefreshBod
 }
 
 func resolveCliproxyXAIMonthlyUsage(body map[string]any) (cliproxyUsageRefreshBody, bool) {
-	config := mapFromMap(body, "config")
-	quota, hasQuota := cliproxyXAICents(config, "monthlyLimit", "monthly_limit")
+	config := cliproxyXAIPayload(body)
+	usageData := firstMapFromMap(config, "usage")
+	billingCycle := firstMapFromMap(config, "billingCycle", "billing_cycle")
+	quota, hasQuota := cliproxyXAICents(
+		config,
+		"monthlyLimit",
+		"monthly_limit",
+		"monthlyBillableLimit",
+		"monthly_billable_limit",
+	)
 	usedTokens, hasUsed := cliproxyXAICents(config, "used")
+	if !hasUsed {
+		usedTokens, hasUsed = cliproxyXAICents(
+			usageData,
+			"includedUsed",
+			"included_used",
+			"totalUsed",
+			"total_used",
+			"used",
+		)
+	}
 	onDemandCap, hasOnDemandCap := cliproxyXAICents(config, "onDemandCap", "on_demand_cap")
 	onDemandUsed, hasOnDemandUsed := cliproxyXAICents(config, "onDemandUsed", "on_demand_used")
+	if !hasOnDemandUsed {
+		onDemandUsed, hasOnDemandUsed = cliproxyXAICents(usageData, "onDemandUsed", "on_demand_used")
+	}
 	billingPeriodEnd := firstStringFromMap(config, "billingPeriodEnd", "billing_period_end")
+	if billingPeriodEnd == "" {
+		billingPeriodEnd = firstStringFromMap(billingCycle, "billingPeriodEnd", "billing_period_end", "end")
+	}
 	if !hasQuota && !hasUsed && !hasOnDemandCap && !hasOnDemandUsed && billingPeriodEnd == "" {
 		return cliproxyUsageRefreshBody{}, false
 	}
@@ -642,6 +666,16 @@ func resolveCliproxyXAIMonthlyUsage(body map[string]any) (cliproxyUsageRefreshBo
 		XAIOnDemandUsedRefreshed: hasOnDemandUsed,
 		BillingPeriodEndAt:       unixFromRFC3339(billingPeriodEnd),
 	}, true
+}
+
+func cliproxyXAIPayload(body map[string]any) map[string]any {
+	if config := mapFromMap(body, "config"); len(config) > 0 {
+		return config
+	}
+	if result := mapFromMap(body, "result"); len(result) > 0 {
+		return result
+	}
+	return body
 }
 
 func resolveCliproxyXAIPlan(monthlyLimitCents int) string {
