@@ -30,6 +30,7 @@ import type {
 const providerBasePath: Record<QuotaProvider, string> = {
   glm: '/api/glm-quota',
   deepseek: '/api/deepseek-quota',
+  kimi: '/api/kimi-quota',
 }
 
 function pathFor(provider: QuotaProvider, suffix: string): string {

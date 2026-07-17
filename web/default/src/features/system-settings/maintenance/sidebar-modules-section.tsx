@@ -130,6 +130,10 @@ export function SidebarModulesSection({
         title: t('DeepSeek Quota'),
         description: t('Track DeepSeek account quota usage.'),
       },
+      kimiQuota: {
+        title: t('Kimi Quota'),
+        description: t('Track Kimi account quota usage.'),
+      },
     },
     personal: {
       topup: {

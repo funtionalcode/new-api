@@ -121,6 +121,11 @@ export function useSidebarData(): SidebarData {
             url: '/deepseek-quota',
             icon: Gauge,
           },
+          {
+            title: t('Kimi Quota'),
+            url: '/kimi-quota',
+            icon: Gauge,
+          },
         ],
       },
       {

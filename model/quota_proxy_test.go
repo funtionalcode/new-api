@@ -17,7 +17,7 @@ func useQuotaProxyTestDB(t *testing.T) {
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&GLMQuotaBinding{}, &DeepSeekQuotaBinding{}))
+	require.NoError(t, db.AutoMigrate(&GLMQuotaBinding{}, &DeepSeekQuotaBinding{}, &KimiQuotaBinding{}))
 	DB = db
 }
 
@@ -84,6 +84,37 @@ func TestUpdateDeepSeekQuotaBindingSavesAndClearsProxy(t *testing.T) {
 
 	updated, err = UpdateDeepSeekQuotaBinding(binding.Id, DeepSeekQuotaBindingUpdate{
 		Name:        "deepseek",
+		Proxy:       "",
+		UpdateProxy: true,
+		Enabled:     true,
+	})
+	require.NoError(t, err)
+	require.Empty(t, updated.Proxy)
+}
+
+func TestUpdateKimiQuotaBindingSavesAndClearsProxy(t *testing.T) {
+	useQuotaProxyTestDB(t)
+
+	binding := &KimiQuotaBinding{
+		Name:        "kimi",
+		RequestCurl: "curl https://platform.kimi.com/api",
+		Enabled:     true,
+	}
+	require.NoError(t, CreateKimiQuotaBinding(binding))
+
+	updated, err := UpdateKimiQuotaBinding(binding.Id, KimiQuotaBindingUpdate{
+		Name:        "kimi",
+		RequestCurl: "curl ignored",
+		Proxy:       "http://proxy.example.com:8080",
+		UpdateProxy: true,
+		Enabled:     true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "http://proxy.example.com:8080", updated.Proxy)
+	require.Equal(t, "curl https://platform.kimi.com/api", updated.RequestCurl)
+
+	updated, err = UpdateKimiQuotaBinding(binding.Id, KimiQuotaBindingUpdate{
+		Name:        "kimi",
 		Proxy:       "",
 		UpdateProxy: true,
 		Enabled:     true,

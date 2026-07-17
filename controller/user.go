@@ -604,6 +604,7 @@ func generateDefaultSidebarConfig(userRole int) string {
 		"authFiles":     true,
 		"glmQuota":      true,
 		"deepseekQuota": true,
+		"kimiQuota":     true,
 	}
 
 	// 个人中心区域 - 所有用户都可以访问

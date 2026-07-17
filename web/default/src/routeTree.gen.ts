@@ -47,6 +47,7 @@ import { Route as AuthenticatedRedemptionCodesIndexRouteImport } from './routes/
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
 import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_authenticated/playground/index'
 import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenticated/models/index'
+import { Route as AuthenticatedKimiQuotaIndexRouteImport } from './routes/_authenticated/kimi-quota/index'
 import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authenticated/keys/index'
 import { Route as AuthenticatedGlmQuotaIndexRouteImport } from './routes/_authenticated/glm-quota/index'
 import { Route as AuthenticatedDeepseekQuotaIndexRouteImport } from './routes/_authenticated/deepseek-quota/index'
@@ -273,6 +274,12 @@ const AuthenticatedModelsIndexRoute =
     path: '/models/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedKimiQuotaIndexRoute =
+  AuthenticatedKimiQuotaIndexRouteImport.update({
+    id: '/kimi-quota/',
+    path: '/kimi-quota/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedKeysIndexRoute = AuthenticatedKeysIndexRouteImport.update({
   id: '/keys/',
   path: '/keys/',
@@ -464,6 +471,7 @@ export interface FileRoutesByFullPath {
   '/deepseek-quota/': typeof AuthenticatedDeepseekQuotaIndexRoute
   '/glm-quota/': typeof AuthenticatedGlmQuotaIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
+  '/kimi-quota/': typeof AuthenticatedKimiQuotaIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
   '/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/profile/': typeof AuthenticatedProfileIndexRoute
@@ -527,6 +535,7 @@ export interface FileRoutesByTo {
   '/deepseek-quota': typeof AuthenticatedDeepseekQuotaIndexRoute
   '/glm-quota': typeof AuthenticatedGlmQuotaIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
+  '/kimi-quota': typeof AuthenticatedKimiQuotaIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
   '/playground': typeof AuthenticatedPlaygroundIndexRoute
   '/profile': typeof AuthenticatedProfileIndexRoute
@@ -594,6 +603,7 @@ export interface FileRoutesById {
   '/_authenticated/deepseek-quota/': typeof AuthenticatedDeepseekQuotaIndexRoute
   '/_authenticated/glm-quota/': typeof AuthenticatedGlmQuotaIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
+  '/_authenticated/kimi-quota/': typeof AuthenticatedKimiQuotaIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
   '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
@@ -660,6 +670,7 @@ export interface FileRouteTypes {
     | '/deepseek-quota/'
     | '/glm-quota/'
     | '/keys/'
+    | '/kimi-quota/'
     | '/models/'
     | '/playground/'
     | '/profile/'
@@ -723,6 +734,7 @@ export interface FileRouteTypes {
     | '/deepseek-quota'
     | '/glm-quota'
     | '/keys'
+    | '/kimi-quota'
     | '/models'
     | '/playground'
     | '/profile'
@@ -789,6 +801,7 @@ export interface FileRouteTypes {
     | '/_authenticated/deepseek-quota/'
     | '/_authenticated/glm-quota/'
     | '/_authenticated/keys/'
+    | '/_authenticated/kimi-quota/'
     | '/_authenticated/models/'
     | '/_authenticated/playground/'
     | '/_authenticated/profile/'
@@ -1106,6 +1119,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedModelsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/kimi-quota/': {
+      id: '/_authenticated/kimi-quota/'
+      path: '/kimi-quota'
+      fullPath: '/kimi-quota/'
+      preLoaderRoute: typeof AuthenticatedKimiQuotaIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/keys/': {
       id: '/_authenticated/keys/'
       path: '/keys'
@@ -1388,6 +1408,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDeepseekQuotaIndexRoute: typeof AuthenticatedDeepseekQuotaIndexRoute
   AuthenticatedGlmQuotaIndexRoute: typeof AuthenticatedGlmQuotaIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
+  AuthenticatedKimiQuotaIndexRoute: typeof AuthenticatedKimiQuotaIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
   AuthenticatedPlaygroundIndexRoute: typeof AuthenticatedPlaygroundIndexRoute
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
@@ -1416,6 +1437,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDeepseekQuotaIndexRoute: AuthenticatedDeepseekQuotaIndexRoute,
   AuthenticatedGlmQuotaIndexRoute: AuthenticatedGlmQuotaIndexRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
+  AuthenticatedKimiQuotaIndexRoute: AuthenticatedKimiQuotaIndexRoute,
   AuthenticatedModelsIndexRoute: AuthenticatedModelsIndexRoute,
   AuthenticatedPlaygroundIndexRoute: AuthenticatedPlaygroundIndexRoute,
   AuthenticatedProfileIndexRoute: AuthenticatedProfileIndexRoute,

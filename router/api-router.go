@@ -339,6 +339,19 @@ func SetApiRouter(router *gin.Engine) {
 			}
 		}
 
+		kimiQuotaRoute := apiRouter.Group("/kimi-quota")
+		{
+			kimiQuotaRoute.GET("/bindings", middleware.UserAuth(), controller.GetKimiQuotaBindings)
+			kimiQuotaRoute.POST("/bindings/:id/refresh-usage", middleware.UserAuth(), controller.RefreshKimiQuotaBindingUsage)
+			kimiQuotaAdminRoute := kimiQuotaRoute.Group("")
+			kimiQuotaAdminRoute.Use(middleware.AdminAuth())
+			{
+				kimiQuotaAdminRoute.POST("/bindings", controller.CreateKimiQuotaBinding)
+				kimiQuotaAdminRoute.PUT("/bindings/:id", controller.UpdateKimiQuotaBinding)
+				kimiQuotaAdminRoute.DELETE("/bindings/:id", controller.DeleteKimiQuotaBinding)
+			}
+		}
+
 		logRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())
 		{
 			logRoute.GET("/token", middleware.TokenAuthReadOnly(), controller.GetLogByKey)

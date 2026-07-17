@@ -73,6 +73,8 @@ import {
 } from '@/components/ui/tooltip'
 import { useIsAdmin } from '@/hooks/use-admin'
 import {
+  formatCompactNumber,
+  formatNumber,
   formatTimestampToDate,
   formatTokenDetails,
   formatTokens,
@@ -94,6 +96,7 @@ import {
 import type {
   DeepSeekQuotaBinding,
   GLMQuotaBinding,
+  KimiQuotaBinding,
   QuotaBinding,
   QuotaBindingSavePayload,
   QuotaProvider,
@@ -118,6 +121,12 @@ const providerConfigs: Record<QuotaProvider, ProviderConfig> = {
     titleKey: 'DeepSeek Quota',
     descriptionKey: 'Track DeepSeek account quota usage and refresh it from saved curl requests.',
     curlPlaceholderKey: 'Paste the DeepSeek quota curl command',
+  },
+  kimi: {
+    provider: 'kimi',
+    titleKey: 'Kimi Quota',
+    descriptionKey: 'Track Kimi account quota usage and refresh it from saved curl requests.',
+    curlPlaceholderKey: 'Paste the Kimi account info curl command',
   },
 }
 
@@ -163,6 +172,10 @@ function isDeepSeekBinding(
   binding: QuotaBinding
 ): binding is DeepSeekQuotaBinding {
   return 'last_monthly_used_tokens' in binding
+}
+
+function isKimiBinding(binding: QuotaBinding): binding is KimiQuotaBinding {
+  return 'last_remaining_quota' in binding
 }
 
 function buildForm(binding?: QuotaBinding): QuotaBindingFormState {
@@ -234,6 +247,32 @@ function TokenValue({
           {formatTokens(tokenValue)}
         </TooltipTrigger>
         <TooltipContent>{formatTokenDetails(tokenValue)}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
+function QuotaNumberValue({
+  value,
+  className,
+}: {
+  value: number
+  className?: string
+}) {
+  const quotaValue = Number(value || 0)
+  if (quotaValue <= 0) {
+    return <span className={className}>-</span>
+  }
+
+  return (
+    <TooltipProvider delay={100}>
+      <Tooltip>
+        <TooltipTrigger
+          render={<span className={cn('cursor-default', className)} />}
+        >
+          {formatCompactNumber(quotaValue)}
+        </TooltipTrigger>
+        <TooltipContent>{formatNumber(quotaValue)}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   )
@@ -343,6 +382,46 @@ function DeepSeekUsageCells({ binding }: { binding: DeepSeekQuotaBinding }) {
   )
 }
 
+function KimiUsageCells({ binding }: { binding: KimiQuotaBinding }) {
+  const remainingQuota = Number(binding.last_remaining_quota || 0)
+  const usedQuota = Number(binding.last_used_quota || 0)
+  const totalQuota =
+    Number(binding.last_total_quota || 0) || remainingQuota + usedQuota
+  const remainingPercent = normalizePercent(
+    binding.last_remaining_percent ||
+      (totalQuota > 0 ? Math.round((remainingQuota / totalQuota) * 100) : 0)
+  )
+  const remainingColor = remainingBalanceColor(remainingPercent)
+
+  return (
+    <>
+      <TableCell>
+        <div className='min-w-[150px] space-y-1'>
+          <div className='flex justify-between gap-2 text-xs'>
+            <QuotaNumberValue value={remainingQuota} className='font-mono' />
+            <span className='text-muted-foreground font-mono'>
+              <QuotaNumberValue value={totalQuota} />
+            </span>
+          </div>
+          <Progress
+            value={totalQuota > 0 ? remainingPercent : 0}
+            className={cn('h-1.5', remainingColor)}
+          />
+          <div className='text-muted-foreground text-xs'>
+            {totalQuota > 0 ? `${remainingPercent}%` : '-'}
+          </div>
+        </div>
+      </TableCell>
+      <TableCell className='font-mono'>
+        <QuotaNumberValue value={usedQuota} />
+      </TableCell>
+      <TableCell className='font-mono'>
+        <QuotaNumberValue value={totalQuota} />
+      </TableCell>
+    </>
+  )
+}
+
 function QuotaUsageCells({ binding }: { binding: QuotaBinding }) {
   if (isGLMBinding(binding)) {
     return <GLMUsageCells binding={binding} />
@@ -350,7 +429,42 @@ function QuotaUsageCells({ binding }: { binding: QuotaBinding }) {
   if (isDeepSeekBinding(binding)) {
     return <DeepSeekUsageCells binding={binding} />
   }
+  if (isKimiBinding(binding)) {
+    return <KimiUsageCells binding={binding} />
+  }
   return null
+}
+
+function QuotaUsageHeaderCells({ provider }: { provider: QuotaProvider }) {
+  const { t } = useTranslation()
+
+  if (provider === 'glm') {
+    return (
+      <>
+        <TableHead>{t('Five-hour Tokens')}</TableHead>
+        <TableHead>{t('Weekly Tokens')}</TableHead>
+        <TableHead>{t('Model Calls')}</TableHead>
+      </>
+    )
+  }
+
+  if (provider === 'deepseek') {
+    return (
+      <>
+        <TableHead>{t('Remaining Balance')}</TableHead>
+        <TableHead>{t('Monthly Tokens')}</TableHead>
+        <TableHead>{t('Monthly Cost')}</TableHead>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <TableHead>{t('Remaining Quota')}</TableHead>
+      <TableHead>{t('Used Quota')}</TableHead>
+      <TableHead>{t('Total Quota')}</TableHead>
+    </>
+  )
 }
 
 function ErrorMessageCell({ error }: { error?: string }) {
@@ -614,19 +728,7 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
                   <TableRow>
                     <TableHead>{t('Name')}</TableHead>
                     <TableHead>{t('Status')}</TableHead>
-                    {provider === 'glm' ? (
-                      <>
-                        <TableHead>{t('Five-hour Tokens')}</TableHead>
-                        <TableHead>{t('Weekly Tokens')}</TableHead>
-                        <TableHead>{t('Model Calls')}</TableHead>
-                      </>
-                    ) : (
-                      <>
-                        <TableHead>{t('Remaining Balance')}</TableHead>
-                        <TableHead>{t('Monthly Tokens')}</TableHead>
-                        <TableHead>{t('Monthly Cost')}</TableHead>
-                      </>
-                    )}
+                    <QuotaUsageHeaderCells provider={provider} />
                     <TableHead>{t('Last Refreshed')}</TableHead>
                     <TableHead className='w-[300px] max-w-[300px]'>
                       {t('Error')}

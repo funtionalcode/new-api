@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-export type QuotaProvider = 'glm' | 'deepseek'
+export type QuotaProvider = 'glm' | 'deepseek' | 'kimi'
 
 export type QuotaBindingBase = {
   id: number
@@ -58,7 +58,23 @@ export type DeepSeekQuotaBinding = QuotaBindingBase & {
   last_today_costs: string
 }
 
-export type QuotaBinding = GLMQuotaBinding | DeepSeekQuotaBinding
+export type KimiQuotaBinding = QuotaBindingBase & {
+  last_current_quota: number
+  last_voucher_current_quota: number
+  last_accumulated_quota: number
+  last_voucher_accumulated_quota: number
+  last_voucher_expired_quota: number
+  last_recharge_bonus_percent: number
+  last_used_quota: number
+  last_remaining_quota: number
+  last_total_quota: number
+  last_remaining_percent: number
+}
+
+export type QuotaBinding =
+  | GLMQuotaBinding
+  | DeepSeekQuotaBinding
+  | KimiQuotaBinding
 
 export type QuotaBindingFormData = {
   id?: number
