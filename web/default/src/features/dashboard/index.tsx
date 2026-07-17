@@ -32,20 +32,28 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { ROLE } from '@/lib/roles'
+import type { TimeGranularity } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { ModelsChartPreferences } from './components/models/models-chart-preferences'
 import { ModelsFilter } from './components/models/models-filter-dialog'
 import { OverviewDashboard } from './components/overview/overview-dashboard'
+import { TimeRangeControls } from './components/time-range-controls'
 import { DEFAULT_TIME_GRANULARITY } from './constants'
 import {
   buildDefaultDashboardFilters,
   getDefaultDays,
   getSavedChartPreferences,
   getSavedGranularity,
+  saveGranularity,
   saveChartPreferences,
 } from './lib'
+import {
+  applyDashboardTimeRangePreset,
+  detectDashboardTimeRangeDays,
+  formatDashboardTimeRangeLabel,
+} from './lib/dashboard-time-range'
 import {
   type DashboardSectionId,
   DASHBOARD_DEFAULT_SECTION,
@@ -249,6 +257,35 @@ export function Dashboard() {
     []
   )
 
+  const handleTokenRangeChange = useCallback((days: number) => {
+    setModelFilters((filters) => applyDashboardTimeRangePreset(filters, days))
+  }, [])
+
+  const handleTokenGranularityChange = useCallback(
+    (granularity: TimeGranularity) => {
+      saveGranularity(granularity)
+      setModelFilters((filters) => ({
+        ...filters,
+        time_granularity: granularity,
+      }))
+    },
+    []
+  )
+
+  const handleTokenStartTimeChange = useCallback((date: Date | undefined) => {
+    setModelFilters((filters) => ({
+      ...filters,
+      start_timestamp: date,
+    }))
+  }, [])
+
+  const handleTokenEndTimeChange = useCallback((date: Date | undefined) => {
+    setModelFilters((filters) => ({
+      ...filters,
+      end_timestamp: date,
+    }))
+  }, [])
+
   const handleChartPreferencesChange = useCallback(
     (preferences: DashboardChartPreferences) => {
       setChartPreferences(preferences)
@@ -436,6 +473,26 @@ export function Dashboard() {
           )}
           {activeSection === 'tokens' && (
             <>
+              <TimeRangeControls
+                endTime={modelFilters.end_timestamp}
+                loading={dataLoading}
+                onEndTimeChange={handleTokenEndTimeChange}
+                onGranularityChange={handleTokenGranularityChange}
+                onRangeChange={handleTokenRangeChange}
+                onStartTimeChange={handleTokenStartTimeChange}
+                rangeLabel={formatDashboardTimeRangeLabel(
+                  modelFilters.start_timestamp,
+                  modelFilters.end_timestamp
+                )}
+                selectedRange={detectDashboardTimeRangeDays(
+                  modelFilters.start_timestamp,
+                  modelFilters.end_timestamp
+                )}
+                startTime={modelFilters.start_timestamp}
+                timeGranularity={
+                  modelFilters.time_granularity || DEFAULT_TIME_GRANULARITY
+                }
+              />
               <FadeIn>
                 <Suspense fallback={<LogStatCardsFallback />}>
                   <LazyTokenStatCards

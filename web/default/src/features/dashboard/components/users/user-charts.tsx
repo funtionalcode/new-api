@@ -18,20 +18,16 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { VChart } from '@visactor/react-vchart'
-import { CalendarRange, Users, Loader2 } from 'lucide-react'
+import { Users } from 'lucide-react'
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { DateTimePicker } from '@/components/datetime-picker'
 import { IconBadge } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useTheme } from '@/context/theme-provider'
 import { getUserQuotaDataByUsers } from '@/features/dashboard/api'
-import {
-  TIME_GRANULARITY_OPTIONS,
-  TIME_RANGE_PRESETS,
-} from '@/features/dashboard/constants'
+import { TimeRangeControls } from '@/features/dashboard/components/time-range-controls'
 import {
   getDefaultDays,
   saveGranularity,
@@ -211,71 +207,18 @@ export function UserCharts(props: UserChartsProps) {
 
   return (
     <div className='space-y-3'>
-      <div className='flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between'>
-        <div className='text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs'>
-          <CalendarRange className='size-3.5 shrink-0' />
-          <span>{t('Date Range')}:</span>
-          <span className='truncate font-mono tabular-nums'>
-            {timeRangeLabel}
-          </span>
-        </div>
-
-        <div className='border-border/60 bg-muted/20 flex max-w-full flex-wrap items-center gap-2 rounded-md border px-2 py-1'>
-          <CalendarRange className='text-muted-foreground size-4 shrink-0' />
-          <DateTimePicker
-            value={timeRangeDates.start}
-            onChange={handleCustomStartChange}
-            placeholder={t('Select start time')}
-            className='w-[280px]'
-          />
-          <DateTimePicker
-            value={timeRangeDates.end}
-            onChange={handleCustomEndChange}
-            placeholder={t('Select end time')}
-            className='w-[280px]'
-          />
-        </div>
-      </div>
-
-      <div className='flex items-center gap-1.5 overflow-x-auto pb-1 sm:gap-2'>
-        <Tabs
-          value={String(selectedRange)}
-          onValueChange={(value) => handleRangeChange(Number(value))}
-          className='shrink-0'
-        >
-          <TabsList>
-            {TIME_RANGE_PRESETS.map((preset) => (
-              <TabsTrigger
-                key={preset.days}
-                value={String(preset.days)}
-                className='px-2.5 text-xs'
-              >
-                {t(preset.label)}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-
-        <Tabs
-          value={timeGranularity}
-          onValueChange={(value) =>
-            handleGranularityChange(value as TimeGranularity)
-          }
-          className='shrink-0'
-        >
-          <TabsList>
-            {TIME_GRANULARITY_OPTIONS.map((opt) => (
-              <TabsTrigger
-                key={opt.value}
-                value={opt.value}
-                className='px-2.5 text-xs'
-              >
-                {t(opt.label)}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-
+      <TimeRangeControls
+        endTime={timeRangeDates.end}
+        loading={isLoading}
+        onEndTimeChange={handleCustomEndChange}
+        onGranularityChange={handleGranularityChange}
+        onRangeChange={handleRangeChange}
+        onStartTimeChange={handleCustomStartChange}
+        rangeLabel={timeRangeLabel}
+        selectedRange={selectedRange}
+        startTime={timeRangeDates.start}
+        timeGranularity={timeGranularity}
+      >
         <Tabs
           value={metric}
           onValueChange={(value) =>
@@ -313,11 +256,7 @@ export function UserCharts(props: UserChartsProps) {
             ))}
           </TabsList>
         </Tabs>
-
-        {isLoading && (
-          <Loader2 className='text-muted-foreground size-4 animate-spin' />
-        )}
-      </div>
+      </TimeRangeControls>
 
       <div className='grid gap-3'>
         {USER_CHARTS.map((chart) => {
