@@ -5,7 +5,9 @@ import type {
 
 export type QuotaBindingFormState = QuotaBindingFormData & {
   has_curl?: boolean
+  has_refresh_token?: boolean
   request_curl_touched?: boolean
+  refresh_token_touched?: boolean
   proxy_touched?: boolean
 }
 
@@ -27,6 +29,13 @@ export function buildQuotaBindingSavePayload(
     const curl = form.request_curl.trim()
     if (curl || !isEdit) {
       payload.request_curl = curl
+    }
+  }
+
+  if (!isEdit || form.refresh_token_touched) {
+    const refreshToken = form.refresh_token.trim()
+    if (refreshToken || !isEdit) {
+      payload.refresh_token = refreshToken
     }
   }
 

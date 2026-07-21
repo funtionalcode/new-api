@@ -122,3 +122,32 @@ func TestUpdateKimiQuotaBindingSavesAndClearsProxy(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, updated.Proxy)
 }
+
+func TestUpdateKimiQuotaBindingSavesRefreshToken(t *testing.T) {
+	useQuotaProxyTestDB(t)
+
+	binding := &KimiQuotaBinding{
+		Name:        "kimi",
+		RequestCurl: "curl https://platform.kimi.com/api",
+		Enabled:     true,
+	}
+	require.NoError(t, CreateKimiQuotaBinding(binding))
+
+	updated, err := UpdateKimiQuotaBinding(binding.Id, KimiQuotaBindingUpdate{
+		Name:               "kimi",
+		RefreshToken:       "refresh-token-value",
+		UpdateRefreshToken: true,
+		Enabled:            true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "refresh-token-value", updated.RefreshToken)
+	require.True(t, updated.HasRefreshToken)
+
+	updated, err = UpdateKimiQuotaBindingCredentials(binding.Id, KimiQuotaCredentialUpdate{
+		RequestCurl:  "curl https://platform.kimi.com/api -H 'authorization: Bearer new-access'",
+		RefreshToken: "rotated-refresh",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "rotated-refresh", updated.RefreshToken)
+	require.Contains(t, updated.RequestCurl, "Bearer new-access")
+}

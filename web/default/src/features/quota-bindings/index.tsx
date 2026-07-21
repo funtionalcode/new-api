@@ -155,8 +155,10 @@ const emptyForm: QuotaBindingFormState = {
   name: '',
   note: '',
   request_curl: '',
+  refresh_token: '',
   proxy: '',
   request_curl_touched: false,
+  refresh_token_touched: false,
   proxy_touched: false,
   enabled: true,
   plan_type: 'standard',
@@ -185,9 +187,14 @@ function buildForm(binding?: QuotaBinding): QuotaBindingFormState {
     name: binding.name || '',
     note: binding.note || '',
     request_curl: binding.request_curl || '',
+    refresh_token: isKimiBinding(binding) ? binding.refresh_token || '' : '',
     proxy: binding.proxy || '',
     has_curl: binding.has_curl,
+    has_refresh_token: isKimiBinding(binding)
+      ? Boolean(binding.has_refresh_token)
+      : false,
     request_curl_touched: false,
+    refresh_token_touched: false,
     proxy_touched: false,
     enabled: binding.enabled !== false,
     plan_type: isGLMBinding(binding) ? binding.plan_type || 'standard' : '',
@@ -914,6 +921,26 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
                 }
               />
             </div>
+
+            {provider === 'kimi' && (
+              <div className='space-y-2'>
+                <Label>{t('Refresh Token')}</Label>
+                <Textarea
+                  value={form.refresh_token}
+                  placeholder={
+                    form.id && form.has_refresh_token
+                      ? t('Leave blank to keep unchanged')
+                      : t('Paste the Kimi refresh token used when access token expires')
+                  }
+                  onChange={(event) =>
+                    updateForm({
+                      refresh_token: event.target.value,
+                      refresh_token_touched: true,
+                    })
+                  }
+                />
+              </div>
+            )}
 
             <div className='space-y-2'>
               <Label>{t('Proxy Address')}</Label>

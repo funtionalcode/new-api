@@ -59,6 +59,8 @@ export type DeepSeekQuotaBinding = QuotaBindingBase & {
 }
 
 export type KimiQuotaBinding = QuotaBindingBase & {
+  refresh_token?: string
+  has_refresh_token?: boolean
   last_current_quota: number
   last_voucher_current_quota: number
   last_accumulated_quota: number
@@ -81,6 +83,7 @@ export type QuotaBindingFormData = {
   name: string
   note: string
   request_curl: string
+  refresh_token: string
   proxy: string
   enabled: boolean
   plan_type: string
@@ -90,9 +93,10 @@ export type QuotaBindingFormData = {
 
 export type QuotaBindingSavePayload = Omit<
   QuotaBindingFormData,
-  'request_curl' | 'proxy'
+  'request_curl' | 'refresh_token' | 'proxy'
 > & {
   request_curl?: string
+  refresh_token?: string
   proxy?: string
 }
 

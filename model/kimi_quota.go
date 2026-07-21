@@ -13,6 +13,7 @@ type KimiQuotaBinding struct {
 	Name                        string `json:"name" gorm:"size:128;index;not null"`
 	Note                        string `json:"note" gorm:"type:text"`
 	RequestCurl                 string `json:"request_curl,omitempty" gorm:"type:text;not null"`
+	RefreshToken                string `json:"refresh_token,omitempty" gorm:"type:text"`
 	Proxy                       string `json:"proxy,omitempty" gorm:"type:text"`
 	LastCurrentQuota            int64  `json:"last_current_quota" gorm:"bigint;default:0"`
 	LastVoucherCurrentQuota     int64  `json:"last_voucher_current_quota" gorm:"bigint;default:0"`
@@ -30,6 +31,7 @@ type KimiQuotaBinding struct {
 	CreatedAt                   int64  `json:"created_at" gorm:"bigint;index"`
 	UpdatedAt                   int64  `json:"updated_at" gorm:"bigint"`
 	HasCurl                     bool   `json:"has_curl" gorm:"-"`
+	HasRefreshToken             bool   `json:"has_refresh_token" gorm:"-"`
 }
 
 type KimiQuotaBindingQuery struct {
@@ -38,13 +40,15 @@ type KimiQuotaBindingQuery struct {
 }
 
 type KimiQuotaBindingUpdate struct {
-	Name        string
-	Note        string
-	RequestCurl string
-	UpdateCurl  bool
-	Proxy       string
-	UpdateProxy bool
-	Enabled     bool
+	Name               string
+	Note               string
+	RequestCurl        string
+	UpdateCurl         bool
+	RefreshToken       string
+	UpdateRefreshToken bool
+	Proxy              string
+	UpdateProxy        bool
+	Enabled            bool
 }
 
 type KimiQuotaUsageRefreshUpdate struct {
@@ -59,6 +63,11 @@ type KimiQuotaUsageRefreshUpdate struct {
 	LastTotalQuota              int64
 	LastRemainingPercent        int
 	LastError                   string
+}
+
+type KimiQuotaCredentialUpdate struct {
+	RequestCurl  string
+	RefreshToken string
 }
 
 func (KimiQuotaBinding) TableName() string {
@@ -79,6 +88,7 @@ func (binding *KimiQuotaBinding) BeforeUpdate() error {
 
 func (binding *KimiQuotaBinding) AfterFind(tx *gorm.DB) error {
 	binding.HasCurl = strings.TrimSpace(binding.RequestCurl) != ""
+	binding.HasRefreshToken = strings.TrimSpace(binding.RefreshToken) != ""
 	return nil
 }
 
@@ -125,6 +135,9 @@ func UpdateKimiQuotaBinding(id int, update KimiQuotaBindingUpdate) (*KimiQuotaBi
 	if update.UpdateCurl {
 		updates["request_curl"] = strings.TrimSpace(update.RequestCurl)
 	}
+	if update.UpdateRefreshToken {
+		updates["refresh_token"] = strings.TrimSpace(update.RefreshToken)
+	}
 	if update.UpdateProxy {
 		updates["proxy"] = strings.TrimSpace(update.Proxy)
 	}
@@ -151,6 +164,18 @@ func UpdateKimiQuotaBindingUsage(id int, update KimiQuotaUsageRefreshUpdate) (*K
 		updates["last_remaining_quota"] = update.LastRemainingQuota
 		updates["last_total_quota"] = update.LastTotalQuota
 		updates["last_remaining_percent"] = update.LastRemainingPercent
+	}
+	if err := DB.Model(&KimiQuotaBinding{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+		return nil, err
+	}
+	return GetKimiQuotaBindingById(id)
+}
+
+func UpdateKimiQuotaBindingCredentials(id int, update KimiQuotaCredentialUpdate) (*KimiQuotaBinding, error) {
+	updates := map[string]any{
+		"request_curl":  strings.TrimSpace(update.RequestCurl),
+		"refresh_token": strings.TrimSpace(update.RefreshToken),
+		"updated_at":    time.Now().Unix(),
 	}
 	if err := DB.Model(&KimiQuotaBinding{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 		return nil, err
