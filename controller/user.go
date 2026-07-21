@@ -255,7 +255,7 @@ func Register(c *gin.Context) {
 	if common.EmailVerificationEnabled {
 		cleanUser.Email = user.Email
 	}
-	if err := cleanUser.Insert(inviterId); err != nil {
+	if err := cleanUser.Insert(inviterId, common.GetClientIP(c)); err != nil {
 		if errors.Is(err, model.ErrEmailAlreadyTaken) {
 			common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
 			return
@@ -1152,7 +1152,7 @@ func CreateUser(c *gin.Context) {
 			return
 		}
 	}
-	cleanUser.FinishInsert(0)
+	cleanUser.FinishInsert(0, common.GetClientIP(c))
 
 	recordManageAuditFor(c, cleanUser.Id, "user.create", map[string]interface{}{
 		"username": cleanUser.Username,
@@ -1249,7 +1249,7 @@ func ManageUser(c *gin.Context) {
 		if err := model.InvalidateUserTokensCache(user.Id); err != nil {
 			common.SysLog(fmt.Sprintf("failed to invalidate tokens cache for user %d: %s", user.Id, err.Error()))
 		}
-		model.RecordLogWithAdminInfo(user.Id, model.LogTypeManage, "管理员恢复已注销用户", adminInfo)
+		model.RecordLogWithAdminInfo(user.Id, model.LogTypeManage, "管理员恢复已注销用户", adminInfo, common.GetClientIP(c))
 		clearUser := model.User{
 			Role:   user.Role,
 			Status: user.Status,
@@ -1490,7 +1490,7 @@ func TopUp(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	quota, err := model.Redeem(req.Key, id)
+	quota, err := model.Redeem(req.Key, id, common.GetClientIP(c))
 	if err != nil {
 		// 不向用户暴露兑换失败的细分原因，避免攻击者根据错误类型判断兑换码状态。
 		common.ApiErrorI18n(c, i18n.MsgRedeemFailed)

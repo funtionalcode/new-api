@@ -12,7 +12,11 @@ func GetClientIP(c *gin.Context) string {
 	if c == nil {
 		return ""
 	}
-	return GetRequestClientIP(c.Request)
+	if ip := GetRequestClientIP(c.Request); ip != "" {
+		return ip
+	}
+	// Fallback for edge cases where RemoteAddr is missing/unparseable.
+	return c.ClientIP()
 }
 
 func GetRequestClientIP(req *http.Request) string {
