@@ -159,3 +159,32 @@ func withDebugEnabled(t *testing.T, enabled bool) {
 		common.DebugEnabled = oldDebug
 	})
 }
+
+func TestRelayErrorHandlerEnrichesGenericErrorMessage(t *testing.T) {
+	body := `{"type":"error","error":{"type":"invalid_request_error","message":"Error","code":"model_not_found"}}`
+	resp := &http.Response{
+		StatusCode: http.StatusInternalServerError,
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+
+	newAPIError := RelayErrorHandler(context.Background(), resp, false)
+
+	require.NotNil(t, newAPIError)
+	require.Contains(t, newAPIError.Error(), "invalid_request_error")
+	require.Contains(t, newAPIError.Error(), "model_not_found")
+	require.Contains(t, newAPIError.MaskSensitiveErrorWithStatusCode(), "status_code=500")
+}
+
+func TestRelayErrorHandlerIncludesBodyWhenMessageIsOnlyError(t *testing.T) {
+	body := `{"error":"Error"}`
+	resp := &http.Response{
+		StatusCode: http.StatusInternalServerError,
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+
+	newAPIError := RelayErrorHandler(context.Background(), resp, false)
+
+	require.NotNil(t, newAPIError)
+	require.Contains(t, newAPIError.Error(), "body:")
+	require.Contains(t, newAPIError.Error(), `{"error":"Error"}`)
+}

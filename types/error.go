@@ -156,7 +156,11 @@ func (e *NewAPIError) MaskSensitiveError() string {
 	if e.errorCode == ErrorCodeCountTokenFailed {
 		return errStr
 	}
-	return common.MaskSensitiveInfo(errStr)
+	errStr = common.MaskSensitiveInfo(errStr)
+	if isGenericUpstreamErrorMessage(errStr) {
+		return ComposeUpstreamErrorMessage(errStr, string(e.errorType), e.errorCode)
+	}
+	return errStr
 }
 
 func (e *NewAPIError) MaskSensitiveErrorWithStatusCode() string {
@@ -314,6 +318,70 @@ func NewErrorWithStatusCode(err error, errorCode ErrorCode, statusCode int, ops 
 	return e
 }
 
+func isGenericUpstreamErrorMessage(message string) bool {
+	switch strings.ToLower(strings.TrimSpace(message)) {
+	case "", "error", "failed", "failure", "unknown", "unknown error", "upstream error", "internal error", "internal server error", "server error":
+		return true
+	default:
+		return false
+	}
+}
+
+func formatCodeValue(code any) string {
+	if code == nil {
+		return ""
+	}
+	switch v := code.(type) {
+	case string:
+		return strings.TrimSpace(v)
+	case fmt.Stringer:
+		return strings.TrimSpace(v.String())
+	default:
+		text := strings.TrimSpace(fmt.Sprintf("%v", v))
+		if text == "" || text == "<nil>" {
+			return ""
+		}
+		return text
+	}
+}
+
+// ComposeUpstreamErrorMessage builds a more useful message when upstream only
+// returns a generic message like "Error", by attaching type/code details.
+func ComposeUpstreamErrorMessage(message, errType string, code any) string {
+	msg := strings.TrimSpace(message)
+	typeStr := strings.TrimSpace(errType)
+	codeStr := formatCodeValue(code)
+
+	if !isGenericUpstreamErrorMessage(msg) {
+		return msg
+	}
+
+	if msg == "" {
+		switch {
+		case typeStr != "" && codeStr != "" && !strings.EqualFold(typeStr, codeStr):
+			return typeStr + " (code=" + codeStr + ")"
+		case typeStr != "":
+			return typeStr
+		case codeStr != "":
+			return codeStr
+		default:
+			return "upstream error"
+		}
+	}
+
+	details := make([]string, 0, 2)
+	if typeStr != "" && !strings.EqualFold(typeStr, msg) && !strings.EqualFold(typeStr, "error") && !strings.EqualFold(typeStr, "upstream_error") {
+		details = append(details, "type="+typeStr)
+	}
+	if codeStr != "" && !strings.EqualFold(codeStr, msg) && !strings.EqualFold(codeStr, typeStr) {
+		details = append(details, "code="+codeStr)
+	}
+	if len(details) == 0 {
+		return msg
+	}
+	return msg + " (" + strings.Join(details, ", ") + ")"
+}
+
 func WithOpenAIError(openAIError OpenAIError, statusCode int, ops ...NewAPIErrorOptions) *NewAPIError {
 	code, ok := openAIError.Code.(string)
 	if !ok {
@@ -326,6 +394,7 @@ func WithOpenAIError(openAIError OpenAIError, statusCode int, ops ...NewAPIError
 	if openAIError.Type == "" {
 		openAIError.Type = "upstream_error"
 	}
+	openAIError.Message = ComposeUpstreamErrorMessage(openAIError.Message, openAIError.Type, openAIError.Code)
 	e := &NewAPIError{
 		RelayError: openAIError,
 		errorType:  ErrorTypeOpenAIError,
@@ -350,6 +419,7 @@ func WithClaudeError(claudeError ClaudeError, statusCode int, ops ...NewAPIError
 	if claudeError.Type == "" {
 		claudeError.Type = "upstream_error"
 	}
+	claudeError.Message = ComposeUpstreamErrorMessage(claudeError.Message, claudeError.Type, claudeError.Type)
 	e := &NewAPIError{
 		RelayError: claudeError,
 		errorType:  ErrorTypeClaudeError,

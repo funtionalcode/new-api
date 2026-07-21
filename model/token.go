@@ -349,11 +349,7 @@ func (token *Token) GetModelLimits() []string {
 
 func (token *Token) GetModelLimitsMap() map[string]bool {
 	limits := token.GetModelLimits()
-	limitsMap := make(map[string]bool)
-	for _, limit := range limits {
-		limitsMap[limit] = true
-	}
-	return limitsMap
+	return BuildUserModelLimitMap(limits)
 }
 
 func DisableModelLimits(tokenId int) error {

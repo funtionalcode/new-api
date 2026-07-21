@@ -39,6 +39,11 @@ func Distribute() func(c *gin.Context) {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 			return
 		}
+		// Keep model name for middleware error logs (e.g. token/user model limits).
+		if modelRequest != nil && strings.TrimSpace(modelRequest.Model) != "" {
+			c.Set("original_model", modelRequest.Model)
+			common.SetContextKey(c, constant.ContextKeyOriginalModel, modelRequest.Model)
+		}
 		requestUserId := c.GetInt("id")
 		if shouldCheckUserTokenLimit(c, shouldSelectChannel) {
 			if requestUserId > 0 {
@@ -89,8 +94,7 @@ func Distribute() func(c *gin.Context) {
 				if !ok {
 					tokenModelLimit = map[string]bool{}
 				}
-				matchName := ratio_setting.FormatMatchingModelName(modelRequest.Model) // match gpts & thinking-*
-				if _, ok := tokenModelLimit[matchName]; !ok {
+				if !model.IsModelAllowedByUserLimit(modelRequest.Model, tokenModelLimit) {
 					abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenModelForbidden, map[string]any{"Model": modelRequest.Model}))
 					return
 				}

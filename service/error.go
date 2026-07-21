@@ -117,17 +117,31 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 		oaiError := errResponse.TryToOpenAIError()
 		if oaiError != nil {
 			newApiErr = types.WithOpenAIError(*oaiError, resp.StatusCode)
-			if showBodyWhenFail {
+			if showBodyWhenFail || isWeakUpstreamErrorMessage(newApiErr.Error()) {
 				newApiErr.Err = buildErrWithBody(newApiErr.Error())
 			}
 			return
 		}
 	}
-	newApiErr = types.NewOpenAIError(errors.New(errResponse.ToMessage()), types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
-	if showBodyWhenFail {
+	message := errResponse.ToMessage()
+	if message == "" {
+		message = fmt.Sprintf("bad response status code %d", resp.StatusCode)
+	}
+	newApiErr = types.NewOpenAIError(errors.New(message), types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
+	// Keep a short body preview when upstream only returns a generic message like "Error".
+	if showBodyWhenFail || isWeakUpstreamErrorMessage(message) {
 		newApiErr.Err = buildErrWithBody(newApiErr.Error())
 	}
 	return
+}
+
+func isWeakUpstreamErrorMessage(message string) bool {
+	switch strings.ToLower(strings.TrimSpace(message)) {
+	case "", "error", "failed", "failure", "unknown", "unknown error", "upstream error", "internal error", "internal server error", "server error":
+		return true
+	default:
+		return strings.HasPrefix(strings.ToLower(strings.TrimSpace(message)), "bad response status code ")
+	}
 }
 
 func ResetStatusCode(newApiErr *types.NewAPIError, statusCodeMappingStr string) {

@@ -42,7 +42,8 @@ func (e GeneralErrorResponse) TryToOpenAIError() *types.OpenAIError {
 	var openAIError types.OpenAIError
 	if len(e.Error) > 0 {
 		err := common.Unmarshal(e.Error, &openAIError)
-		if err == nil && openAIError.Message != "" {
+		if err == nil && (openAIError.Message != "" || openAIError.Type != "" || openAIError.Code != nil) {
+			openAIError.Message = types.ComposeUpstreamErrorMessage(openAIError.Message, openAIError.Type, openAIError.Code)
 			return &openAIError
 		}
 	}
@@ -55,8 +56,12 @@ func (e GeneralErrorResponse) ToMessage() string {
 		case "object":
 			var openAIError types.OpenAIError
 			err := common.Unmarshal(e.Error, &openAIError)
-			if err == nil && openAIError.Message != "" {
-				return openAIError.Message
+			if err == nil && (openAIError.Message != "" || openAIError.Type != "" || openAIError.Code != nil) {
+				return types.ComposeUpstreamErrorMessage(openAIError.Message, openAIError.Type, openAIError.Code)
+			}
+			// Keep raw nested object when it has no usable message fields.
+			if raw := string(e.Error); raw != "" && raw != "{}" && raw != "null" {
+				return raw
 			}
 		case "string":
 			var msg string
