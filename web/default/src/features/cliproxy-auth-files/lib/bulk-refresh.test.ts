@@ -97,3 +97,31 @@ function createBinding(id: number, enabled: boolean): CliproxyAuthFileBinding {
     updated_at: 0,
   }
 }
+
+  test('limits concurrency while refreshing all bindings', async () => {
+    let inFlight = 0
+    let maxInFlight = 0
+    const summary = await refreshCliproxyAuthFileBindingsUsageAll(
+      [
+        createBinding(1, true),
+        createBinding(2, true),
+        createBinding(3, true),
+        createBinding(4, true),
+      ],
+      async (id) => {
+        inFlight++
+        maxInFlight = Math.max(maxInFlight, inFlight)
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        inFlight--
+        return {
+          success: true,
+          data: createBinding(id, true),
+        }
+      },
+      2
+    )
+
+    assert.equal(summary.success, 4)
+    assert.equal(summary.failed, 0)
+    assert.ok(maxInFlight <= 2)
+  })

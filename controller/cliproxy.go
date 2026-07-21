@@ -404,19 +404,12 @@ func buildCliproxyXAIBillingRequestForURL(authIndex string, url string) service.
 }
 
 func refreshCliproxyXAIUsage(ctx context.Context, caller cliproxyAPICaller, binding *model.CliproxyAuthFileBinding) (cliproxyXAIRefreshResult, error) {
-	weeklyResultChannel := make(chan cliproxyXAICallResult, 1)
-	monthlyResultChannel := make(chan cliproxyXAICallResult, 1)
-	go func() {
-		response, err := caller.CallAPI(ctx, buildCliproxyXAIWeeklyBillingRequest(binding.AuthIndex))
-		weeklyResultChannel <- cliproxyXAICallResult{Response: response, Err: err}
-	}()
-	go func() {
-		response, err := caller.CallAPI(ctx, buildCliproxyXAIMonthlyBillingRequest(binding.AuthIndex))
-		monthlyResultChannel <- cliproxyXAICallResult{Response: response, Err: err}
-	}()
-
-	weeklyResult := <-weeklyResultChannel
-	monthlyResult := <-monthlyResultChannel
+	// Fetch weekly and monthly snapshots sequentially. Concurrent calls for the
+	// same xAI auth index are more likely to hit upstream rate limits during bulk refresh.
+	weeklyResponse, weeklyCallErr := caller.CallAPI(ctx, buildCliproxyXAIWeeklyBillingRequest(binding.AuthIndex))
+	weeklyResult := cliproxyXAICallResult{Response: weeklyResponse, Err: weeklyCallErr}
+	monthlyResponse, monthlyCallErr := caller.CallAPI(ctx, buildCliproxyXAIMonthlyBillingRequest(binding.AuthIndex))
+	monthlyResult := cliproxyXAICallResult{Response: monthlyResponse, Err: monthlyCallErr}
 	weeklyUsage, weeklyErr := extractCliproxyXAIUsageResult(weeklyResult, resolveCliproxyXAIWeeklyUsage)
 	monthlyUsage, monthlyErr := extractCliproxyXAIUsageResult(monthlyResult, resolveCliproxyXAIMonthlyUsage)
 	if weeklyErr != nil && monthlyErr != nil {

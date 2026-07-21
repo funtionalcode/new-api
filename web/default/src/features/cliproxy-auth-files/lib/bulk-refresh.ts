@@ -28,13 +28,19 @@ type RefreshCliproxyAuthFileBindingUsage = (
   id: number
 ) => Promise<ApiResponse<CliproxyAuthFileBinding>>
 
+/** Keep bulk refresh gentle so xAI dual billing calls do not stampede Cliproxy. */
+export const CLIPROXY_BULK_REFRESH_CONCURRENCY = 2
+
 export async function refreshCliproxyAuthFileBindingsUsageAll(
   bindings: CliproxyAuthFileBinding[],
-  refreshUsage: RefreshCliproxyAuthFileBindingUsage
+  refreshUsage: RefreshCliproxyAuthFileBindingUsage,
+  concurrency = CLIPROXY_BULK_REFRESH_CONCURRENCY
 ): Promise<CliproxyAuthFileBulkRefreshSummary> {
   const enabledBindings = bindings.filter((binding) => binding.enabled)
-  const results = await Promise.allSettled(
-    enabledBindings.map((binding) => refreshUsage(binding.id))
+  const results = await mapWithConcurrency(
+    enabledBindings,
+    Math.max(1, concurrency),
+    (binding) => refreshUsage(binding.id)
   )
 
   let success = 0
@@ -56,4 +62,39 @@ export async function refreshCliproxyAuthFileBindingsUsageAll(
     success,
     failed,
   }
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<R>
+): Promise<PromiseSettledResult<R>[]> {
+  if (items.length === 0) {
+    return []
+  }
+
+  const results: PromiseSettledResult<R>[] = new Array(items.length)
+  let nextIndex = 0
+
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    async () => {
+      while (true) {
+        const current = nextIndex
+        nextIndex += 1
+        if (current >= items.length) {
+          return
+        }
+        try {
+          const value = await mapper(items[current])
+          results[current] = { status: 'fulfilled', value }
+        } catch (reason) {
+          results[current] = { status: 'rejected', reason }
+        }
+      }
+    }
+  )
+
+  await Promise.all(workers)
+  return results
 }

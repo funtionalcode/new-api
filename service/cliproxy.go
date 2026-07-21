@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -14,9 +15,11 @@ import (
 )
 
 const (
-	cliproxyAPIAuthFilesPath = "/v0/management/auth-files"
-	cliproxyAPICallPath      = "/v0/management/api-call"
-	cliproxyAPITimeout       = 10 * time.Second
+	cliproxyAPIAuthFilesPath  = "/v0/management/auth-files"
+	cliproxyAPICallPath       = "/v0/management/api-call"
+	cliproxyAPITimeout        = 20 * time.Second
+	cliproxyAPIMaxAttempts    = 3
+	cliproxyAPIRetryBaseDelay = 300 * time.Millisecond
 )
 
 type CliproxyAPIClient struct {
@@ -276,6 +279,29 @@ func (client *CliproxyAPIClient) CallAPI(ctx context.Context, payload CliproxyAP
 		return nil, fmt.Errorf("请求地址不能为空")
 	}
 
+	var lastErr error
+	for attempt := 1; attempt <= cliproxyAPIMaxAttempts; attempt++ {
+		result, err := client.doCallAPI(ctx, payload)
+		if err == nil {
+			return result, nil
+		}
+		lastErr = err
+		if !isCliproxyTransientCallError(err) || attempt >= cliproxyAPIMaxAttempts {
+			break
+		}
+		delay := cliproxyAPIRetryBaseDelay * time.Duration(attempt)
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return nil, lastErr
+}
+
+func (client *CliproxyAPIClient) doCallAPI(ctx context.Context, payload CliproxyAPICallRequest) (*CliproxyAPICallResponse, error) {
 	body, err := common.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("序列化刷新请求失败: %w", err)
@@ -293,7 +319,10 @@ func (client *CliproxyAPIClient) CallAPI(ctx context.Context, payload CliproxyAP
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= http.StatusBadRequest {
-		return nil, fmt.Errorf("刷新额度失败，状态码: %d", resp.StatusCode)
+		return nil, &cliproxyHTTPStatusError{
+			message:    fmt.Sprintf("刷新额度失败，状态码: %d", resp.StatusCode),
+			statusCode: resp.StatusCode,
+		}
 	}
 
 	var result CliproxyAPICallResponse
@@ -302,9 +331,49 @@ func (client *CliproxyAPIClient) CallAPI(ctx context.Context, payload CliproxyAP
 	}
 	normalizeCliproxyAPICallResponse(&result)
 	if result.Status >= http.StatusBadRequest {
-		return nil, fmt.Errorf("刷新额度失败，上游状态码: %d", result.Status)
+		return nil, &cliproxyHTTPStatusError{
+			message:    fmt.Sprintf("刷新额度失败，上游状态码: %d", result.Status),
+			statusCode: result.Status,
+		}
 	}
 	return &result, nil
+}
+
+type cliproxyHTTPStatusError struct {
+	message    string
+	statusCode int
+}
+
+func (e *cliproxyHTTPStatusError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return e.message
+}
+
+func isCliproxyTransientCallError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var statusErr *cliproxyHTTPStatusError
+	if errors.As(err, &statusErr) {
+		switch statusErr.statusCode {
+		case http.StatusTooManyRequests, http.StatusRequestTimeout,
+			http.StatusInternalServerError, http.StatusBadGateway,
+			http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+			return true
+		default:
+			return false
+		}
+	}
+	// Network / timeout style failures from http.Client.
+	errText := strings.ToLower(err.Error())
+	return strings.Contains(errText, "timeout") ||
+		strings.Contains(errText, "temporar") ||
+		strings.Contains(errText, "connection reset") ||
+		strings.Contains(errText, "connection refused") ||
+		strings.Contains(errText, "eof") ||
+		strings.Contains(errText, "broken pipe")
 }
 
 func normalizeCliproxyAPICallResponse(result *CliproxyAPICallResponse) {

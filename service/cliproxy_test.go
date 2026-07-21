@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -224,4 +225,54 @@ func TestNewCliproxyAPIClientRejectsInvalidBaseURL(t *testing.T) {
 func TestNewCliproxyAPIClientRejectsEmptyPassword(t *testing.T) {
 	_, err := NewCliproxyAPIClient("https://example.com", " ")
 	require.Error(t, err)
+}
+
+func TestCliproxyAPIClientCallAPIRetriesTransientStatus(t *testing.T) {
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count := hits.Add(1)
+		if count < 3 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"error":"rate limited"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":200,"body":{"ok":true}}`))
+	}))
+	defer server.Close()
+
+	client, err := NewCliproxyAPIClient(server.URL, "cliproxyapi")
+	require.NoError(t, err)
+
+	result, err := client.CallAPI(context.Background(), CliproxyAPICallRequest{
+		AuthIndex: "xai-auth",
+		Method:    http.MethodGet,
+		URL:       "https://cli-chat-proxy.grok.com/v1/billing",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, int32(3), hits.Load())
+	require.Equal(t, true, result.Body["ok"])
+}
+
+func TestCliproxyAPIClientCallAPIDoesNotRetryClientErrors(t *testing.T) {
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":"forbidden"}`))
+	}))
+	defer server.Close()
+
+	client, err := NewCliproxyAPIClient(server.URL, "cliproxyapi")
+	require.NoError(t, err)
+
+	_, err = client.CallAPI(context.Background(), CliproxyAPICallRequest{
+		AuthIndex: "xai-auth",
+		Method:    http.MethodGet,
+		URL:       "https://cli-chat-proxy.grok.com/v1/billing",
+	})
+	require.Error(t, err)
+	require.Equal(t, int32(1), hits.Load())
+	require.Contains(t, err.Error(), "403")
 }
