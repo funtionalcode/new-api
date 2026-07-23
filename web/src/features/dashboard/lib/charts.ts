@@ -23,6 +23,7 @@ import type {
   QuotaDataItem,
   ProcessedChartData,
   ProcessedUserChartData,
+  ProcessedUserModelUsageChartData,
   UserChartMetric,
   UserModelUsageRow,
 } from '@/features/dashboard/types'
@@ -1117,6 +1118,180 @@ export function processUserModelUsageData(
         quota: modelTotal.quota,
       }))
   })
+}
+
+export function processUserModelUsageChartData(
+  data: QuotaDataItem[],
+  t?: TFunction,
+  limit = 10,
+  metric: UserChartMetric = 'tokens'
+): ProcessedUserModelUsageChartData {
+  const tt: TFunction = t ?? ((x) => x)
+  const metricTitle = metric === 'tokens' ? tt('Tokens') : tt('Amount')
+  const formatTokenValue = (raw: number) => (raw <= 0 ? '0' : formatTokens(raw))
+  const formatMetricValue = (raw: number) =>
+    metric === 'tokens' ? formatTokenValue(raw) : renderQuotaCompat(raw, 2)
+  const formatQuotaValue = (raw: number) => renderQuotaCompat(raw, 4)
+  const formatInt = (value: number) =>
+    Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value)
+
+  const usageRows = processUserModelUsageData(data, limit, metric)
+  const userCount = new Set(usageRows.map((row) => row.username)).size
+  const values = usageRows.map((row) => ({
+    User: row.username,
+    UserLabel: row.userLabel,
+    Remark: row.remark,
+    Model: row.modelName,
+    Requests: row.requestCount,
+    Tokens: row.tokenUsed,
+    Quota: row.quota,
+    rawValue: metric === 'tokens' ? row.tokenUsed : row.quota,
+  }))
+  const modelTotals = new Map<string, number>()
+  values.forEach((item) => {
+    modelTotals.set(
+      item.Model,
+      (modelTotals.get(item.Model) || 0) + Number(item.rawValue)
+    )
+  })
+  const modelDomain = [...modelTotals.entries()]
+    .sort((first, second) => {
+      const valueDiff = second[1] - first[1]
+      if (valueDiff !== 0) return valueDiff
+      return first[0].localeCompare(second[0])
+    })
+    .map(([model]) => model)
+  const totalValue = values.reduce(
+    (sum, item) => sum + (Number(item.rawValue) || 0),
+    0
+  )
+
+  return {
+    userCount,
+    spec_user_model_usage: {
+      type: 'bar',
+      data: [{ id: 'userModelUsageData', values }],
+      xField: 'rawValue',
+      yField: 'UserLabel',
+      seriesField: 'Model',
+      direction: 'horizontal',
+      stack: true,
+      title: {
+        visible: true,
+        text: tt('User Model Usage Details'),
+        subtext:
+          values.length > 0
+            ? `${tt('Total:')} ${formatMetricValue(totalValue)}`
+            : tt('No data available'),
+      },
+      legends: { visible: true, orient: 'bottom', selectMode: 'single' },
+      axes: [
+        {
+          orient: 'left',
+          type: 'band',
+          label: {
+            style: {
+              fontSize: 11,
+              lineHeight: 14,
+            },
+          },
+        },
+        {
+          orient: 'bottom',
+          type: 'linear',
+          title: { visible: true, text: metricTitle },
+          label: {
+            formatMethod: (value: number) => formatMetricValue(value),
+          },
+        },
+      ],
+      color: {
+        type: 'ordinal',
+        domain: modelDomain,
+        range: getDashboardChartColors(modelDomain.length),
+      },
+      bar: {
+        state: { hover: { stroke: '#000', lineWidth: 1 } },
+      },
+      tooltip: {
+        mark: {
+          content: [
+            {
+              key: tt('Model'),
+              value: (datum: Record<string, unknown>) =>
+                String(datum?.Model || tt('Unknown')),
+            },
+            {
+              key: metricTitle,
+              value: (datum: Record<string, unknown>) =>
+                formatMetricValue(Number(datum?.rawValue) || 0),
+            },
+            {
+              key: tt('Tokens'),
+              value: (datum: Record<string, unknown>) =>
+                formatTokenValue(Number(datum?.Tokens) || 0),
+            },
+            {
+              key: tt('Quota'),
+              value: (datum: Record<string, unknown>) =>
+                formatQuotaValue(Number(datum?.Quota) || 0),
+            },
+            {
+              key: tt('Requests'),
+              value: (datum: Record<string, unknown>) =>
+                formatInt(Number(datum?.Requests) || 0),
+            },
+          ],
+          updateContent: (
+            array: Array<{
+              key: string
+              value: string | number
+              datum?: Record<string, unknown>
+            }>
+          ) => {
+            const remark = String(array[0]?.datum?.Remark || '').trim()
+            if (remark) {
+              array.push({ key: tt('Remark'), value: remark })
+            }
+            return array
+          },
+        },
+        dimension: {
+          content: [
+            {
+              key: (datum: Record<string, unknown>) => datum?.Model,
+              value: (datum: Record<string, unknown>) =>
+                Number(datum?.rawValue) || 0,
+            },
+          ],
+          updateContent: (
+            array: Array<{
+              key: string
+              value: string | number
+            }>
+          ) => {
+            array.sort(
+              (first, second) =>
+                (Number(second.value) || 0) - (Number(first.value) || 0)
+            )
+            let sum = 0
+            for (let index = 0; index < array.length; index++) {
+              const value = Number(array[index].value) || 0
+              sum += value
+              array[index].value = formatMetricValue(value)
+            }
+            array.unshift({
+              key: tt('Total:'),
+              value: formatMetricValue(sum),
+            })
+            return array
+          },
+        },
+      },
+      background: { fill: 'transparent' },
+      animation: true,
+    },
+  }
 }
 
 export function processUserChartData(

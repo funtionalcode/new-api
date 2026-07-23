@@ -210,6 +210,11 @@ export interface UserModelUsageRow {
   quota: number
 }
 
+export interface ProcessedUserModelUsageChartData {
+  spec_user_model_usage: VChartSpec
+  userCount: number
+}
+
 export interface DashboardChartPreferences {
   consumptionDistributionChart: ConsumptionDistributionChartType
   modelAnalyticsChart: ModelAnalyticsChartTab

@@ -25,20 +25,11 @@ import {
   useState,
   useRef,
   useCallback,
-  type ReactNode,
 } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { IconBadge } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useTheme } from '@/context/theme-provider'
 import { getUserQuotaDataByUsers } from '@/features/dashboard/api'
@@ -47,7 +38,7 @@ import {
   getDefaultDays,
   saveGranularity,
   processUserChartData,
-  processUserModelUsageData,
+  processUserModelUsageChartData,
 } from '@/features/dashboard/lib'
 import {
   buildUserChartTimeRangeDates,
@@ -59,7 +50,6 @@ import type {
   UserChartMetric,
   UserChartsFilters,
 } from '@/features/dashboard/types'
-import { formatLogQuota, formatNumber, formatTokens } from '@/lib/format'
 import type { TimeGranularity } from '@/lib/time'
 import { VCHART_OPTION } from '@/lib/vchart'
 
@@ -85,13 +75,6 @@ const USER_CHARTS: {
 ]
 
 const TOP_USER_LIMIT_OPTIONS = [5, 10, 20, 50]
-const MODEL_USAGE_SKELETON_ROWS = [
-  'model-usage-1',
-  'model-usage-2',
-  'model-usage-3',
-  'model-usage-4',
-  'model-usage-5',
-]
 
 interface UserChartsProps {
   filters: UserChartsFilters
@@ -228,73 +211,20 @@ export function UserCharts(props: UserChartsProps) {
       ),
     [userData, isLoading, timeGranularity, t, topUserLimit, metric]
   )
-  const modelUsageRows = useMemo(
+  const modelUsageChartData = useMemo(
     () =>
-      processUserModelUsageData(
+      processUserModelUsageChartData(
         isLoading ? [] : (userData ?? []),
-        Number.POSITIVE_INFINITY,
+        t,
+        topUserLimit,
         metric
       ),
-    [userData, isLoading, metric]
+    [userData, isLoading, t, topUserLimit, metric]
   )
-  let modelUsageContent: ReactNode
-  if (isLoading) {
-    modelUsageContent = (
-      <div className='space-y-2 p-3 sm:p-5'>
-        {MODEL_USAGE_SKELETON_ROWS.map((rowKey) => (
-          <Skeleton key={rowKey} className='h-10 w-full' />
-        ))}
-      </div>
-    )
-  } else if (modelUsageRows.length === 0) {
-    modelUsageContent = (
-      <div className='text-muted-foreground flex h-28 items-center justify-center text-sm'>
-        {t('No data available')}
-      </div>
-    )
-  } else {
-    modelUsageContent = (
-      <div className='max-h-[520px] overflow-auto'>
-        <Table aria-label={t('User Model Usage Details')}>
-          <TableHeader className='bg-background sticky top-0 z-10'>
-            <TableRow>
-              <TableHead className='min-w-44'>{t('User')}</TableHead>
-              <TableHead className='min-w-56'>{t('Model')}</TableHead>
-              <TableHead className='text-right'>{t('Requests')}</TableHead>
-              <TableHead className='text-right'>{t('Tokens')}</TableHead>
-              <TableHead className='text-right'>{t('Quota')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {modelUsageRows.map((row) => (
-              <TableRow key={`${row.username}\u0000${row.modelName}`}>
-                <TableCell>
-                  <div className='font-medium'>{row.username}</div>
-                  {row.remark ? (
-                    <div className='text-muted-foreground mt-0.5 max-w-60 truncate text-xs'>
-                      {row.remark}
-                    </div>
-                  ) : null}
-                </TableCell>
-                <TableCell className='max-w-80 truncate font-mono text-xs'>
-                  {row.modelName === 'Unknown' ? t('Unknown') : row.modelName}
-                </TableCell>
-                <TableCell className='text-right'>
-                  {formatNumber(row.requestCount)}
-                </TableCell>
-                <TableCell className='text-right'>
-                  {formatTokens(row.tokenUsed)}
-                </TableCell>
-                <TableCell className='text-right'>
-                  {formatLogQuota(row.quota)}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-    )
-  }
+  const modelUsageChartHeight = useMemo(() => {
+    const userCount = modelUsageChartData.userCount
+    return Math.max(360, Math.min(userCount * 56 + 140, 1200))
+  }, [modelUsageChartData.userCount])
 
   return (
     <div className='space-y-3'>
@@ -397,7 +327,25 @@ export function UserCharts(props: UserChartsProps) {
             </div>
           </div>
 
-          {modelUsageContent}
+          <div className='max-h-[760px] overflow-y-auto p-1.5 sm:p-2'>
+            <div style={{ height: modelUsageChartHeight }}>
+              {isLoading ? (
+                <Skeleton className='h-full w-full' />
+              ) : (
+                themeReady && (
+                  <VChart
+                    key={`user-model-usage-${chartRenderKey}-${metric}-${topUserLimit}-${resolvedTheme}`}
+                    spec={{
+                      ...modelUsageChartData.spec_user_model_usage,
+                      theme: resolvedTheme === 'dark' ? 'dark' : 'light',
+                      background: 'transparent',
+                    }}
+                    option={VCHART_OPTION}
+                  />
+                )
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>
