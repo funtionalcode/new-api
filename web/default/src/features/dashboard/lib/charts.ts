@@ -42,10 +42,13 @@ type TooltipLineItem = {
 }
 
 export function getDashboardChartColors(domainLength: number): string[] {
+  const fallbackScheme = vchartDefaultDataScheme.at(-1)
   const scheme =
     vchartDefaultDataScheme.find(
       (item) => !item.maxDomainLength || domainLength <= item.maxDomainLength
-    ) ?? vchartDefaultDataScheme[vchartDefaultDataScheme.length - 1]
+    ) ?? fallbackScheme
+
+  if (!scheme) return []
 
   return scheme.scheme.filter(
     (color): color is string => typeof color === 'string'
@@ -64,6 +67,12 @@ function renderQuotaCompat(rawQuota: number, digits = 4): string {
     return symbol + Math.pow(10, -digits).toFixed(digits)
   }
   return symbol + fixed
+}
+
+function formatUserRemarkLabel(username: string, remark?: string): string {
+  const trimmedRemark = remark?.trim()
+  if (!trimmedRemark) return username
+  return `${username}\n${trimmedRemark}`
 }
 
 /**
@@ -280,10 +289,11 @@ export function processChartData(
     const tokens = Number(item.token_used) || 0
 
     // Aggregate by time and model
-    if (!timeModelMap.has(timeKey)) {
-      timeModelMap.set(timeKey, new Map())
+    let modelMap = timeModelMap.get(timeKey)
+    if (!modelMap) {
+      modelMap = new Map()
+      timeModelMap.set(timeKey, modelMap)
     }
-    const modelMap = timeModelMap.get(timeKey)!
     const existing = modelMap.get(model) || { quota: 0, count: 0, tokens: 0 }
     modelMap.set(model, {
       quota: existing.quota + quota,
@@ -304,10 +314,10 @@ export function processChartData(
     })
   })
 
-  const allModels = Array.from(modelTotalsMap.keys())
-  const sortedTimes = Array.from(timeModelMap.keys()).sort()
+  const allModels = [...modelTotalsMap.keys()]
+  const sortedTimes = [...timeModelMap.keys()].sort()
   const sortedModels = [...allModels].sort()
-  const modelColorDomain = Array.from(new Set([...sortedModels, otherLabel]))
+  const modelColorDomain = [...new Set([...sortedModels, otherLabel])]
   const modelColorRange = getDashboardChartColors(modelColorDomain.length)
   const otherColor = modelColorRange[modelColorDomain.indexOf(otherLabel)]
   const otherTooltipColor =
@@ -325,14 +335,14 @@ export function processChartData(
     const lastTime = Math.max(
       ...data.map((item) => Number(item.created_at) || 0)
     )
-    const intervalSec =
-      timeGranularity === 'month'
-        ? 2592000
-        : timeGranularity === 'week'
-          ? 604800
-          : timeGranularity === 'day'
-            ? 86400
-            : 3600
+    let intervalSec = 3600
+    if (timeGranularity === 'month') {
+      intervalSec = 2592000
+    } else if (timeGranularity === 'week') {
+      intervalSec = 604800
+    } else if (timeGranularity === 'day') {
+      intervalSec = 86400
+    }
     const padded = Array.from({ length: MAX_TREND_POINTS }, (_, i) =>
       formatChartTime(
         lastTime - (MAX_TREND_POINTS - 1 - i) * intervalSec,
@@ -343,17 +353,17 @@ export function processChartData(
   }
   const chartTimes = fillTimePoints(sortedTimes)
 
-  const totalTimes = Array.from(modelTotalsMap.values()).reduce(
+  const totalTimes = [...modelTotalsMap.values()].reduce(
     (sum, x) => sum + (Number(x.count) || 0),
     0
   )
-  const totalQuotaRaw = Array.from(modelTotalsMap.values()).reduce(
+  const totalQuotaRaw = [...modelTotalsMap.values()].reduce(
     (sum, x) => sum + (Number(x.quota) || 0),
     0
   )
 
   // Pie chart (model call count proportion)
-  const pieValues = Array.from(modelTotalsMap.entries())
+  const pieValues = [...modelTotalsMap.entries()]
     .map(([model, stats]) => ({
       type: model,
       value: Number(stats.count) || 0,
@@ -394,7 +404,7 @@ export function processChartData(
 
   // Area chart: top models by quota + "Other" bucket (too many series = unreadable)
   const MAX_AREA_MODELS = 15
-  const rankedQuotaModels = Array.from(modelTotalsMap.entries())
+  const rankedQuotaModels = [...modelTotalsMap.entries()]
     .map(([model, stats]) => ({
       Model: model,
       Quota: Number(stats.quota) || 0,
@@ -436,7 +446,7 @@ export function processChartData(
 
   // Line chart: model call trend (top models + "Other" bucket)
   const MAX_TREND_MODELS = 20
-  const rankedTrendModels = Array.from(modelTotalsMap.entries())
+  const rankedTrendModels = [...modelTotalsMap.entries()]
     .map(([model, stats]) => ({
       Model: model,
       Count: Number(stats.count) || 0,
@@ -480,7 +490,7 @@ export function processChartData(
 
   // Rank bar: model call count ranking (top 20 + "Other" bucket)
   const MAX_RANK_MODELS = 20
-  const allRankValues = Array.from(modelTotalsMap.entries())
+  const allRankValues = [...modelTotalsMap.entries()]
     .map(([model, stats]) => ({
       Model: model,
       Count: Number(stats.count) || 0,
@@ -734,7 +744,7 @@ export function processChartData(
 
     // Token charts
     spec_token_pie: (() => {
-      const tokenPieValues = Array.from(modelTotalsMap.entries())
+      const tokenPieValues = [...modelTotalsMap.entries()]
         .map(([model, stats]) => ({
           type: model,
           value: Number(stats.tokens) || 0,
@@ -751,7 +761,9 @@ export function processChartData(
         categoryField: 'type',
         pie: {
           style:
-            chartCornerRadius == null ? {} : { cornerRadius: chartCornerRadius },
+            chartCornerRadius == null
+              ? {}
+              : { cornerRadius: chartCornerRadius },
           state: {
             hover: { outerRadius: 0.85, stroke: '#000', lineWidth: 1 },
             selected: { outerOuterRadius: 0.85, stroke: '#000', lineWidth: 1 },
@@ -782,7 +794,7 @@ export function processChartData(
 
     spec_token_line: (() => {
       const MAX_TOKEN_TREND_MODELS = 20
-      const rankedTokenModels = Array.from(modelTotalsMap.entries())
+      const rankedTokenModels = [...modelTotalsMap.entries()]
         .map(([model, stats]) => ({
           Model: model,
           Tokens: Number(stats.tokens) || 0,
@@ -917,7 +929,7 @@ export function processChartData(
 
     spec_token_rank_bar: (() => {
       const MAX_TOKEN_RANK = 20
-      const allTokenRanks = Array.from(modelTotalsMap.entries())
+      const allTokenRanks = [...modelTotalsMap.entries()]
         .map(([model, stats]) => ({
           Model: model,
           Tokens: Number(stats.tokens) || 0,
@@ -985,7 +997,7 @@ export function processChartData(
     totalQuotaDisplay: formatQuotaTotal(totalQuotaRaw),
     totalCountDisplay: formatInt(totalTimes),
     totalTokenDisplay: formatTokens(
-      Array.from(modelTotalsMap.values()).reduce(
+      [...modelTotalsMap.values()].reduce(
         (sum, x) => sum + (Number(x.tokens) || 0),
         0
       )
@@ -1016,9 +1028,7 @@ export function processUserChartData(
   const tt: TFunction = t ?? ((x) => x)
   const metricTitle = metric === 'tokens' ? tt('Tokens') : tt('Amount')
   const getMetricValue = (item: QuotaDataItem) =>
-    metric === 'tokens'
-      ? Number(item.token_used) || 0
-      : Number(item.quota) || 0
+    metric === 'tokens' ? Number(item.token_used) || 0 : Number(item.quota) || 0
   const formatTokenValue = (raw: number) => (raw <= 0 ? '0' : formatTokens(raw))
   const formatVal = (raw: number) =>
     metric === 'tokens' ? formatTokenValue(raw) : renderQuotaCompat(raw, 2)
@@ -1072,9 +1082,7 @@ export function processUserChartData(
     }
   })
 
-  const sorted = Array.from(userQuotaTotal.entries()).sort(
-    (a, b) => b[1] - a[1]
-  )
+  const sorted = [...userQuotaTotal.entries()].sort((a, b) => b[1] - a[1])
   const topUsers = sorted.slice(0, limit).map(([u]) => u)
   const topUserSet = new Set(topUsers)
   const totalValue = sorted.slice(0, limit).reduce((s, [, q]) => s + q, 0)
@@ -1102,12 +1110,15 @@ export function processUserChartData(
     allTimePoints.add(timeKey)
     const user = item.username || 'unknown'
     if (!topUserSet.has(user)) return
-    if (!timeUserMap.has(timeKey)) timeUserMap.set(timeKey, new Map())
-    const map = timeUserMap.get(timeKey)!
-    map.set(user, (map.get(user) || 0) + getMetricValue(item))
+    let userMap = timeUserMap.get(timeKey)
+    if (!userMap) {
+      userMap = new Map()
+      timeUserMap.set(timeKey, userMap)
+    }
+    userMap.set(user, (userMap.get(user) || 0) + getMetricValue(item))
   })
 
-  const sortedTimePoints = Array.from(allTimePoints).sort()
+  const sortedTimePoints = [...allTimePoints].sort()
   const trendValues: Array<{
     Time: string
     User: string
@@ -1151,7 +1162,23 @@ export function processUserChartData(
         style: { fontSize: 11 },
       },
       axes: [
-        { orient: 'left', type: 'band' },
+        {
+          orient: 'left',
+          type: 'band',
+          label: {
+            formatMethod: (value: string | number) => {
+              const username = String(value)
+              return formatUserRemarkLabel(
+                username,
+                userRemarkMap.get(username)
+              )
+            },
+            style: {
+              fontSize: 11,
+              lineHeight: 14,
+            },
+          },
+        },
         {
           orient: 'bottom',
           type: 'linear',

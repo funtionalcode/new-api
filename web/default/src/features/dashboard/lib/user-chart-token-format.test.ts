@@ -7,14 +7,17 @@ import {
   useSystemConfigStore,
 } from '@/stores/system-config-store'
 
-import { processChartData, processUserChartData } from './charts'
 import type { QuotaDataItem } from '../types'
+import { processChartData, processUserChartData } from './charts'
 
 type TooltipFormatter = (datum: Record<string, unknown>) => string | number
 type TooltipLineItem = { key: string; value: string | number }
 type UserRankSpec = {
   title: { subtext: string }
   label: { formatMethod: (value: number) => string }
+  axes: Array<{
+    label?: { formatMethod?: (value: string | number) => string }
+  }>
   tooltip: {
     mark: {
       content: Array<{ value: TooltipFormatter }>
@@ -71,7 +74,13 @@ afterEach(() => {
 
 describe('dashboard token unit displays', () => {
   test('uses Chinese compact units for user token ranking values', () => {
-    const result = processUserChartData(baseRows, 'day', (key) => key, 10, 'tokens')
+    const result = processUserChartData(
+      baseRows,
+      'day',
+      (key) => key,
+      10,
+      'tokens'
+    )
     const rank = result.spec_user_rank as unknown as UserRankSpec
 
     assert.equal(rank.title.subtext, 'Total: 6.5亿')
@@ -80,6 +89,39 @@ describe('dashboard token unit displays', () => {
       rank.tooltip.mark.content[0].value({ rawValue: 240_000_000 }),
       '2.4亿'
     )
+  })
+
+  test('shows user remarks on ranking axis labels', () => {
+    const result = processUserChartData(
+      [
+        {
+          username: 'alice',
+          remark: 'Alice Remark',
+          model_name: 'gpt-4.1',
+          quota: 10,
+          token_used: 10,
+          count: 1,
+          created_at: 1782835200,
+        },
+        {
+          username: 'bob',
+          model_name: 'gpt-4.1',
+          quota: 5,
+          token_used: 5,
+          count: 1,
+          created_at: 1782835200,
+        },
+      ],
+      'day',
+      (key) => key,
+      10,
+      'tokens'
+    )
+    const rank = result.spec_user_rank as unknown as UserRankSpec
+    const formatAxisLabel = rank.axes[0].label?.formatMethod
+
+    assert.equal(formatAxisLabel?.('alice'), 'alice\nAlice Remark')
+    assert.equal(formatAxisLabel?.('bob'), 'bob')
   })
 
   test('uses Chinese compact units when quota display mode is tokens', () => {
@@ -93,7 +135,13 @@ describe('dashboard token unit displays', () => {
       },
     }))
 
-    const result = processUserChartData(baseRows, 'day', (key) => key, 10, 'amount')
+    const result = processUserChartData(
+      baseRows,
+      'day',
+      (key) => key,
+      10,
+      'amount'
+    )
     const rank = result.spec_user_rank as unknown as UserRankSpec
 
     assert.equal(rank.title.subtext, 'Total: 6.5亿')
