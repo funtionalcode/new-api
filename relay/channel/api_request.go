@@ -5,13 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	common2 "github.com/QuantumNous/new-api/common"
+	appconstant "github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
@@ -304,32 +307,188 @@ func applyHeaderOverrideToRequest(req *http.Request, headerOverride map[string]s
 	}
 }
 
+func sanitizeProxyURLForLog(rawURL string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return ""
+	}
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return common2.MaskSensitiveInfo(rawURL)
+	}
+	parsedURL.User = nil
+	return common.SanitizeURLForLog(parsedURL.String())
+}
+
+func classifyUpstreamNetworkError(err error) string {
+	if err == nil {
+		return ""
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "timeout"
+	}
+	if errors.Is(err, io.EOF) {
+		return "eof"
+	}
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) && urlErr.Timeout() {
+		return "timeout"
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return "timeout"
+	}
+	lower := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(lower, "proxyconnect"):
+		return "proxy_connect"
+	case strings.Contains(lower, "connection refused"):
+		return "connection_refused"
+	case strings.Contains(lower, "no such host"):
+		return "dns"
+	case strings.Contains(lower, "tls"):
+		return "tls"
+	case strings.Contains(lower, "connection reset"):
+		return "connection_reset"
+	case strings.Contains(lower, "timeout"):
+		return "timeout"
+	default:
+		return "network_error"
+	}
+}
+
+func isConfiguredProxyReachabilityError(err error, proxyURL string) bool {
+	if err == nil {
+		return false
+	}
+	lower := strings.ToLower(err.Error())
+	if strings.Contains(lower, "proxyconnect") {
+		return true
+	}
+	parsedProxy, parseErr := url.Parse(strings.TrimSpace(proxyURL))
+	if parseErr != nil {
+		return false
+	}
+	proxyHost := strings.ToLower(parsedProxy.Host)
+	if proxyHost == "" {
+		return false
+	}
+	proxyHostname := strings.ToLower(parsedProxy.Hostname())
+	return strings.Contains(lower, proxyHost) || (proxyHostname != "" && strings.Contains(lower, proxyHostname))
+}
+
+func setUpstreamRequestDiagnostic(c *gin.Context, info *common.RelayInfo, stage string, targetURL string, err error, extra map[string]any) {
+	if c == nil {
+		return
+	}
+	diagnostic := map[string]any{
+		"stage": stage,
+	}
+	if targetURL != "" {
+		diagnostic["target_url"] = common.SanitizeURLForLog(targetURL)
+		if parsedURL, parseErr := url.Parse(targetURL); parseErr == nil {
+			diagnostic["target_scheme"] = parsedURL.Scheme
+			diagnostic["target_host"] = parsedURL.Host
+		}
+	}
+	proxyURL := ""
+	if info != nil {
+		proxyURL = strings.TrimSpace(info.ChannelSetting.Proxy)
+	}
+	if proxyURL == "" {
+		diagnostic["transport"] = "direct"
+		diagnostic["chain"] = []string{"new-api", "target_upstream"}
+	} else {
+		diagnostic["transport"] = "proxy"
+		diagnostic["proxy_url"] = sanitizeProxyURLForLog(proxyURL)
+		if parsedProxy, parseErr := url.Parse(proxyURL); parseErr == nil {
+			diagnostic["proxy_scheme"] = parsedProxy.Scheme
+			diagnostic["proxy_host"] = parsedProxy.Host
+		}
+		diagnostic["chain"] = []string{"new-api", "configured_proxy", "configured_proxy_upstream_chain", "target_upstream"}
+	}
+	if err != nil {
+		errorKind := classifyUpstreamNetworkError(err)
+		diagnostic["network_error_kind"] = errorKind
+		diagnostic["network_error"] = common2.MaskSensitiveInfo(err.Error())
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) && strings.TrimSpace(urlErr.Op) != "" {
+			diagnostic["url_error_op"] = urlErr.Op
+		}
+		if proxyURL == "" {
+			diagnostic["failure_step"] = "new_api_to_upstream"
+		} else if isConfiguredProxyReachabilityError(err, proxyURL) {
+			diagnostic["failure_step"] = "new_api_to_configured_proxy"
+		} else {
+			diagnostic["failure_step"] = "configured_proxy_to_next_hop_or_upstream"
+			diagnostic["proxy_chain_note"] = "request used a configured proxy; new-api can only distinguish the first proxy hop from failures after the configured proxy accepted the request"
+		}
+	}
+	for key, value := range extra {
+		if value != nil {
+			diagnostic[key] = value
+		}
+	}
+	common2.SetContextKey(c, appconstant.ContextKeyUpstreamRequestDiagnostic, diagnostic)
+}
+
+func upstreamRequestFailureMessage(c *gin.Context, err error) string {
+	maskedError := common2.MaskSensitiveInfo(err.Error())
+	diagnostic, ok := common2.GetContextKeyType[map[string]any](c, appconstant.ContextKeyUpstreamRequestDiagnostic)
+	if !ok || diagnostic == nil {
+		return fmt.Sprintf("upstream request failed: %s", maskedError)
+	}
+	parts := make([]string, 0, 5)
+	for _, key := range []string{"stage", "failure_step", "transport", "target_host", "network_error_kind"} {
+		if value, exists := diagnostic[key]; exists && strings.TrimSpace(fmt.Sprintf("%v", value)) != "" {
+			parts = append(parts, fmt.Sprintf("%s=%v", key, value))
+		}
+	}
+	if len(parts) == 0 {
+		return fmt.Sprintf("upstream request failed: %s", maskedError)
+	}
+	return fmt.Sprintf("upstream request failed (%s): %s", strings.Join(parts, ", "), maskedError)
+}
+
 func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody io.Reader) (*http.Response, error) {
 	fullRequestURL, err := a.GetRequestURL(info)
 	if err != nil {
+		setUpstreamRequestDiagnostic(c, info, "build_url", "", err, nil)
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
 	logger.LogDebug(c, "fullRequestURL: %s", common.SanitizeURLForLog(fullRequestURL))
 	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
+		setUpstreamRequestDiagnostic(c, info, "build_request", fullRequestURL, err, nil)
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
 	applyUpstreamContentLength(req, info)
 	headers := req.Header
 	err = a.SetupRequestHeader(c, &headers, info)
 	if err != nil {
+		setUpstreamRequestDiagnostic(c, info, "setup_headers", fullRequestURL, err, nil)
 		return nil, fmt.Errorf("setup request header failed: %w", err)
 	}
 	// 在 SetupRequestHeader 之后应用 Header Override，确保用户设置优先级最高
 	// 这样可以覆盖默认的 Authorization header 设置
 	headerOverride, err := processHeaderOverride(info, c)
 	if err != nil {
+		setUpstreamRequestDiagnostic(c, info, "apply_header_override", fullRequestURL, err, nil)
 		return nil, err
 	}
 	applyHeaderOverrideToRequest(req, headerOverride)
 	resp, err := doRequest(c, req, info)
 	if err != nil {
 		return nil, fmt.Errorf("do request failed: %w", err)
+	}
+	if resp != nil {
+		diagnosticExtra := map[string]any{
+			"upstream_status_code": resp.StatusCode,
+		}
+		if resp.StatusCode >= http.StatusBadRequest {
+			diagnosticExtra["failure_step"] = "target_upstream_response"
+		}
+		setUpstreamRequestDiagnostic(c, info, "response_status", fullRequestURL, nil, diagnosticExtra)
 	}
 	return resp, nil
 }
@@ -480,6 +639,11 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	if info.ChannelSetting.Proxy != "" {
 		client, err = service.NewProxyHttpClient(info.ChannelSetting.Proxy)
 		if err != nil {
+			targetURL := ""
+			if req != nil && req.URL != nil {
+				targetURL = req.URL.String()
+			}
+			setUpstreamRequestDiagnostic(c, info, "create_proxy_client", targetURL, err, nil)
 			return nil, fmt.Errorf("new proxy http client failed: %w", err)
 		}
 	} else {
@@ -508,10 +672,20 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 
 	resp, err := client.Do(req)
 	if err != nil {
-		logger.LogError(c, "do request failed: "+err.Error())
-		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
+		logger.LogError(c, "do request failed: "+common2.MaskSensitiveInfo(err.Error()))
+		targetURL := ""
+		if req != nil && req.URL != nil {
+			targetURL = req.URL.String()
+		}
+		setUpstreamRequestDiagnostic(c, info, "dispatch", targetURL, err, nil)
+		return nil, types.NewError(errors.New(upstreamRequestFailureMessage(c, err)), types.ErrorCodeDoRequestFailed)
 	}
 	if resp == nil {
+		targetURL := ""
+		if req != nil && req.URL != nil {
+			targetURL = req.URL.String()
+		}
+		setUpstreamRequestDiagnostic(c, info, "dispatch", targetURL, errors.New("resp is nil"), nil)
 		return nil, errors.New("resp is nil")
 	}
 

@@ -1,10 +1,16 @@
 package channel
 
 import (
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
+	appcommon "github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -31,6 +37,70 @@ func TestProcessHeaderOverride_ChannelTestSkipsPassthroughRules(t *testing.T) {
 	headers, err := processHeaderOverride(info, ctx)
 	require.NoError(t, err)
 	require.Empty(t, headers)
+}
+
+func TestSetUpstreamRequestDiagnosticClassifiesProxyEOF(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelSetting: dto.ChannelSettings{
+				Proxy: "http://user:pass@proxy.internal:8080",
+			},
+		},
+	}
+	upstreamErr := &url.Error{
+		Op:  "Post",
+		URL: "https://chatgpt.com/backend-api/codex/responses",
+		Err: io.EOF,
+	}
+
+	setUpstreamRequestDiagnostic(ctx, info, "dispatch", upstreamErr.URL, upstreamErr, nil)
+
+	diagnostic, ok := appcommon.GetContextKeyType[map[string]any](ctx, constant.ContextKeyUpstreamRequestDiagnostic)
+	require.True(t, ok)
+	require.Equal(t, "dispatch", diagnostic["stage"])
+	require.Equal(t, "proxy", diagnostic["transport"])
+	require.Equal(t, "eof", diagnostic["network_error_kind"])
+	require.Equal(t, "configured_proxy_to_next_hop_or_upstream", diagnostic["failure_step"])
+	require.Equal(t, "chatgpt.com", diagnostic["target_host"])
+	require.Equal(t, "proxy.internal:8080", diagnostic["proxy_host"])
+	require.NotContains(t, diagnostic["proxy_url"], "pass")
+}
+
+func TestSetUpstreamRequestDiagnosticClassifiesConfiguredProxyReachability(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelSetting: dto.ChannelSettings{
+				Proxy: "http://proxy.internal:8080",
+			},
+		},
+	}
+	upstreamErr := &url.Error{
+		Op:  "Post",
+		URL: "https://chatgpt.com/backend-api/codex/responses",
+		Err: errors.New("proxyconnect tcp: dial tcp proxy.internal:8080: connect: connection refused"),
+	}
+
+	setUpstreamRequestDiagnostic(ctx, info, "dispatch", upstreamErr.URL, upstreamErr, nil)
+
+	diagnostic, ok := appcommon.GetContextKeyType[map[string]any](ctx, constant.ContextKeyUpstreamRequestDiagnostic)
+	require.True(t, ok)
+	require.Equal(t, "proxy_connect", diagnostic["network_error_kind"])
+	require.Equal(t, "new_api_to_configured_proxy", diagnostic["failure_step"])
+	require.Equal(t, "proxy.internal:8080", diagnostic["proxy_host"])
 }
 
 func TestProcessHeaderOverride_ChannelTestSkipsClientHeaderPlaceholder(t *testing.T) {

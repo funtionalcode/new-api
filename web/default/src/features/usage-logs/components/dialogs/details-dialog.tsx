@@ -200,6 +200,90 @@ function quotaSaturationKindLabel(
   return t('Invalid (NaN)')
 }
 
+function upstreamDiagnosticStageLabel(
+  stage: string | undefined,
+  t: (key: string) => string
+): string {
+  if (stage === 'build_url') return t('Build upstream URL')
+  if (stage === 'build_request') return t('Build upstream request')
+  if (stage === 'setup_headers') return t('Setup upstream headers')
+  if (stage === 'apply_header_override') return t('Apply header override')
+  if (stage === 'create_proxy_client') return t('Create proxy client')
+  if (stage === 'dispatch') return t('Send upstream request')
+  if (stage === 'response_status') return t('Upstream response status')
+  return stage || '-'
+}
+
+function upstreamDiagnosticFailureStepLabel(
+  step: string | undefined,
+  t: (key: string) => string
+): string {
+  if (step === 'new_api_to_upstream') return t('new-api to upstream')
+  if (step === 'new_api_to_configured_proxy') {
+    return t('new-api to configured proxy')
+  }
+  if (step === 'configured_proxy_to_next_hop_or_upstream') {
+    return t('configured proxy to next proxy or upstream')
+  }
+  if (step === 'configured_proxy_or_proxy_chain') {
+    return t('configured proxy to next proxy or upstream')
+  }
+  if (step === 'target_upstream_response') {
+    return t('target upstream returned status')
+  }
+  return step || '-'
+}
+
+function upstreamDiagnosticTransportLabel(
+  transport: string | undefined,
+  t: (key: string) => string
+): string {
+  if (transport === 'direct') return t('Direct')
+  if (transport === 'proxy') return t('Configured Proxy')
+  return transport || '-'
+}
+
+function upstreamDiagnosticChainLabel(
+  chain: string[] | undefined,
+  t: (key: string) => string
+): string {
+  if (!chain || chain.length === 0) return ''
+  return chain
+    .map((step) => {
+      if (step === 'new-api') return 'new-api'
+      if (step === 'configured_proxy') return t('Configured Proxy')
+      if (step === 'configured_proxy_upstream_chain') {
+        return t('Proxy Internal Chain')
+      }
+      if (step === 'target_upstream') return t('Target Upstream')
+      return step.replaceAll('_', ' ')
+    })
+    .join(' → ')
+}
+
+function upstreamDiagnosticNoteLabel(
+  note: string | undefined,
+  t: (key: string) => string
+): string {
+  if (
+    note ===
+    'request used a configured proxy; no upstream HTTP response was received before the connection failed'
+  ) {
+    return t(
+      'Configured proxy was used and no upstream HTTP response was received before the connection failed. Check the configured proxy and its internal upstream chain.'
+    )
+  }
+  if (
+    note ===
+    'request used a configured proxy; new-api can only distinguish the first proxy hop from failures after the configured proxy accepted the request'
+  ) {
+    return t(
+      'Configured proxy was used. new-api can distinguish failures before reaching the configured proxy, but failures after that belong to the proxy internal chain or target upstream.'
+    )
+  }
+  return note || ''
+}
+
 function BillingBreakdown(props: {
   log: UsageLog
   other: LogOtherData
@@ -585,6 +669,17 @@ export function DetailsDialog(props: DetailsDialogProps) {
     props.isAdmin &&
     props.log.type !== 6 &&
     (other?.request_path || conversionChain.length > 0)
+  const upstreamRequestDiagnostic = props.isAdmin
+    ? adminInfo?.upstream_request
+    : undefined
+  const upstreamRequestChain = upstreamDiagnosticChainLabel(
+    upstreamRequestDiagnostic?.chain,
+    t
+  )
+  const upstreamRequestNote = upstreamDiagnosticNoteLabel(
+    upstreamRequestDiagnostic?.proxy_chain_note,
+    t
+  )
 
   const useChannel = other?.admin_info?.use_channel
   const channelChain =
@@ -762,6 +857,111 @@ export function DetailsDialog(props: DetailsDialogProps) {
                 </div>
               </div>
             </div>
+          </DetailSection>
+        )}
+
+        {/* Upstream request diagnostics (admin only) */}
+        {props.isAdmin && upstreamRequestDiagnostic && (
+          <DetailSection
+            icon={<Route className='size-3.5' aria-hidden='true' />}
+            iconTone='warning'
+            label={t('Upstream Request Diagnostics')}
+          >
+            {upstreamRequestDiagnostic.failure_step && (
+              <DetailRow
+                label={t('Failure Step')}
+                value={upstreamDiagnosticFailureStepLabel(
+                  upstreamRequestDiagnostic.failure_step,
+                  t
+                )}
+                mono
+              />
+            )}
+            <DetailRow
+              label={t('Stage')}
+              value={upstreamDiagnosticStageLabel(
+                upstreamRequestDiagnostic.stage,
+                t
+              )}
+              mono
+            />
+            <DetailRow
+              label={t('Transport')}
+              value={upstreamDiagnosticTransportLabel(
+                upstreamRequestDiagnostic.transport,
+                t
+              )}
+              mono
+            />
+            {upstreamRequestChain && (
+              <DetailRow
+                label={t('Chain')}
+                value={upstreamRequestChain}
+                mono
+              />
+            )}
+            {upstreamRequestDiagnostic.target_host && (
+              <DetailRow
+                label={t('Target Host')}
+                value={upstreamRequestDiagnostic.target_host}
+                mono
+              />
+            )}
+            {upstreamRequestDiagnostic.target_url && (
+              <DetailRow
+                label={t('Target URL')}
+                value={upstreamRequestDiagnostic.target_url}
+                mono
+              />
+            )}
+            {upstreamRequestDiagnostic.proxy_host && (
+              <DetailRow
+                label={t('Proxy Host')}
+                value={upstreamRequestDiagnostic.proxy_host}
+                mono
+              />
+            )}
+            {upstreamRequestDiagnostic.proxy_url && (
+              <DetailRow
+                label={t('Proxy URL')}
+                value={upstreamRequestDiagnostic.proxy_url}
+                mono
+              />
+            )}
+            {upstreamRequestDiagnostic.upstream_status_code != null && (
+              <DetailRow
+                label={t('Upstream Status')}
+                value={String(upstreamRequestDiagnostic.upstream_status_code)}
+                mono
+              />
+            )}
+            {upstreamRequestDiagnostic.network_error_kind && (
+              <DetailRow
+                label={t('Network Error Type')}
+                value={upstreamRequestDiagnostic.network_error_kind}
+                mono
+              />
+            )}
+            {upstreamRequestDiagnostic.url_error_op && (
+              <DetailRow
+                label={t('Network Operation')}
+                value={upstreamRequestDiagnostic.url_error_op}
+                mono
+              />
+            )}
+            {upstreamRequestDiagnostic.network_error && (
+              <DetailRow
+                label={t('Network Error')}
+                value={upstreamRequestDiagnostic.network_error}
+                mono
+              />
+            )}
+            {upstreamRequestNote && (
+              <DetailRow
+                label={t('Proxy Chain Note')}
+                value={upstreamRequestNote}
+              />
+            )}
           </DetailSection>
         )}
 

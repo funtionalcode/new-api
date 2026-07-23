@@ -137,6 +137,23 @@ export interface LogOtherData {
       original: number
       clamped: number
     }
+    upstream_request?: {
+      stage?: string
+      failure_step?: string
+      transport?: string
+      target_url?: string
+      target_host?: string
+      target_scheme?: string
+      proxy_url?: string
+      proxy_host?: string
+      proxy_scheme?: string
+      chain?: string[]
+      network_error_kind?: string
+      network_error?: string
+      url_error_op?: string
+      upstream_status_code?: number
+      proxy_chain_note?: string
+    }
   }
   // Language-independent operation descriptor (audit/login logs).
   // Frontend renders localized content from action + params via i18n templates.
