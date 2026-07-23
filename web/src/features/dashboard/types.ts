@@ -200,6 +200,16 @@ export type TokenAnalyticsChartTab = 'trend' | 'proportion' | 'top'
 
 export type UserChartMetric = 'tokens' | 'amount'
 
+export interface UserModelUsageRow {
+  username: string
+  remark: string
+  userLabel: string
+  modelName: string
+  requestCount: number
+  tokenUsed: number
+  quota: number
+}
+
 export interface DashboardChartPreferences {
   consumptionDistributionChart: ConsumptionDistributionChartType
   modelAnalyticsChart: ModelAnalyticsChartTab

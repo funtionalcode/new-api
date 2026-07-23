@@ -24,6 +24,7 @@ import type {
   ProcessedChartData,
   ProcessedUserChartData,
   UserChartMetric,
+  UserModelUsageRow,
 } from '@/features/dashboard/types'
 import { getCurrencyDisplay } from '@/lib/currency'
 import { formatTokens } from '@/lib/format'
@@ -1017,6 +1018,106 @@ const USER_COLORS = [
   '#FF99C3',
   '#5D7092',
 ]
+
+type UserUsageTotal = {
+  username: string
+  remark: string
+  requestCount: number
+  tokenUsed: number
+  quota: number
+}
+
+type ModelUsageTotal = {
+  modelName: string
+  requestCount: number
+  tokenUsed: number
+  quota: number
+}
+
+export function processUserModelUsageData(
+  data: QuotaDataItem[],
+  limit = Number.POSITIVE_INFINITY,
+  metric: UserChartMetric = 'tokens'
+): UserModelUsageRow[] {
+  if (!data || data.length === 0) return []
+
+  const userTotals = new Map<string, UserUsageTotal>()
+  const userModelTotals = new Map<string, Map<string, ModelUsageTotal>>()
+
+  data.forEach((item) => {
+    const username = item.username || 'unknown'
+    const modelName = item.model_name || 'Unknown'
+    const requestCount = Number(item.count) || 0
+    const tokenUsed = Number(item.token_used) || 0
+    const quota = Number(item.quota) || 0
+    const remark = item.remark?.trim() || ''
+
+    const userTotal = userTotals.get(username) || {
+      username,
+      remark: '',
+      requestCount: 0,
+      tokenUsed: 0,
+      quota: 0,
+    }
+    userTotal.requestCount += requestCount
+    userTotal.tokenUsed += tokenUsed
+    userTotal.quota += quota
+    if (remark && !userTotal.remark) userTotal.remark = remark
+    userTotals.set(username, userTotal)
+
+    let modelTotals = userModelTotals.get(username)
+    if (!modelTotals) {
+      modelTotals = new Map()
+      userModelTotals.set(username, modelTotals)
+    }
+    const modelTotal = modelTotals.get(modelName) || {
+      modelName,
+      requestCount: 0,
+      tokenUsed: 0,
+      quota: 0,
+    }
+    modelTotal.requestCount += requestCount
+    modelTotal.tokenUsed += tokenUsed
+    modelTotal.quota += quota
+    modelTotals.set(modelName, modelTotal)
+  })
+
+  const selectedUsers = [...userTotals.values()]
+    .sort((first, second) => {
+      const valueDiff =
+        metric === 'tokens'
+          ? second.tokenUsed - first.tokenUsed
+          : second.quota - first.quota
+      if (valueDiff !== 0) return valueDiff
+      return first.username.localeCompare(second.username)
+    })
+    .slice(0, Number.isFinite(limit) && limit > 0 ? limit : undefined)
+
+  return selectedUsers.flatMap((userTotal) => {
+    const userLabel = formatUserRemarkLabel(
+      userTotal.username,
+      userTotal.remark
+    )
+    return [...(userModelTotals.get(userTotal.username)?.values() ?? [])]
+      .sort((first, second) => {
+        const valueDiff =
+          metric === 'tokens'
+            ? second.tokenUsed - first.tokenUsed
+            : second.quota - first.quota
+        if (valueDiff !== 0) return valueDiff
+        return first.modelName.localeCompare(second.modelName)
+      })
+      .map((modelTotal) => ({
+        username: userTotal.username,
+        remark: userTotal.remark,
+        userLabel,
+        modelName: modelTotal.modelName,
+        requestCount: modelTotal.requestCount,
+        tokenUsed: modelTotal.tokenUsed,
+        quota: modelTotal.quota,
+      }))
+  })
+}
 
 export function processUserChartData(
   data: QuotaDataItem[],

@@ -42,6 +42,7 @@ type QuotaDataLogParams struct {
 type quotaDataRemarkRow struct {
 	UserID    int    `gorm:"column:user_id"`
 	Username  string `gorm:"column:username"`
+	ModelName string `gorm:"column:model_name"`
 	CreatedAt int64  `gorm:"column:created_at"`
 	TokenUsed int    `gorm:"column:token_used"`
 	Count     int    `gorm:"column:count"`
@@ -55,6 +56,7 @@ func quotaDataFromRemarkRows(rows []quotaDataRemarkRow) []*QuotaData {
 		quotaDatas = append(quotaDatas, &QuotaData{
 			UserID:    row.UserID,
 			Username:  row.Username,
+			ModelName: row.ModelName,
 			CreatedAt: row.CreatedAt,
 			Count:     row.Count,
 			Quota:     row.Quota,
@@ -190,10 +192,10 @@ func GetQuotaDataByUserId(userId int, startTime int64, endTime int64) (quotaData
 func GetQuotaDataGroupByUser(startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
 	var rows []quotaDataRemarkRow
 	err = DB.Table("quota_data AS q").
-		Select("q.user_id, q.username, q.created_at, SUM(q.count) AS count, SUM(q.quota) AS quota, SUM(q.token_used) AS token_used, COALESCE(u.remark, '') AS remark").
+		Select("q.user_id, q.username, q.model_name, q.created_at, SUM(q.count) AS count, SUM(q.quota) AS quota, SUM(q.token_used) AS token_used, COALESCE(u.remark, '') AS remark").
 		Joins("LEFT JOIN users u ON q.user_id = u.id").
 		Where("q.created_at >= ? AND q.created_at <= ?", startTime, endTime).
-		Group("q.user_id, q.username, q.created_at, u.remark").
+		Group("q.user_id, q.username, q.model_name, q.created_at, u.remark").
 		Scan(&rows).Error
 	if err != nil {
 		return nil, err
@@ -204,10 +206,10 @@ func GetQuotaDataGroupByUser(startTime int64, endTime int64) (quotaData []*Quota
 func GetQuotaDataGroupByUserId(userId int, startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
 	var rows []quotaDataRemarkRow
 	err = DB.Table("quota_data AS q").
-		Select("q.user_id, q.username, q.created_at, SUM(q.count) AS count, SUM(q.quota) AS quota, SUM(q.token_used) AS token_used, COALESCE(u.remark, '') AS remark").
+		Select("q.user_id, q.username, q.model_name, q.created_at, SUM(q.count) AS count, SUM(q.quota) AS quota, SUM(q.token_used) AS token_used, COALESCE(u.remark, '') AS remark").
 		Joins("LEFT JOIN users u ON q.user_id = u.id").
 		Where("q.user_id = ? AND q.created_at >= ? AND q.created_at <= ?", userId, startTime, endTime).
-		Group("q.user_id, q.username, q.created_at, u.remark").
+		Group("q.user_id, q.username, q.model_name, q.created_at, u.remark").
 		Scan(&rows).Error
 	if err != nil {
 		return nil, err

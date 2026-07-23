@@ -19,11 +19,26 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import { VChart } from '@visactor/react-vchart'
 import { Users } from 'lucide-react'
-import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+  useCallback,
+  type ReactNode,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { IconBadge } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useTheme } from '@/context/theme-provider'
 import { getUserQuotaDataByUsers } from '@/features/dashboard/api'
@@ -32,6 +47,7 @@ import {
   getDefaultDays,
   saveGranularity,
   processUserChartData,
+  processUserModelUsageData,
 } from '@/features/dashboard/lib'
 import {
   buildUserChartTimeRangeDates,
@@ -43,6 +59,7 @@ import type {
   UserChartMetric,
   UserChartsFilters,
 } from '@/features/dashboard/types'
+import { formatLogQuota, formatNumber, formatTokens } from '@/lib/format'
 import type { TimeGranularity } from '@/lib/time'
 import { VCHART_OPTION } from '@/lib/vchart'
 
@@ -68,6 +85,13 @@ const USER_CHARTS: {
 ]
 
 const TOP_USER_LIMIT_OPTIONS = [5, 10, 20, 50]
+const MODEL_USAGE_SKELETON_ROWS = [
+  'model-usage-1',
+  'model-usage-2',
+  'model-usage-3',
+  'model-usage-4',
+  'model-usage-5',
+]
 
 interface UserChartsProps {
   filters: UserChartsFilters
@@ -204,6 +228,73 @@ export function UserCharts(props: UserChartsProps) {
       ),
     [userData, isLoading, timeGranularity, t, topUserLimit, metric]
   )
+  const modelUsageRows = useMemo(
+    () =>
+      processUserModelUsageData(
+        isLoading ? [] : (userData ?? []),
+        Number.POSITIVE_INFINITY,
+        metric
+      ),
+    [userData, isLoading, metric]
+  )
+  let modelUsageContent: ReactNode
+  if (isLoading) {
+    modelUsageContent = (
+      <div className='space-y-2 p-3 sm:p-5'>
+        {MODEL_USAGE_SKELETON_ROWS.map((rowKey) => (
+          <Skeleton key={rowKey} className='h-10 w-full' />
+        ))}
+      </div>
+    )
+  } else if (modelUsageRows.length === 0) {
+    modelUsageContent = (
+      <div className='text-muted-foreground flex h-28 items-center justify-center text-sm'>
+        {t('No data available')}
+      </div>
+    )
+  } else {
+    modelUsageContent = (
+      <div className='max-h-[520px] overflow-auto'>
+        <Table aria-label={t('User Model Usage Details')}>
+          <TableHeader className='bg-background sticky top-0 z-10'>
+            <TableRow>
+              <TableHead className='min-w-44'>{t('User')}</TableHead>
+              <TableHead className='min-w-56'>{t('Model')}</TableHead>
+              <TableHead className='text-right'>{t('Requests')}</TableHead>
+              <TableHead className='text-right'>{t('Tokens')}</TableHead>
+              <TableHead className='text-right'>{t('Quota')}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {modelUsageRows.map((row) => (
+              <TableRow key={`${row.username}\u0000${row.modelName}`}>
+                <TableCell>
+                  <div className='font-medium'>{row.username}</div>
+                  {row.remark ? (
+                    <div className='text-muted-foreground mt-0.5 max-w-60 truncate text-xs'>
+                      {row.remark}
+                    </div>
+                  ) : null}
+                </TableCell>
+                <TableCell className='max-w-80 truncate font-mono text-xs'>
+                  {row.modelName === 'Unknown' ? t('Unknown') : row.modelName}
+                </TableCell>
+                <TableCell className='text-right'>
+                  {formatNumber(row.requestCount)}
+                </TableCell>
+                <TableCell className='text-right'>
+                  {formatTokens(row.tokenUsed)}
+                </TableCell>
+                <TableCell className='text-right'>
+                  {formatLogQuota(row.quota)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    )
+  }
 
   return (
     <div className='space-y-3'>
@@ -295,6 +386,19 @@ export function UserCharts(props: UserChartsProps) {
             </div>
           )
         })}
+
+        <div className='overflow-hidden rounded-lg border'>
+          <div className='flex w-full items-center gap-2 border-b px-3 py-2 sm:px-5 sm:py-3'>
+            <IconBadge tone='info' size='sm'>
+              <Users />
+            </IconBadge>
+            <div className='text-sm font-semibold'>
+              {t('User Model Usage Details')}
+            </div>
+          </div>
+
+          {modelUsageContent}
+        </div>
       </div>
     </div>
   )
