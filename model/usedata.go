@@ -39,6 +39,32 @@ type QuotaDataLogParams struct {
 	NodeName  string
 }
 
+type quotaDataRemarkRow struct {
+	UserID    int    `gorm:"column:user_id"`
+	Username  string `gorm:"column:username"`
+	CreatedAt int64  `gorm:"column:created_at"`
+	TokenUsed int    `gorm:"column:token_used"`
+	Count     int    `gorm:"column:count"`
+	Quota     int    `gorm:"column:quota"`
+	Remark    string `gorm:"column:remark"`
+}
+
+func quotaDataFromRemarkRows(rows []quotaDataRemarkRow) []*QuotaData {
+	quotaDatas := make([]*QuotaData, 0, len(rows))
+	for _, row := range rows {
+		quotaDatas = append(quotaDatas, &QuotaData{
+			UserID:    row.UserID,
+			Username:  row.Username,
+			CreatedAt: row.CreatedAt,
+			Count:     row.Count,
+			Quota:     row.Quota,
+			TokenUsed: row.TokenUsed,
+			Remark:    row.Remark,
+		})
+	}
+	return quotaDatas
+}
+
 func UpdateQuotaData() {
 	for {
 		if common.DataExportEnabled {
@@ -162,27 +188,31 @@ func GetQuotaDataByUserId(userId int, startTime int64, endTime int64) (quotaData
 }
 
 func GetQuotaDataGroupByUser(startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
-	var quotaDatas []*QuotaData
-	err = DB.Raw(`
-		SELECT q.username, q.created_at, SUM(q.count) AS count, SUM(q.quota) AS quota, SUM(q.token_used) AS token_used, COALESCE(u.remark, '') AS remark
-		FROM quota_data q
-		LEFT JOIN users u ON q.username = u.username
-		WHERE q.created_at >= ? AND q.created_at <= ?
-		GROUP BY q.username, q.created_at, u.remark
-	`, startTime, endTime).Scan(&quotaDatas).Error
-	return quotaDatas, err
+	var rows []quotaDataRemarkRow
+	err = DB.Table("quota_data AS q").
+		Select("q.user_id, q.username, q.created_at, SUM(q.count) AS count, SUM(q.quota) AS quota, SUM(q.token_used) AS token_used, COALESCE(u.remark, '') AS remark").
+		Joins("LEFT JOIN users u ON q.user_id = u.id").
+		Where("q.created_at >= ? AND q.created_at <= ?", startTime, endTime).
+		Group("q.user_id, q.username, q.created_at, u.remark").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return quotaDataFromRemarkRows(rows), nil
 }
 
 func GetQuotaDataGroupByUserId(userId int, startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
-	var quotaDatas []*QuotaData
-	err = DB.Raw(`
-		SELECT q.username, q.created_at, SUM(q.count) AS count, SUM(q.quota) AS quota, SUM(q.token_used) AS token_used, COALESCE(u.remark, '') AS remark
-		FROM quota_data q
-		LEFT JOIN users u ON q.username = u.username
-		WHERE q.user_id = ? AND q.created_at >= ? AND q.created_at <= ?
-		GROUP BY q.username, q.created_at, u.remark
-	`, userId, startTime, endTime).Scan(&quotaDatas).Error
-	return quotaDatas, err
+	var rows []quotaDataRemarkRow
+	err = DB.Table("quota_data AS q").
+		Select("q.user_id, q.username, q.created_at, SUM(q.count) AS count, SUM(q.quota) AS quota, SUM(q.token_used) AS token_used, COALESCE(u.remark, '') AS remark").
+		Joins("LEFT JOIN users u ON q.user_id = u.id").
+		Where("q.user_id = ? AND q.created_at >= ? AND q.created_at <= ?", userId, startTime, endTime).
+		Group("q.user_id, q.username, q.created_at, u.remark").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return quotaDataFromRemarkRows(rows), nil
 }
 
 func GetAllQuotaDates(startTime int64, endTime int64, username string) (quotaData []*QuotaData, err error) {

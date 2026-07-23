@@ -13,6 +13,9 @@ import { processChartData, processUserChartData } from './charts'
 type TooltipFormatter = (datum: Record<string, unknown>) => string | number
 type TooltipLineItem = { key: string; value: string | number }
 type UserRankSpec = {
+  data: Array<{ values: Array<Record<string, unknown>> }>
+  yField: string
+  seriesField: string
   title: { subtext: string }
   label: { formatMethod: (value: number) => string }
   axes: Array<{
@@ -91,7 +94,7 @@ describe('dashboard token unit displays', () => {
     )
   })
 
-  test('shows user remarks on ranking axis labels', () => {
+  test('uses user remarks as ranking category labels', () => {
     const result = processUserChartData(
       [
         {
@@ -120,6 +123,9 @@ describe('dashboard token unit displays', () => {
     const rank = result.spec_user_rank as unknown as UserRankSpec
     const formatAxisLabel = rank.axes[0].label?.formatMethod
 
+    assert.equal(rank.yField, 'UserLabel')
+    assert.equal(rank.seriesField, 'UserLabel')
+    assert.equal(rank.data[0].values[0].UserLabel, 'alice\nAlice Remark')
     assert.equal(formatAxisLabel?.('alice'), 'alice\nAlice Remark')
     assert.equal(formatAxisLabel?.('bob'), 'bob')
   })

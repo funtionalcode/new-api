@@ -1087,12 +1087,23 @@ export function processUserChartData(
   const topUserSet = new Set(topUsers)
   const totalValue = sorted.slice(0, limit).reduce((s, [, q]) => s + q, 0)
 
-  const rankValues = sorted.slice(0, limit).map(([username, value]) => ({
-    User: username,
-    Remark: userRemarkMap.get(username) || '',
-    rawValue: value,
-  }))
+  const rankValues = sorted.slice(0, limit).map(([username, value]) => {
+    const remark = userRemarkMap.get(username) || ''
+    return {
+      User: username,
+      UserLabel: formatUserRemarkLabel(username, remark),
+      Remark: remark,
+      rawValue: value,
+    }
+  })
 
+  const rankColorMap = rankValues.reduce<Record<string, string>>(
+    (acc, item, i) => {
+      acc[item.UserLabel] = USER_COLORS[i % USER_COLORS.length]
+      return acc
+    },
+    {}
+  )
   const userColorMap = topUsers.reduce<Record<string, string>>(
     (acc, user, i) => {
       acc[user] = USER_COLORS[i % USER_COLORS.length]
@@ -1143,8 +1154,8 @@ export function processUserChartData(
       type: 'bar',
       data: [{ id: 'userRankData', values: rankValues }],
       xField: 'rawValue',
-      yField: 'User',
-      seriesField: 'User',
+      yField: 'UserLabel',
+      seriesField: 'UserLabel',
       direction: 'horizontal',
       title: {
         visible: true,
@@ -1219,7 +1230,7 @@ export function processUserChartData(
           },
         },
       },
-      color: { specified: userColorMap },
+      color: { specified: rankColorMap },
       background: { fill: 'transparent' },
       animation: true,
     },
