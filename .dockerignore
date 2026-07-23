@@ -26,7 +26,5 @@ docs
 /*.sqlite
 /*.sqlite3
 /web/node_modules
-/web/default/node_modules
-/web/default/dist
-/web/classic
+/web/dist
 !THIRD-PARTY-LICENSES.md

@@ -117,6 +117,9 @@ func GetOptions(c *gin.Context) {
 	optionValues := make(map[string]string)
 	common.OptionMapRWMutex.Lock()
 	for k, v := range common.OptionMap {
+		if k == "theme.frontend" {
+			continue
+		}
 		value := common.Interface2String(v)
 		isSensitiveKey := strings.HasSuffix(k, "Token") ||
 			strings.HasSuffix(k, "Secret") ||
@@ -255,6 +258,14 @@ func UpdateOption(c *gin.Context) {
 		}
 	case "RateLimitErrorMessage":
 		common.RateLimitErrorMessage = option.Value.(string)
+	case "theme.frontend":
+		if option.Value != "default" {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "Classic 前端已移除，主题只能设置为 default",
+			})
+			return
+		}
 	default:
 		if isRateLimitCountOptionKey(option.Key) && !isNonNegativeIntegerOptionValue(option.Value.(string)) {
 			c.JSON(http.StatusOK, gin.H{
@@ -267,14 +278,6 @@ func UpdateOption(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
 				"message": "速率限制时间窗口必须为大于 0 的整数秒",
-			})
-			return
-		}
-	case "theme.frontend":
-		if option.Value != "default" {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无效的主题值，仅支持 default（新版前端）",
 			})
 			return
 		}

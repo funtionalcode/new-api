@@ -270,7 +270,8 @@ func ListModels(c *gin.Context, modelType int) {
 			}
 		}
 	} else {
-		for _, modelName := range availableModels {
+		models := service.GetGroupsEnabledModels(ownerGroups)
+		for _, modelName := range models {
 			appendModelName(modelName)
 		}
 	}

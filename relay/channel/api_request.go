@@ -637,7 +637,7 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	var client *http.Client
 	var err error
 	if info.ChannelSetting.Proxy != "" {
-		client, err = service.NewProxyHttpClient(info.ChannelSetting.Proxy)
+		client, err = service.GetHttpClientWithProxy(info.ChannelSetting.Proxy)
 		if err != nil {
 			targetURL := ""
 			if req != nil && req.URL != nil {
