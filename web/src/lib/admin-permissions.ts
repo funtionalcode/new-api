@@ -22,6 +22,10 @@ import { ROLE } from './roles'
 
 export type AdminPermissionMatrix = Record<string, Record<string, boolean>>
 export type AdminCapabilities = AdminPermissionMatrix
+export type AdminPermissionRequirement = {
+  resource: string
+  action: string
+}
 
 export const ADMIN_PERMISSION_RESOURCES = {
   CHANNEL: 'channel',

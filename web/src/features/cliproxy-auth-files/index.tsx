@@ -34,7 +34,9 @@ import {
   formatTokenDetails,
   formatTokens,
 } from '@/lib/format'
+import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/auth-store'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
@@ -1342,6 +1344,8 @@ function BindingTable({
 export function CliproxyAuthFiles() {
   const { t } = useTranslation()
   const isAdmin = useIsAdmin()
+  const userRole = useAuthStore((state) => state.auth.user?.role)
+  const isRoot = userRole === ROLE.SUPER_ADMIN
   const [dialogState, setDialogState] = useState<BindingDialogState>({
     open: false,
     mode: 'create',
@@ -1369,15 +1373,13 @@ export function CliproxyAuthFiles() {
       ) : null}
       <SectionPageLayout.Content>
         <div className='space-y-4'>
+          {isRoot ? <ConfigCard /> : null}
           {isAdmin ? (
-            <>
-              <ConfigCard />
-              <RemoteAuthFilesTable
-                onCreate={(authFile) =>
-                  setDialogState({ open: true, mode: 'create', authFile })
-                }
-              />
-            </>
+            <RemoteAuthFilesTable
+              onCreate={(authFile) =>
+                setDialogState({ open: true, mode: 'create', authFile })
+              }
+            />
           ) : null}
           <BindingTable
             isAdmin={isAdmin}
