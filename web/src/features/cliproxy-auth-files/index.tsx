@@ -422,9 +422,6 @@ function BindingUsageCell({
                   {t('Error')}
                 </Badge>
               ) : null}
-              <span className='text-muted-foreground text-xs'>
-                {t('Remaining')}: {xaiSummary.monthlyUsageLabel}
-              </span>
             </div>
           </TooltipTrigger>
           <TooltipContent
