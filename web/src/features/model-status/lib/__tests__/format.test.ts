@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { formatModelStatusMs, modelStatusVisual } from '../format'
+import {
+  calculateModelStatusSuccessCount,
+  formatModelStatusMs,
+  modelStatusVisual,
+} from '../format'
 
 describe('model status formatting', () => {
   test('maps every availability status to a stable label key', () => {
@@ -14,5 +18,12 @@ describe('model status formatting', () => {
   test('shows a dash when latency data is unavailable', () => {
     assert.equal(formatModelStatusMs(0), '-')
     assert.equal(formatModelStatusMs(Number.NaN), '-')
+  })
+
+  test('derives a bounded success count for timeline tooltips', () => {
+    assert.equal(calculateModelStatusSuccessCount(100, 0.996), 100)
+    assert.equal(calculateModelStatusSuccessCount(100, 0.804), 80)
+    assert.equal(calculateModelStatusSuccessCount(0, 1), 0)
+    assert.equal(calculateModelStatusSuccessCount(10, Number.NaN), 0)
   })
 })
