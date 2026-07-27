@@ -93,6 +93,12 @@ import {
   buildQuotaBindingSavePayload,
   type QuotaBindingFormState,
 } from './lib/form-payload'
+import {
+  buildGLMQuotaUsageSummary,
+  type GLMQuotaUsageBar,
+  type GLMQuotaUsageDetailWindow,
+  type GLMQuotaUsageWindowKey,
+} from './lib/glm-usage'
 import type {
   DeepSeekQuotaBinding,
   GLMQuotaBinding,
@@ -233,32 +239,6 @@ function remainingBalanceColor(percent: number): string {
   return '[&_[data-slot=progress-indicator]]:bg-emerald-500'
 }
 
-function TokenValue({
-  value,
-  className,
-}: {
-  value: number
-  className?: string
-}) {
-  const tokenValue = Number(value || 0)
-  if (tokenValue <= 0) {
-    return <span className={className}>-</span>
-  }
-
-  return (
-    <TooltipProvider delay={100}>
-      <Tooltip>
-        <TooltipTrigger
-          render={<span className={cn('cursor-default', className)} />}
-        >
-          {formatTokens(tokenValue)}
-        </TooltipTrigger>
-        <TooltipContent>{formatTokenDetails(tokenValue)}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  )
-}
-
 function QuotaNumberValue({
   value,
   className,
@@ -285,105 +265,136 @@ function QuotaNumberValue({
   )
 }
 
-function TokenUsageBar(props: {
-  used: number
-  limit: number
-  percent: number
-  resetAt?: number
-}) {
-  const { t } = useTranslation()
-  const percent = normalizePercent(props.percent)
-  const hasLimit = Number(props.limit || 0) > 0
+function GLMUsageWindowLabel(
+  key: GLMQuotaUsageWindowKey,
+  labels: {
+    fiveHour: string
+    weekly: string
+    mcpMonthly: string
+  }
+): string {
+  if (key === 'fiveHour') return labels.fiveHour
+  if (key === 'weekly') return labels.weekly
+  return labels.mcpMonthly
+}
+
+function GLMUsageLimitBar(props: { label: string; window: GLMQuotaUsageBar }) {
+  const percent = normalizePercent(props.window.percent)
+  const hasLimit = Number(props.window.limit || 0) > 0
 
   return (
-    <div className='min-w-[150px] space-y-1'>
+    <div className='flex min-w-[120px] flex-col gap-1'>
       <div className='flex justify-between gap-2 text-xs'>
-        <TokenValue value={props.used || 0} className='font-mono' />
-        <span className='text-muted-foreground font-mono'>
-          {hasLimit ? <TokenValue value={props.limit} /> : '-'}
+        <span className='text-muted-foreground truncate'>{props.label}</span>
+        <span className='font-mono font-medium'>
+          {hasLimit ? `${percent}%` : '-'}
         </span>
       </div>
       <Progress
         value={hasLimit ? percent : 0}
         className={cn('h-1.5', progressColor(percent))}
       />
-      <div className='text-muted-foreground text-xs'>
-        {hasLimit ? `${percent}%` : '-'}
-      </div>
-      {Number(props.resetAt || 0) > 0 ? (
-        <div className='text-muted-foreground text-xs'>
-          {t('Next reset')}: {formatTimestampToDate(props.resetAt)}
-        </div>
-      ) : null}
     </div>
   )
 }
 
-function CountUsageBar(props: {
-  used: number
-  limit: number
-  percent: number
-  resetAt?: number
+function GLMUsageDetailAmount(props: {
+  window: GLMQuotaUsageDetailWindow
+  value: number
+  timesLabel: string
 }) {
-  const { t } = useTranslation()
-  const percent = normalizePercent(props.percent)
-  const hasLimit = Number(props.limit || 0) > 0
-  const used = Number(props.used || 0)
-  const limit = Number(props.limit || 0)
+  if (props.window.kind === 'tokens') {
+    return <>{formatTokenDetails(props.value)}</>
+  }
 
   return (
-    <div className='min-w-[150px] space-y-1'>
-      <div className='flex items-center gap-1 text-xs'>
-        <span className='font-mono'>{formatCompactNumber(used)}</span>
-        <span className='text-muted-foreground'>/</span>
-        <span className='text-muted-foreground font-mono'>
-          {hasLimit ? formatCompactNumber(limit) : '-'}
-        </span>
-        <span className='text-muted-foreground'>{t('times')}</span>
-      </div>
-      <Progress
-        value={hasLimit ? percent : 0}
-        className={cn('h-1.5', progressColor(percent))}
-      />
-      <div className='text-muted-foreground text-xs'>
-        {hasLimit ? `${percent}%` : '-'}
-      </div>
-      {Number(props.resetAt || 0) > 0 ? (
-        <div className='text-muted-foreground text-xs'>
-          {t('Next reset')}: {formatTimestampToDate(props.resetAt)}
-        </div>
-      ) : null}
-    </div>
+    <>
+      {formatNumber(props.value)} {props.timesLabel}
+    </>
+  )
+}
+
+function GLMUsageCell({ binding }: { binding: GLMQuotaBinding }) {
+  const { t } = useTranslation()
+  const summary = buildGLMQuotaUsageSummary(binding)
+  const labels = {
+    fiveHour: t('5-Hour Window'),
+    weekly: t('Weekly Window'),
+    mcpMonthly: `MCP ${t('Monthly')}`,
+    reset: t('Reset'),
+    used: t('Used'),
+    quota: t('Quota:'),
+    times: t('times'),
+  }
+
+  return (
+    <TableCell>
+      <TooltipProvider delay={150}>
+        <Tooltip>
+          <TooltipTrigger
+            render={<div className='max-w-[520px] cursor-help' />}
+          >
+            <div className='grid min-w-[390px] gap-2 md:grid-cols-3'>
+              {summary.visibleWindows.map((window) => (
+                <GLMUsageLimitBar
+                  key={window.key}
+                  label={GLMUsageWindowLabel(window.key, labels)}
+                  window={window}
+                />
+              ))}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent
+            side='top'
+            align='start'
+            className='max-w-[min(34rem,calc(100vw-2rem))] whitespace-normal p-3'
+          >
+            <div className='grid gap-2'>
+              {summary.detailWindows.map((window) => {
+                const percent = normalizePercent(window.percent)
+                const hasLimit = Number(window.limit || 0) > 0
+
+                return (
+                  <div
+                    key={window.key}
+                    className='grid grid-cols-[minmax(8rem,1fr)_auto] gap-x-4 gap-y-0.5'
+                  >
+                    <span>{GLMUsageWindowLabel(window.key, labels)}</span>
+                    <span className='font-mono font-semibold'>
+                      {hasLimit ? `${percent}%` : '-'}
+                    </span>
+                    <span className='text-background/70 col-span-2'>
+                      {labels.reset}: {formatTimestampToDate(window.resetAt)}
+                    </span>
+                    <span className='text-background/70 col-span-2'>
+                      {labels.used}:{' '}
+                      <GLMUsageDetailAmount
+                        window={window}
+                        value={window.used}
+                        timesLabel={labels.times}
+                      />{' '}
+                      / {labels.quota}{' '}
+                      <GLMUsageDetailAmount
+                        window={window}
+                        value={window.limit}
+                        timesLabel={labels.times}
+                      />
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </TableCell>
   )
 }
 
 function GLMUsageCells({ binding }: { binding: GLMQuotaBinding }) {
   return (
     <>
-      <TableCell>
-        <TokenUsageBar
-          used={binding.last_five_hour_used_tokens}
-          limit={binding.five_hour_limit_tokens}
-          percent={binding.last_five_hour_percent}
-          resetAt={binding.last_five_hour_reset_at}
-        />
-      </TableCell>
-      <TableCell>
-        <TokenUsageBar
-          used={binding.last_weekly_used_tokens}
-          limit={binding.weekly_limit_tokens}
-          percent={binding.last_weekly_percent}
-          resetAt={binding.last_weekly_reset_at}
-        />
-      </TableCell>
-      <TableCell>
-        <CountUsageBar
-          used={binding.last_mcp_monthly_used}
-          limit={binding.last_mcp_monthly_limit}
-          percent={binding.last_mcp_monthly_percent}
-          resetAt={binding.last_mcp_monthly_reset_at}
-        />
-      </TableCell>
+      <GLMUsageCell binding={binding} />
       <TableCell className='font-mono'>
         {formatTokens(binding.last_model_call_count || 0)}
       </TableCell>
@@ -503,9 +514,7 @@ function QuotaUsageHeaderCells({ provider }: { provider: QuotaProvider }) {
   if (provider === 'glm') {
     return (
       <>
-        <TableHead>{t('Five-hour Tokens')}</TableHead>
-        <TableHead>{t('Weekly Tokens')}</TableHead>
-        <TableHead>{`MCP ${t('Monthly')}`}</TableHead>
+        <TableHead>{t('Usage')}</TableHead>
         <TableHead>{t('Model Calls')}</TableHead>
       </>
     )
@@ -879,7 +888,7 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
                   {bindings.length === 0 && (
                     <TableRow>
                       <TableCell
-                        colSpan={provider === 'glm' ? 9 : 8}
+                        colSpan={provider === 'glm' ? 7 : 8}
                         className='h-24 text-center'
                       >
                         {bindingsQuery.isLoading
