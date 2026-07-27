@@ -20,7 +20,13 @@ type GLMQuotaBinding struct {
 	LastFiveHourUsedTokens int64  `json:"last_five_hour_used_tokens" gorm:"bigint;default:0"`
 	LastWeeklyUsedTokens   int64  `json:"last_weekly_used_tokens" gorm:"bigint;default:0"`
 	LastFiveHourPercent    int    `json:"last_five_hour_percent" gorm:"default:0"`
+	LastFiveHourResetAt    int64  `json:"last_five_hour_reset_at" gorm:"bigint;default:0"`
 	LastWeeklyPercent      int    `json:"last_weekly_percent" gorm:"default:0"`
+	LastWeeklyResetAt      int64  `json:"last_weekly_reset_at" gorm:"bigint;default:0"`
+	LastMCPMonthlyUsed     int64  `json:"last_mcp_monthly_used" gorm:"bigint;default:0"`
+	LastMCPMonthlyLimit    int64  `json:"last_mcp_monthly_limit" gorm:"bigint;default:0"`
+	LastMCPMonthlyPercent  int    `json:"last_mcp_monthly_percent" gorm:"default:0"`
+	LastMCPMonthlyResetAt  int64  `json:"last_mcp_monthly_reset_at" gorm:"bigint;default:0"`
 	LastModelCallCount     int64  `json:"last_model_call_count" gorm:"bigint;default:0"`
 	LastModelSummary       string `json:"last_model_summary" gorm:"type:text"`
 	LastRefreshedAt        int64  `json:"last_refreshed_at" gorm:"bigint;default:0"`
@@ -53,7 +59,13 @@ type GLMQuotaUsageRefreshUpdate struct {
 	LastFiveHourUsedTokens int64
 	LastWeeklyUsedTokens   int64
 	LastFiveHourPercent    int
+	LastFiveHourResetAt    int64
 	LastWeeklyPercent      int
+	LastWeeklyResetAt      int64
+	LastMCPMonthlyUsed     int64
+	LastMCPMonthlyLimit    int64
+	LastMCPMonthlyPercent  int
+	LastMCPMonthlyResetAt  int64
 	LastModelCallCount     int64
 	LastModelSummary       string
 	LastError              string
@@ -145,7 +157,13 @@ func UpdateGLMQuotaBindingUsage(id int, update GLMQuotaUsageRefreshUpdate) (*GLM
 		updates["last_five_hour_used_tokens"] = update.LastFiveHourUsedTokens
 		updates["last_weekly_used_tokens"] = update.LastWeeklyUsedTokens
 		updates["last_five_hour_percent"] = update.LastFiveHourPercent
+		updates["last_five_hour_reset_at"] = update.LastFiveHourResetAt
 		updates["last_weekly_percent"] = update.LastWeeklyPercent
+		updates["last_weekly_reset_at"] = update.LastWeeklyResetAt
+		updates["last_mcp_monthly_used"] = update.LastMCPMonthlyUsed
+		updates["last_mcp_monthly_limit"] = update.LastMCPMonthlyLimit
+		updates["last_mcp_monthly_percent"] = update.LastMCPMonthlyPercent
+		updates["last_mcp_monthly_reset_at"] = update.LastMCPMonthlyResetAt
 		updates["last_model_call_count"] = update.LastModelCallCount
 		updates["last_model_summary"] = update.LastModelSummary
 	}

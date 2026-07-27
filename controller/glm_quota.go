@@ -44,8 +44,18 @@ type glmQuotaUsageRequest struct {
 type glmQuotaUsageRefreshBody struct {
 	FiveHourUsedTokens int64
 	WeeklyUsedTokens   int64
+	FiveHourPercent    int
+	FiveHourResetAt    int64
+	WeeklyPercent      int
+	WeeklyResetAt      int64
+	MCPMonthlyUsed     int64
+	MCPMonthlyLimit    int64
+	MCPMonthlyPercent  int
+	MCPMonthlyResetAt  int64
 	ModelCallCount     int64
 	ModelSummary       []glmQuotaModelSummary
+	HasFiveHourPercent bool
+	HasWeeklyPercent   bool
 }
 
 type glmQuotaModelUsageResponse struct {
@@ -218,8 +228,14 @@ func RefreshGLMQuotaBindingUsage(c *gin.Context) {
 	updatedBinding, err := model.UpdateGLMQuotaBindingUsage(id, model.GLMQuotaUsageRefreshUpdate{
 		LastFiveHourUsedTokens: usage.FiveHourUsedTokens,
 		LastWeeklyUsedTokens:   usage.WeeklyUsedTokens,
-		LastFiveHourPercent:    glmQuotaUsagePercent(usage.FiveHourUsedTokens, binding.FiveHourLimitTokens),
-		LastWeeklyPercent:      glmQuotaUsagePercent(usage.WeeklyUsedTokens, binding.WeeklyLimitTokens),
+		LastFiveHourPercent:    glmQuotaResolvedPercent(usage.FiveHourPercent, usage.HasFiveHourPercent, usage.FiveHourUsedTokens, binding.FiveHourLimitTokens),
+		LastFiveHourResetAt:    usage.FiveHourResetAt,
+		LastWeeklyPercent:      glmQuotaResolvedPercent(usage.WeeklyPercent, usage.HasWeeklyPercent, usage.WeeklyUsedTokens, binding.WeeklyLimitTokens),
+		LastWeeklyResetAt:      usage.WeeklyResetAt,
+		LastMCPMonthlyUsed:     usage.MCPMonthlyUsed,
+		LastMCPMonthlyLimit:    usage.MCPMonthlyLimit,
+		LastMCPMonthlyPercent:  usage.MCPMonthlyPercent,
+		LastMCPMonthlyResetAt:  usage.MCPMonthlyResetAt,
 		LastModelCallCount:     usage.ModelCallCount,
 		LastModelSummary:       string(modelSummary),
 		LastError:              "",
@@ -294,9 +310,35 @@ func refreshGLMQuotaUsage(ctx context.Context, binding *model.GLMQuotaBinding, n
 	if err != nil {
 		return glmQuotaUsageRefreshBody{}, err
 	}
-	request, err := http.NewRequestWithContext(ctx, requestConfig.Method, requestConfig.URL, nil)
+	body, err := doGLMQuotaHTTPRequest(ctx, requestConfig, binding.Proxy)
 	if err != nil {
 		return glmQuotaUsageRefreshBody{}, err
+	}
+	usage, err := extractGLMQuotaUsage(body, now)
+	if err != nil {
+		return glmQuotaUsageRefreshBody{}, err
+	}
+
+	limitRequestConfig, err := buildGLMQuotaLimitRequest(binding.RequestCurl)
+	if err != nil {
+		return glmQuotaUsageRefreshBody{}, err
+	}
+	limitBody, err := doGLMQuotaHTTPRequest(ctx, limitRequestConfig, binding.Proxy)
+	if err != nil {
+		return glmQuotaUsageRefreshBody{}, fmt.Errorf("获取 BigModel 额度重置时间失败: %w", err)
+	}
+	limitUsage, err := extractGLMQuotaLimit(limitBody)
+	if err != nil {
+		return glmQuotaUsageRefreshBody{}, err
+	}
+	mergeGLMQuotaLimitUsage(&usage, limitUsage)
+	return usage, nil
+}
+
+func doGLMQuotaHTTPRequest(ctx context.Context, requestConfig glmQuotaUsageRequest, bindingProxy string) ([]byte, error) {
+	request, err := http.NewRequestWithContext(ctx, requestConfig.Method, requestConfig.URL, nil)
+	if err != nil {
+		return nil, err
 	}
 	for key, value := range requestConfig.Headers {
 		if strings.EqualFold(key, "host") {
@@ -311,30 +353,56 @@ func refreshGLMQuotaUsage(ctx context.Context, binding *model.GLMQuotaBinding, n
 	if request.Header.Get("User-Agent") == "" {
 		request.Header.Set("User-Agent", "Mozilla/5.0")
 	}
-	proxyURL := resolveQuotaProxy(binding.Proxy, requestConfig.Proxy)
+	proxyURL := resolveQuotaProxy(bindingProxy, requestConfig.Proxy)
 	client, err := quotaHTTPClient(proxyURL)
 	if err != nil {
 		if strings.TrimSpace(proxyURL) != "" {
-			return glmQuotaUsageRefreshBody{}, fmt.Errorf("创建代理客户端 %s 失败: %w", quotaProxyLabel(proxyURL), err)
+			return nil, fmt.Errorf("创建代理客户端 %s 失败: %w", quotaProxyLabel(proxyURL), err)
 		}
-		return glmQuotaUsageRefreshBody{}, err
+		return nil, err
 	}
 	response, err := client.Do(request)
 	if err != nil {
-		return glmQuotaUsageRefreshBody{}, quotaHTTPRequestError(proxyURL, err)
+		return nil, quotaHTTPRequestError(proxyURL, err)
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		return glmQuotaUsageRefreshBody{}, err
+		return nil, err
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return glmQuotaUsageRefreshBody{}, fmt.Errorf("BigModel 返回 HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("BigModel 返回 HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(body)))
 	}
-	return extractGLMQuotaUsage(body, now)
+	return body, nil
 }
 
 func buildGLMQuotaUsageRequest(rawCurl string, now time.Time) (glmQuotaUsageRequest, error) {
+	requestConfig, err := buildGLMQuotaCurlRequest(rawCurl)
+	if err != nil {
+		return glmQuotaUsageRequest{}, err
+	}
+	normalizedURL, err := normalizeGLMQuotaUsageURL(requestConfig.URL, now)
+	if err != nil {
+		return glmQuotaUsageRequest{}, err
+	}
+	requestConfig.URL = normalizedURL
+	return requestConfig, nil
+}
+
+func buildGLMQuotaLimitRequest(rawCurl string) (glmQuotaUsageRequest, error) {
+	requestConfig, err := buildGLMQuotaCurlRequest(rawCurl)
+	if err != nil {
+		return glmQuotaUsageRequest{}, err
+	}
+	normalizedURL, err := normalizeGLMQuotaLimitURL(requestConfig.URL, requestConfig.Headers)
+	if err != nil {
+		return glmQuotaUsageRequest{}, err
+	}
+	requestConfig.URL = normalizedURL
+	return requestConfig, nil
+}
+
+func buildGLMQuotaCurlRequest(rawCurl string) (glmQuotaUsageRequest, error) {
 	tokens, err := splitGLMQuotaCurlCommand(rawCurl)
 	if err != nil {
 		return glmQuotaUsageRequest{}, err
@@ -392,11 +460,6 @@ func buildGLMQuotaUsageRequest(rawCurl string, now time.Time) (glmQuotaUsageRequ
 	if requestConfig.URL == "" {
 		return glmQuotaUsageRequest{}, fmt.Errorf("curl 中未找到请求地址")
 	}
-	normalizedURL, err := normalizeGLMQuotaUsageURL(requestConfig.URL, now)
-	if err != nil {
-		return glmQuotaUsageRequest{}, err
-	}
-	requestConfig.URL = normalizedURL
 	return requestConfig, nil
 }
 
@@ -517,6 +580,29 @@ func normalizeGLMQuotaUsageURL(rawURL string, now time.Time) (string, error) {
 	return parsedURL.String(), nil
 }
 
+func normalizeGLMQuotaLimitURL(rawURL string, headers map[string]string) (string, error) {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return "", err
+	}
+	if parsedURL.Scheme == "" || parsedURL.Host == "" {
+		return "", fmt.Errorf("curl 请求地址无效")
+	}
+	monitorIndex := strings.Index(parsedURL.Path, "/monitor/usage/")
+	if monitorIndex >= 0 {
+		parsedURL.Path = parsedURL.Path[:monitorIndex] + "/monitor/usage/quota/limit"
+	} else {
+		parsedURL.Path = "/api/monitor/usage/quota/limit"
+	}
+	query := url.Values{}
+	query.Set("type", "2")
+	if refer := firstNonEmptyGLMQuotaURLValue(parsedURL.Query().Get("refer__1090"), glmQuotaHeaderValue(headers, "refer__1090")); refer != "" {
+		query.Set("refer__1090", refer)
+	}
+	parsedURL.RawQuery = query.Encode()
+	return parsedURL.String(), nil
+}
+
 func glmQuotaUsageWindow(now time.Time) (time.Time, time.Time) {
 	localNow := now.In(now.Location())
 	start := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, localNow.Location()).AddDate(0, 0, -6)
@@ -563,6 +649,74 @@ func extractGLMQuotaUsage(body []byte, now time.Time) (glmQuotaUsageRefreshBody,
 		ModelCallCount:     data.TotalUsage.TotalModelCallCount,
 		ModelSummary:       modelSummary,
 	}, nil
+}
+
+func extractGLMQuotaLimit(body []byte) (glmQuotaUsageRefreshBody, error) {
+	var response struct {
+		Code    int            `json:"code"`
+		Msg     string         `json:"msg"`
+		Data    map[string]any `json:"data"`
+		Success bool           `json:"success"`
+	}
+	if err := common.Unmarshal(body, &response); err != nil {
+		return glmQuotaUsageRefreshBody{}, err
+	}
+	if !response.Success && response.Code != http.StatusOK {
+		if strings.TrimSpace(response.Msg) != "" {
+			return glmQuotaUsageRefreshBody{}, fmt.Errorf("BigModel 返回错误: %s", response.Msg)
+		}
+		return glmQuotaUsageRefreshBody{}, fmt.Errorf("BigModel 返回错误")
+	}
+
+	var usage glmQuotaUsageRefreshBody
+	for _, rawLimit := range sliceFromMap(response.Data, "limits") {
+		limit, ok := rawLimit.(map[string]any)
+		if !ok {
+			continue
+		}
+		limitType := strings.TrimSpace(stringFromMap(limit, "type"))
+		unit := intFromMap(limit, "unit")
+		switch {
+		case limitType == "TOKENS_LIMIT" && unit == 3:
+			usage.FiveHourPercent = glmQuotaPercentFromLimit(limit)
+			usage.FiveHourResetAt = glmQuotaResetAtFromLimit(limit)
+			usage.HasFiveHourPercent = true
+		case limitType == "TOKENS_LIMIT" && unit == 6:
+			usage.WeeklyPercent = glmQuotaPercentFromLimit(limit)
+			usage.WeeklyResetAt = glmQuotaResetAtFromLimit(limit)
+			usage.HasWeeklyPercent = true
+		case limitType == "TIME_LIMIT" && unit == 5:
+			usage.MCPMonthlyPercent = glmQuotaPercentFromLimit(limit)
+			usage.MCPMonthlyResetAt = glmQuotaResetAtFromLimit(limit)
+			usage.MCPMonthlyUsed, _ = glmQuotaLimitFirstInt64(limit, "currentValue", "current_value", "used", "remaining")
+			usage.MCPMonthlyLimit, _ = glmQuotaLimitFirstInt64(limit, "usage", "limit", "total")
+		}
+	}
+	return usage, nil
+}
+
+func mergeGLMQuotaLimitUsage(usage *glmQuotaUsageRefreshBody, limitUsage glmQuotaUsageRefreshBody) {
+	if usage == nil {
+		return
+	}
+	if limitUsage.HasFiveHourPercent {
+		usage.FiveHourPercent = limitUsage.FiveHourPercent
+		usage.HasFiveHourPercent = true
+	}
+	if limitUsage.FiveHourResetAt > 0 {
+		usage.FiveHourResetAt = limitUsage.FiveHourResetAt
+	}
+	if limitUsage.HasWeeklyPercent {
+		usage.WeeklyPercent = limitUsage.WeeklyPercent
+		usage.HasWeeklyPercent = true
+	}
+	if limitUsage.WeeklyResetAt > 0 {
+		usage.WeeklyResetAt = limitUsage.WeeklyResetAt
+	}
+	usage.MCPMonthlyUsed = limitUsage.MCPMonthlyUsed
+	usage.MCPMonthlyLimit = limitUsage.MCPMonthlyLimit
+	usage.MCPMonthlyPercent = limitUsage.MCPMonthlyPercent
+	usage.MCPMonthlyResetAt = limitUsage.MCPMonthlyResetAt
 }
 
 func sumGLMQuotaFiveHourTokens(timeBuckets []string, tokenBuckets []int64, now time.Time) int64 {
@@ -632,4 +786,90 @@ func glmQuotaUsagePercent(usedTokens int64, limitTokens int64) int {
 		return 0
 	}
 	return int(math.Round(float64(usedTokens) * 100 / float64(limitTokens)))
+}
+
+func glmQuotaResolvedPercent(limitPercent int, hasLimitPercent bool, usedTokens int64, limitTokens int64) int {
+	if hasLimitPercent {
+		return limitPercent
+	}
+	return glmQuotaUsagePercent(usedTokens, limitTokens)
+}
+
+func glmQuotaPercentFromLimit(limit map[string]any) int {
+	percent := float64FromMap(limit, "percentage")
+	if percent == 0 {
+		percent = float64FromMap(limit, "percent")
+	}
+	return int(math.Round(percent))
+}
+
+func glmQuotaResetAtFromLimit(limit map[string]any) int64 {
+	for _, key := range []string{"nextResetTime", "next_reset_time", "resetTime", "reset_time", "resetAt", "reset_at"} {
+		value, ok := limit[key]
+		if !ok {
+			continue
+		}
+		if timestamp := glmQuotaUnixTimestampFromValue(value); timestamp > 0 {
+			return timestamp
+		}
+	}
+	return 0
+}
+
+func glmQuotaUnixTimestampFromValue(value any) int64 {
+	switch typedValue := value.(type) {
+	case string:
+		trimmedValue := strings.TrimSpace(typedValue)
+		if trimmedValue == "" {
+			return 0
+		}
+		if parsedValue, err := strconv.ParseFloat(trimmedValue, 64); err == nil {
+			return normalizeGLMQuotaUnixTimestamp(int64(parsedValue))
+		}
+		for _, layout := range []string{time.RFC3339, time.RFC3339Nano, glmQuotaUsageTimeLayout, glmQuotaUsageTimeMinuteLayout} {
+			if parsedTime, err := time.ParseInLocation(layout, trimmedValue, time.Local); err == nil {
+				return parsedTime.Unix()
+			}
+		}
+		return 0
+	default:
+		return normalizeGLMQuotaUnixTimestamp(int64(numberFromValue(value)))
+	}
+}
+
+func normalizeGLMQuotaUnixTimestamp(value int64) int64 {
+	if value <= 0 {
+		return 0
+	}
+	if value > 1_000_000_000_000 {
+		return value / 1000
+	}
+	return value
+}
+
+func glmQuotaLimitFirstInt64(limit map[string]any, keys ...string) (int64, bool) {
+	for _, key := range keys {
+		if _, ok := limit[key]; ok {
+			return int64FromMap(limit, key), true
+		}
+	}
+	return 0, false
+}
+
+func glmQuotaHeaderValue(headers map[string]string, key string) string {
+	for headerKey, value := range headers {
+		if strings.EqualFold(headerKey, key) {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func firstNonEmptyGLMQuotaURLValue(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }

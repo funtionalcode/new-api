@@ -2,11 +2,14 @@ package controller
 
 import (
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBuildGLMQuotaUsageRequestParsesCurlAndRewritesWindow(t *testing.T) {
@@ -61,6 +64,37 @@ func TestBuildGLMQuotaUsageRequestParsesInlineProxy(t *testing.T) {
 	if requestConfig.Proxy != "socks5h://127.0.0.1:7990" {
 		t.Fatalf("proxy = %q", requestConfig.Proxy)
 	}
+}
+
+func TestBuildGLMQuotaLimitRequestUsesQuotaLimitEndpoint(t *testing.T) {
+	rawCurl := `curl 'https://bigmodel.cn/api/monitor/usage/model-usage?startTime=2026-06-27+00:00:00&endTime=2026-07-03+23:59:59&type=3&refer__1090=abc' \
+  -H 'authorization: token-value' \
+  -H 'bigmodel-organization: org_1' \
+  -H 'bigmodel-project: proj_1' \
+  -H 'cookie: header_cookie=1' \
+  -b 'session=abc; token=def'`
+
+	requestConfig, err := buildGLMQuotaLimitRequest(rawCurl)
+	require.NoError(t, err)
+
+	parsedURL, err := url.Parse(requestConfig.URL)
+	require.NoError(t, err)
+	assert.Equal(t, "/api/monitor/usage/quota/limit", parsedURL.Path)
+	assert.Equal(t, "2", parsedURL.Query().Get("type"))
+	assert.Equal(t, "abc", parsedURL.Query().Get("refer__1090"))
+	assert.Equal(t, "token-value", requestConfig.Headers["authorization"])
+	assert.Equal(t, "org_1", requestConfig.Headers["bigmodel-organization"])
+	assert.Equal(t, "proj_1", requestConfig.Headers["bigmodel-project"])
+	assert.Equal(t, "header_cookie=1; session=abc; token=def", glmQuotaTestHeaderValue(requestConfig.Headers, "cookie"))
+}
+
+func glmQuotaTestHeaderValue(headers map[string]string, key string) string {
+	for headerKey, value := range headers {
+		if strings.EqualFold(headerKey, key) {
+			return value
+		}
+	}
+	return ""
 }
 
 func TestApplyGLMQuotaPlanSpecDefaultsStandard(t *testing.T) {
@@ -163,6 +197,54 @@ func TestExtractGLMQuotaUsageCalculatesFiveHourAndWeeklyUsage(t *testing.T) {
 	if len(usage.ModelSummary) != 1 || usage.ModelSummary[0].ModelName != "GLM-5.2" {
 		t.Fatalf("ModelSummary = %#v", usage.ModelSummary)
 	}
+}
+
+func TestExtractGLMQuotaLimitKeepsResetTimesAndMCPQuota(t *testing.T) {
+	body := []byte(`{
+		"code": 200,
+		"msg": "操作成功",
+		"success": true,
+		"data": {
+			"limits": [
+				{
+					"type": "TOKENS_LIMIT",
+					"unit": 3,
+					"percentage": 30,
+					"nextResetTime": 1783065600000,
+					"currentValue": 123
+				},
+				{
+					"type": "TOKENS_LIMIT",
+					"unit": 6,
+					"percentage": 73,
+					"nextResetTime": 1783389960000,
+					"currentValue": 456
+				},
+				{
+					"type": "TIME_LIMIT",
+					"unit": 5,
+					"percentage": 1,
+					"nextResetTime": 1785745560000,
+					"currentValue": 2,
+					"usage": 1000
+				}
+			]
+		}
+	}`)
+
+	usage, err := extractGLMQuotaLimit(body)
+	require.NoError(t, err)
+
+	assert.Equal(t, 30, usage.FiveHourPercent)
+	assert.True(t, usage.HasFiveHourPercent)
+	assert.Equal(t, int64(1783065600), usage.FiveHourResetAt)
+	assert.Equal(t, 73, usage.WeeklyPercent)
+	assert.True(t, usage.HasWeeklyPercent)
+	assert.Equal(t, int64(1783389960), usage.WeeklyResetAt)
+	assert.Equal(t, int64(2), usage.MCPMonthlyUsed)
+	assert.Equal(t, int64(1000), usage.MCPMonthlyLimit)
+	assert.Equal(t, 1, usage.MCPMonthlyPercent)
+	assert.Equal(t, int64(1785745560), usage.MCPMonthlyResetAt)
 }
 
 func TestExtractGLMQuotaUsageFallsBackToModelDataSummary(t *testing.T) {

@@ -40,7 +40,13 @@ export type GLMQuotaBinding = QuotaBindingBase & {
   last_five_hour_used_tokens: number
   last_weekly_used_tokens: number
   last_five_hour_percent: number
+  last_five_hour_reset_at: number
   last_weekly_percent: number
+  last_weekly_reset_at: number
+  last_mcp_monthly_used: number
+  last_mcp_monthly_limit: number
+  last_mcp_monthly_percent: number
+  last_mcp_monthly_reset_at: number
   last_model_call_count: number
   last_model_summary: string
 }
