@@ -248,6 +248,30 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}
 }
 
+func RelayResponsesWebsocket(c *gin.Context) {
+	requestId := c.GetString(common.RequestIdKey)
+	ws, err := responsesWebsocketUpgrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		logger.LogError(c, fmt.Sprintf("responses websocket upgrade error: %s", err.Error()))
+		return
+	}
+	defer ws.Close()
+
+	if newAPIError := relay.ResponsesWebsocketHelper(c, ws); newAPIError != nil {
+		logger.LogError(c, fmt.Sprintf("responses websocket relay error: %s", common.LocalLogPreview(newAPIError.Error())))
+		newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
+		helper.WssError(c, ws, newAPIError.ToOpenAIError())
+	}
+}
+
+var responsesWebsocketUpgrader = websocket.Upgrader{
+	ReadBufferSize:  4096,
+	WriteBufferSize: 4096,
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
+}
+
 var upgrader = websocket.Upgrader{
 	Subprotocols: []string{"realtime"}, // WS 握手支持的协议，如果有使用 Sec-WebSocket-Protocol，则必须在此声明对应的 Protocol TODO add other protocol
 	CheckOrigin: func(r *http.Request) bool {

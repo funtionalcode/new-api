@@ -134,10 +134,17 @@ func GetAndValidateResponsesRequest(c *gin.Context) (*dto.OpenAIResponsesRequest
 	if err != nil {
 		return nil, err
 	}
+	return ValidateResponsesRequest(request, true)
+}
+
+func ValidateResponsesRequest(request *dto.OpenAIResponsesRequest, requireInput bool) (*dto.OpenAIResponsesRequest, error) {
+	if request == nil {
+		return nil, errors.New("request is nil")
+	}
 	if request.Model == "" {
 		return nil, errors.New("model is required")
 	}
-	if request.Input == nil {
+	if requireInput && request.Input == nil {
 		return nil, errors.New("input is required")
 	}
 	if exceedsMaxTokensLimit(request.MaxOutputTokens) {

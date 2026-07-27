@@ -220,6 +220,196 @@ func shouldCheckUserTokenLimit(c *gin.Context, shouldSelectChannel bool) bool {
 	return relayMode == relayconstant.RelayModeVideoSubmit
 }
 
+func SelectChannelForWebsocketRequest(c *gin.Context, modelName string) (*model.Channel, *types.NewAPIError) {
+	modelRequest := &ModelRequest{Model: strings.TrimSpace(modelName)}
+	if modelRequest.Model == "" {
+		return nil, types.NewErrorWithStatusCode(
+			errors.New(i18n.T(c, i18n.MsgDistributorModelNameRequired)),
+			types.ErrorCodeInvalidRequest,
+			http.StatusBadRequest,
+			types.ErrOptionWithSkipRetry(),
+		)
+	}
+
+	c.Set("original_model", modelRequest.Model)
+	common.SetContextKey(c, constant.ContextKeyOriginalModel, modelRequest.Model)
+
+	requestUserId := c.GetInt("id")
+	if requestUserId > 0 {
+		limitResult, limitErr := model.CheckUserTokenLimit(requestUserId, time.Now())
+		if limitErr != nil {
+			common.SysLog(fmt.Sprintf("check user token limit failed, user_id=%d: %s", requestUserId, limitErr.Error()))
+			return nil, types.NewErrorWithStatusCode(
+				errors.New(i18n.T(c, i18n.MsgDatabaseError)),
+				types.ErrorCodeQueryDataError,
+				http.StatusInternalServerError,
+				types.ErrOptionWithSkipRetry(),
+			)
+		}
+		if limitResult.Exceeded {
+			return nil, types.NewErrorWithStatusCode(
+				errors.New(limitResult.Message()),
+				types.ErrorCodeInsufficientUserQuota,
+				http.StatusForbidden,
+				types.ErrOptionWithSkipRetry(),
+			)
+		}
+	}
+
+	var channel *model.Channel
+	if channelId, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId); ok {
+		id, err := strconv.Atoi(channelId.(string))
+		if err != nil {
+			return nil, types.NewErrorWithStatusCode(
+				errors.New(i18n.T(c, i18n.MsgDistributorInvalidChannelId)),
+				types.ErrorCodeInvalidRequest,
+				http.StatusBadRequest,
+				types.ErrOptionWithSkipRetry(),
+			)
+		}
+		channel, err = model.GetChannelById(id, true)
+		if err != nil {
+			return nil, types.NewErrorWithStatusCode(
+				errors.New(i18n.T(c, i18n.MsgDistributorInvalidChannelId)),
+				types.ErrorCodeGetChannelFailed,
+				http.StatusBadRequest,
+				types.ErrOptionWithSkipRetry(),
+			)
+		}
+		if channel.Status != common.ChannelStatusEnabled {
+			return nil, types.NewErrorWithStatusCode(
+				errors.New(i18n.T(c, i18n.MsgDistributorChannelDisabled)),
+				types.ErrorCodeGetChannelFailed,
+				http.StatusForbidden,
+				types.ErrOptionWithSkipRetry(),
+			)
+		}
+		if !channel.IsOpenToUser(requestUserId) {
+			return nil, types.NewErrorWithStatusCode(
+				errors.New("该渠道未开放给当前用户"),
+				types.ErrorCodeAccessDenied,
+				http.StatusForbidden,
+				types.ErrOptionWithSkipRetry(),
+			)
+		}
+	} else {
+		modelLimitEnable := common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled)
+		if modelLimitEnable {
+			s, ok := common.GetContextKey(c, constant.ContextKeyTokenModelLimit)
+			if !ok {
+				return nil, types.NewErrorWithStatusCode(
+					errors.New(i18n.T(c, i18n.MsgDistributorTokenNoModelAccess)),
+					types.ErrorCodeAccessDenied,
+					http.StatusForbidden,
+					types.ErrOptionWithSkipRetry(),
+				)
+			}
+			tokenModelLimit, ok := s.(map[string]bool)
+			if !ok {
+				tokenModelLimit = map[string]bool{}
+			}
+			if !model.IsModelAllowedByUserLimit(modelRequest.Model, tokenModelLimit) {
+				return nil, types.NewErrorWithStatusCode(
+					errors.New(i18n.T(c, i18n.MsgDistributorTokenModelForbidden, map[string]any{"Model": modelRequest.Model})),
+					types.ErrorCodeAccessDenied,
+					http.StatusForbidden,
+					types.ErrOptionWithSkipRetry(),
+				)
+			}
+		}
+
+		if !isModelAllowedByUser(c, modelRequest.Model) {
+			return nil, types.NewErrorWithStatusCode(
+				errors.New(i18n.T(c, i18n.MsgDistributorUserModelForbidden, map[string]any{"Model": modelRequest.Model})),
+				types.ErrorCodeAccessDenied,
+				http.StatusForbidden,
+				types.ErrOptionWithSkipRetry(),
+			)
+		}
+
+		var selectGroup string
+		usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+		if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
+			affinityUsable := false
+			preferred, err := model.CacheGetChannel(preferredChannelID)
+			if err == nil && preferred != nil {
+				if preferred.Status != common.ChannelStatusEnabled {
+					if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
+						return nil, types.NewErrorWithStatusCode(
+							errors.New(i18n.T(c, i18n.MsgDistributorAffinityChannelDisabled)),
+							types.ErrorCodeGetChannelFailed,
+							http.StatusForbidden,
+							types.ErrOptionWithSkipRetry(),
+						)
+					}
+				} else if !channelSupportsRequestPath(preferred, c.Request.URL.Path, modelRequest.Model) {
+					logger.LogDebug(c, "affinity channel %d does not support request path %s, ignore it", preferred.Id, c.Request.URL.Path)
+				} else if !preferred.IsOpenToUser(requestUserId) {
+					logger.LogDebug(c, "affinity channel %d is not open to user %d, ignore it", preferred.Id, requestUserId)
+				} else if usingGroup == "auto" {
+					userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+					autoGroups := service.GetUserAutoGroup(userGroup)
+					for _, g := range autoGroups {
+						if model.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
+							selectGroup = g
+							common.SetContextKey(c, constant.ContextKeyAutoGroup, g)
+							channel = preferred
+							affinityUsable = true
+							service.MarkChannelAffinityUsed(c, g, preferred.Id)
+							break
+						}
+					}
+				} else if model.IsChannelEnabledForGroupModel(usingGroup, modelRequest.Model, preferred.Id) {
+					channel = preferred
+					selectGroup = usingGroup
+					affinityUsable = true
+					service.MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
+				}
+			}
+			if !affinityUsable && !service.ShouldKeepChannelAffinityOnChannelDisabled() {
+				service.ClearCurrentChannelAffinityCache(c)
+			}
+		}
+
+		if channel == nil {
+			var err error
+			channel, selectGroup, err = service.CacheGetRandomSatisfiedChannel(&service.RetryParam{
+				Ctx:         c,
+				ModelName:   modelRequest.Model,
+				TokenGroup:  usingGroup,
+				RequestPath: c.Request.URL.Path,
+				Retry:       common.GetPointer(0),
+			})
+			if err != nil {
+				showGroup := usingGroup
+				if usingGroup == "auto" {
+					showGroup = fmt.Sprintf("auto(%s)", selectGroup)
+				}
+				return nil, types.NewErrorWithStatusCode(
+					fmt.Errorf("%s", i18n.T(c, i18n.MsgDistributorGetChannelFailed, map[string]any{"Group": showGroup, "Model": modelRequest.Model, "Error": err.Error()})),
+					types.ErrorCodeModelNotFound,
+					http.StatusServiceUnavailable,
+					types.ErrOptionWithSkipRetry(),
+				)
+			}
+			if channel == nil {
+				return nil, types.NewErrorWithStatusCode(
+					errors.New(i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": usingGroup, "Model": modelRequest.Model})),
+					types.ErrorCodeModelNotFound,
+					http.StatusServiceUnavailable,
+					types.ErrOptionWithSkipRetry(),
+				)
+			}
+		}
+	}
+
+	common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
+	if newAPIError := SetupContextForSelectedChannel(c, channel, modelRequest.Model); newAPIError != nil {
+		return nil, newAPIError
+	}
+	return channel, nil
+}
+
 // channelSupportsRequestPath reports whether a channel can serve the request path.
 // Only Advanced Custom channels are path-checked; all other channel types
 // always pass. A type-58 channel is usable only when one of its routes matches.

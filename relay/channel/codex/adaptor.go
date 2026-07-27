@@ -108,6 +108,9 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
+	if info.IsWebsocket && info.RelayMode == relayconstant.RelayModeResponses {
+		return channel.DoWssRequest(a, c, info, requestBody)
+	}
 	return channel.DoApiRequest(a, c, info, requestBody)
 }
 
@@ -142,6 +145,9 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	if info.RelayMode == relayconstant.RelayModeResponsesCompact {
 		path = "/backend-api/codex/responses/compact"
 	}
+	if info.IsWebsocket && info.RelayMode == relayconstant.RelayModeResponses {
+		info.ChannelBaseUrl = codexWebsocketBaseURL(info.ChannelBaseUrl)
+	}
 	return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, path, info.ChannelType), nil
 }
 
@@ -171,7 +177,9 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *rel
 	req.Set("Authorization", "Bearer "+accessToken)
 	req.Set("chatgpt-account-id", accountID)
 
-	if req.Get("OpenAI-Beta") == "" {
+	if info.IsWebsocket && info.RelayMode == relayconstant.RelayModeResponses {
+		req.Set("OpenAI-Beta", relaycommon.ResponsesWebsocketBetaHeaderValue)
+	} else if req.Get("OpenAI-Beta") == "" {
 		req.Set("OpenAI-Beta", "responses=experimental")
 	}
 	if req.Get("originator") == "" {
@@ -189,4 +197,14 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *rel
 	}
 
 	return nil
+}
+
+func codexWebsocketBaseURL(baseURL string) string {
+	if strings.HasPrefix(baseURL, "https://") {
+		return "wss://" + strings.TrimPrefix(baseURL, "https://")
+	}
+	if strings.HasPrefix(baseURL, "http://") {
+		return "ws://" + strings.TrimPrefix(baseURL, "http://")
+	}
+	return baseURL
 }

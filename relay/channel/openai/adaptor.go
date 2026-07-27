@@ -103,16 +103,9 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
-	if info.RelayMode == relayconstant.RelayModeRealtime {
-		if strings.HasPrefix(info.ChannelBaseUrl, "https://") {
-			baseUrl := strings.TrimPrefix(info.ChannelBaseUrl, "https://")
-			baseUrl = "wss://" + baseUrl
-			info.ChannelBaseUrl = baseUrl
-		} else if strings.HasPrefix(info.ChannelBaseUrl, "http://") {
-			baseUrl := strings.TrimPrefix(info.ChannelBaseUrl, "http://")
-			baseUrl = "ws://" + baseUrl
-			info.ChannelBaseUrl = baseUrl
-		}
+	if info.RelayMode == relayconstant.RelayModeRealtime ||
+		(info.IsWebsocket && info.RelayMode == relayconstant.RelayModeResponses) {
+		info.ChannelBaseUrl = websocketBaseURL(info.ChannelBaseUrl)
 	}
 	switch info.ChannelType {
 	case constant.ChannelTypeAzure:
@@ -229,6 +222,10 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, header *http.Header, info *
 		if !hasAuthOverride {
 			header.Set("Authorization", "Bearer "+info.ApiKey)
 		}
+	}
+	if info.IsWebsocket && info.RelayMode == relayconstant.RelayModeResponses {
+		header.Set("OpenAI-Beta", relaycommon.ResponsesWebsocketBetaHeaderValue)
+		header.Set("Content-Type", "application/json")
 	}
 	if info.ChannelType == constant.ChannelTypeOpenRouter {
 		if header.Get("HTTP-Referer") == "" {
@@ -625,7 +622,8 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 		info.RelayMode == relayconstant.RelayModeAudioTranslation ||
 		(info.RelayMode == relayconstant.RelayModeImagesEdits && !isJSONRequest(c)) {
 		return channel.DoFormRequest(a, c, info, requestBody)
-	} else if info.RelayMode == relayconstant.RelayModeRealtime {
+	} else if info.RelayMode == relayconstant.RelayModeRealtime ||
+		(info.IsWebsocket && info.RelayMode == relayconstant.RelayModeResponses) {
 		return channel.DoWssRequest(a, c, info, requestBody)
 	} else {
 		return channel.DoApiRequest(a, c, info, requestBody)
@@ -700,4 +698,18 @@ func (a *Adaptor) GetChannelName() string {
 	default:
 		return ChannelName
 	}
+}
+
+func websocketBaseURL(rawBaseURL string) string {
+	parsedURL, err := url.Parse(rawBaseURL)
+	if err != nil {
+		return rawBaseURL
+	}
+	switch parsedURL.Scheme {
+	case "https":
+		parsedURL.Scheme = "wss"
+	case "http":
+		parsedURL.Scheme = "ws"
+	}
+	return parsedURL.String()
 }

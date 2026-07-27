@@ -278,7 +278,8 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 		(info.RelayMode == relayconstant.RelayModeImagesEdits && !isJSONRequest(c)) {
 		return channel.DoFormRequest(a, c, info, requestBody)
 	}
-	if info.RelayMode == relayconstant.RelayModeRealtime {
+	if info.RelayMode == relayconstant.RelayModeRealtime ||
+		(info.IsWebsocket && info.RelayMode == relayconstant.RelayModeResponses) {
 		return channel.DoWssRequest(a, c, info, requestBody)
 	}
 	return channel.DoApiRequest(a, c, info, requestBody)
@@ -399,7 +400,8 @@ func buildRouteURL(route dto.AdvancedCustomRoute, converter string, info *relayc
 	if shouldUseGeminiStreamURL(converter, info) {
 		useGeminiStreamGenerateContentURL(parsedURL)
 	}
-	if info != nil && info.RelayMode == relayconstant.RelayModeRealtime {
+	if info != nil && (info.RelayMode == relayconstant.RelayModeRealtime ||
+		(info.IsWebsocket && info.RelayMode == relayconstant.RelayModeResponses)) {
 		switch parsedURL.Scheme {
 		case "https":
 			parsedURL.Scheme = "wss"

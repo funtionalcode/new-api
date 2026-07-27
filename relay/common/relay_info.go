@@ -60,6 +60,8 @@ type ResponsesUsageInfo struct {
 	BuiltInTools map[string]*BuildInToolInfo
 }
 
+const ResponsesWebsocketBetaHeaderValue = "responses_websockets=2026-02-06"
+
 type ChannelMeta struct {
 	ChannelType          int
 	ChannelId            int
@@ -98,6 +100,7 @@ type RelayInfo struct {
 	isFirstResponse   bool
 	//SendLastReasoningResponse bool
 	IsStream               bool
+	IsWebsocket            bool
 	IsGeminiBatchEmbedding bool
 	IsPlayground           bool
 	UsePrice               bool

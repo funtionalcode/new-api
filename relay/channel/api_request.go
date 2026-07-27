@@ -545,7 +545,12 @@ func DoWssRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 		targetHeader.Set(key, value)
 	}
 	targetHeader.Set("Content-Type", c.Request.Header.Get("Content-Type"))
-	targetConn, _, err := websocket.DefaultDialer.Dial(fullRequestURL, targetHeader)
+	prepareResponsesWebsocketHeaders(c, info, targetHeader)
+	dialer, err := service.NewWebsocketDialerWithProxy(info.ChannelSetting.Proxy)
+	if err != nil {
+		return nil, fmt.Errorf("new websocket dialer failed: %w", err)
+	}
+	targetConn, _, err := dialer.Dial(fullRequestURL, targetHeader)
 	if err != nil {
 		return nil, fmt.Errorf("dial failed to %s: %w", common.SanitizeURLForLog(fullRequestURL), err)
 	}
@@ -553,6 +558,24 @@ func DoWssRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 	//all, err := io.ReadAll(requestBody)
 	//err = service.WssString(c, targetConn, string(all))
 	return targetConn, nil
+}
+
+func prepareResponsesWebsocketHeaders(c *gin.Context, info *common.RelayInfo, targetHeader http.Header) {
+	if info == nil || !info.IsWebsocket || info.RelayMode != constant.RelayModeResponses {
+		return
+	}
+	targetHeader.Set("OpenAI-Beta", common.ResponsesWebsocketBetaHeaderValue)
+	targetHeader.Set("Content-Type", "application/json")
+	for _, name := range []string{
+		"X-Codex-Turn-State",
+		"X-Codex-Turn-Metadata",
+		"X-Client-Request-Id",
+		"X-ResponsesAPI-Include-Timing-Metrics",
+	} {
+		if value := strings.TrimSpace(c.Request.Header.Get(name)); value != "" {
+			targetHeader.Set(name, value)
+		}
+	}
 }
 
 func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) (context.CancelFunc, <-chan struct{}) {

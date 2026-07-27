@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
+	"github.com/gorilla/websocket"
 	"golang.org/x/net/proxy"
 )
 
@@ -255,6 +256,51 @@ func newProxyHTTPClient(proxyURL *url.URL) (*http.Client, error) {
 	}
 
 	return newRelayHTTPClient(transport), nil
+}
+
+// NewWebsocketDialerWithProxy returns a websocket dialer using the same proxy rules as relay HTTP clients.
+func NewWebsocketDialerWithProxy(rawProxyURL string) (*websocket.Dialer, error) {
+	dialer := *websocket.DefaultDialer
+	if common.TLSInsecureSkipVerify {
+		dialer.TLSClientConfig = common.InsecureTLSConfig
+	}
+
+	trimmedProxyURL := strings.TrimSpace(rawProxyURL)
+	if trimmedProxyURL == "" {
+		return &dialer, nil
+	}
+
+	parsedURL, legacySuffixStripped, err := common.ParseProxyURLRuntime(trimmedProxyURL)
+	if err != nil {
+		return nil, err
+	}
+	config := newProxyURLConfig(parsedURL)
+	if legacySuffixStripped {
+		warnLegacyProxyURLOnce(config)
+	}
+
+	switch parsedURL.Scheme {
+	case "http", "https":
+		dialer.Proxy = http.ProxyURL(parsedURL)
+	case "socks5", "socks5h":
+		dialer.Proxy = nil
+		forwardDialer := &net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}
+		proxyDialer, err := proxy.FromURL(parsedURL, forwardDialer)
+		if err != nil {
+			return nil, err
+		}
+		contextDialer, ok := proxyDialer.(proxy.ContextDialer)
+		if !ok {
+			return nil, fmt.Errorf("SOCKS proxy dialer does not support context cancellation")
+		}
+		dialer.NetDialContext = contextDialer.DialContext
+	default:
+		return nil, fmt.Errorf("unsupported proxy scheme")
+	}
+	return &dialer, nil
 }
 
 // GetHttpClientWithProxy returns the default client or a cached proxy-enabled client.
