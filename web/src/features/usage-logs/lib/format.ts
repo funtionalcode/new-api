@@ -106,6 +106,10 @@ export function parseLogOther(other: string): LogOtherData | null {
   }
 }
 
+export function isWebsocketLog(other: LogOtherData | null | undefined): boolean {
+  return other?.ws === true || other?.transport === 'websocket'
+}
+
 /**
  * Get time color based on duration (in seconds)
  */

@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"sort"
 
 	"gorm.io/gorm"
 )
@@ -37,27 +38,47 @@ type ModelStatusFirstResponseSample struct {
 	Other     string `json:"other" gorm:"column:other"`
 }
 
+type modelStatusConsumeSummary struct {
+	ModelName        string `gorm:"column:model_name"`
+	SuccessCount     int64  `gorm:"column:success_count"`
+	PromptTokens     int64  `gorm:"column:prompt_tokens"`
+	CompletionTokens int64  `gorm:"column:completion_tokens"`
+	Quota            int64  `gorm:"column:quota"`
+}
+
+type modelStatusErrorSummary struct {
+	ModelName  string `gorm:"column:model_name"`
+	ErrorCount int64  `gorm:"column:error_count"`
+}
+
+type modelStatusLatencySummary struct {
+	ModelName    string `gorm:"column:model_name"`
+	TotalUseTime int64  `gorm:"column:total_use_time"`
+	UseTimeCount int64  `gorm:"column:use_time_count"`
+}
+
+type modelStatusBucketCount struct {
+	ModelName   string `gorm:"column:model_name"`
+	BucketStart int64  `gorm:"column:bucket_start"`
+	Count       int64  `gorm:"column:log_count"`
+}
+
+type modelStatusBucketKey struct {
+	modelName   string
+	bucketStart int64
+}
+
+type modelStatusTokenQuotaSummary struct {
+	RequestCount     int64 `gorm:"column:request_count"`
+	PromptTokens     int64 `gorm:"column:prompt_tokens"`
+	CompletionTokens int64 `gorm:"column:completion_tokens"`
+	Quota            int64 `gorm:"column:quota"`
+}
+
 func GetModelStatusLogSummaries(startTime int64, endTime int64, limit int) ([]ModelStatusLogSummary, error) {
 	var rows []ModelStatusLogSummary
 	query := LOG_DB.Table("logs").
-		Select(
-			`model_name,
-			COUNT(*) AS request_count,
-			COALESCE(SUM(CASE WHEN type = ? THEN 1 ELSE 0 END), 0) AS success_count,
-			COALESCE(SUM(CASE WHEN type = ? THEN 1 ELSE 0 END), 0) AS error_count,
-			COALESCE(SUM(CASE WHEN type = ? THEN prompt_tokens + completion_tokens ELSE 0 END), 0) AS token_count,
-			COALESCE(SUM(CASE WHEN type = ? THEN quota ELSE 0 END), 0) AS quota,
-			COALESCE(AVG(CASE WHEN type = ? AND use_time > 0 THEN use_time ELSE NULL END), 0) AS avg_use_time,
-			COALESCE(SUM(CASE WHEN type = ? AND use_time > 0 THEN use_time ELSE 0 END), 0) AS total_use_time,
-			COALESCE(SUM(CASE WHEN type = ? THEN completion_tokens ELSE 0 END), 0) AS completion_tokens`,
-			LogTypeConsume,
-			LogTypeError,
-			LogTypeConsume,
-			LogTypeConsume,
-			LogTypeConsume,
-			LogTypeConsume,
-			LogTypeConsume,
-		).
+		Select("model_name, COUNT(*) AS request_count").
 		Where("model_name <> ''").
 		Where("type IN ?", []int{LogTypeConsume, LogTypeError}).
 		Group("model_name").
@@ -66,8 +87,85 @@ func GetModelStatusLogSummaries(startTime int64, endTime int64, limit int) ([]Mo
 	if limit > 0 {
 		query = query.Limit(limit)
 	}
-	err := query.Scan(&rows).Error
-	return rows, err
+	if err := query.Scan(&rows).Error; err != nil || len(rows) == 0 {
+		return rows, err
+	}
+
+	modelNames := make([]string, 0, len(rows))
+	rowIndexByModel := make(map[string]int, len(rows))
+	for index, row := range rows {
+		modelNames = append(modelNames, row.ModelName)
+		rowIndexByModel[row.ModelName] = index
+	}
+
+	var consumeRows []modelStatusConsumeSummary
+	consumeQuery := LOG_DB.Table("logs").
+		Select(`model_name,
+			COUNT(*) AS success_count,
+			COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,
+			COALESCE(SUM(completion_tokens), 0) AS completion_tokens,
+			COALESCE(SUM(quota), 0) AS quota`).
+		Where("model_name IN ?", modelNames).
+		Where("type = ?", LogTypeConsume).
+		Group("model_name")
+	consumeQuery = applyModelStatusTimeRange(consumeQuery, startTime, endTime)
+	if err := consumeQuery.Scan(&consumeRows).Error; err != nil {
+		return nil, err
+	}
+	for _, consumeRow := range consumeRows {
+		index, ok := rowIndexByModel[consumeRow.ModelName]
+		if !ok {
+			continue
+		}
+		rows[index].SuccessCount = consumeRow.SuccessCount
+		rows[index].TokenCount = consumeRow.PromptTokens + consumeRow.CompletionTokens
+		rows[index].Quota = consumeRow.Quota
+		rows[index].CompletionTokens = consumeRow.CompletionTokens
+	}
+
+	var errorRows []modelStatusErrorSummary
+	errorQuery := LOG_DB.Table("logs").
+		Select("model_name, COUNT(*) AS error_count").
+		Where("model_name IN ?", modelNames).
+		Where("type = ?", LogTypeError).
+		Group("model_name")
+	errorQuery = applyModelStatusTimeRange(errorQuery, startTime, endTime)
+	if err := errorQuery.Scan(&errorRows).Error; err != nil {
+		return nil, err
+	}
+	for _, errorRow := range errorRows {
+		index, ok := rowIndexByModel[errorRow.ModelName]
+		if !ok {
+			continue
+		}
+		rows[index].ErrorCount = errorRow.ErrorCount
+	}
+
+	var latencyRows []modelStatusLatencySummary
+	latencyQuery := LOG_DB.Table("logs").
+		Select(`model_name,
+			COALESCE(SUM(use_time), 0) AS total_use_time,
+			COUNT(*) AS use_time_count`).
+		Where("model_name IN ?", modelNames).
+		Where("type = ?", LogTypeConsume).
+		Where("use_time > ?", 0).
+		Group("model_name")
+	latencyQuery = applyModelStatusTimeRange(latencyQuery, startTime, endTime)
+	if err := latencyQuery.Scan(&latencyRows).Error; err != nil {
+		return nil, err
+	}
+	for _, latencyRow := range latencyRows {
+		index, ok := rowIndexByModel[latencyRow.ModelName]
+		if !ok {
+			continue
+		}
+		rows[index].TotalUseTime = latencyRow.TotalUseTime
+		if latencyRow.UseTimeCount > 0 {
+			rows[index].AvgUseTime = float64(latencyRow.TotalUseTime) / float64(latencyRow.UseTimeCount)
+		}
+	}
+
+	return rows, nil
 }
 
 func GetModelStatusLogBuckets(startTime int64, endTime int64, bucketSeconds int64, modelNames []string) ([]ModelStatusLogBucket, error) {
@@ -78,38 +176,74 @@ func GetModelStatusLogBuckets(startTime int64, endTime int64, bucketSeconds int6
 		bucketSeconds = 3600
 	}
 	bucketExpr := modelStatusBucketExpr(bucketSeconds)
-	var rows []ModelStatusLogBucket
-	query := LOG_DB.Table("logs").
+	bucketRowsByKey := make(map[modelStatusBucketKey]ModelStatusLogBucket)
+
+	var successRows []modelStatusBucketCount
+	successQuery := LOG_DB.Table("logs").
 		Select(
 			fmt.Sprintf(`model_name,
 			%s AS bucket_start,
-			COUNT(*) AS request_count,
-			COALESCE(SUM(CASE WHEN type = ? THEN 1 ELSE 0 END), 0) AS success_count,
-			COALESCE(SUM(CASE WHEN type = ? THEN 1 ELSE 0 END), 0) AS error_count`, bucketExpr),
-			LogTypeConsume,
-			LogTypeError,
+			COUNT(*) AS log_count`, bucketExpr),
 		).
 		Where("model_name IN ?", modelNames).
-		Where("type IN ?", []int{LogTypeConsume, LogTypeError}).
+		Where("type = ?", LogTypeConsume).
 		Group(fmt.Sprintf("model_name, %s", bucketExpr)).
 		Order("model_name ASC").
 		Order("bucket_start ASC")
-	query = applyModelStatusTimeRange(query, startTime, endTime)
-	err := query.Scan(&rows).Error
-	return rows, err
+	successQuery = applyModelStatusTimeRange(successQuery, startTime, endTime)
+	if err := successQuery.Scan(&successRows).Error; err != nil {
+		return nil, err
+	}
+	mergeModelStatusBucketCounts(bucketRowsByKey, successRows, true)
+
+	var errorRows []modelStatusBucketCount
+	errorQuery := LOG_DB.Table("logs").
+		Select(
+			fmt.Sprintf(`model_name,
+			%s AS bucket_start,
+			COUNT(*) AS log_count`, bucketExpr),
+		).
+		Where("model_name IN ?", modelNames).
+		Where("type = ?", LogTypeError).
+		Group(fmt.Sprintf("model_name, %s", bucketExpr)).
+		Order("model_name ASC").
+		Order("bucket_start ASC")
+	errorQuery = applyModelStatusTimeRange(errorQuery, startTime, endTime)
+	if err := errorQuery.Scan(&errorRows).Error; err != nil {
+		return nil, err
+	}
+	mergeModelStatusBucketCounts(bucketRowsByKey, errorRows, false)
+
+	rows := make([]ModelStatusLogBucket, 0, len(bucketRowsByKey))
+	for _, row := range bucketRowsByKey {
+		rows = append(rows, row)
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].ModelName == rows[j].ModelName {
+			return rows[i].BucketStart < rows[j].BucketStart
+		}
+		return rows[i].ModelName < rows[j].ModelName
+	})
+
+	return rows, nil
 }
 
 func GetModelStatusTodaySummary(startTime int64, endTime int64) (ModelStatusTodaySummary, error) {
-	var row ModelStatusTodaySummary
+	var tokenQuota modelStatusTokenQuotaSummary
 	query := LOG_DB.Table("logs").
 		Select(`COUNT(*) AS request_count,
-			COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS token_count,
+			COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,
+			COALESCE(SUM(completion_tokens), 0) AS completion_tokens,
 			COALESCE(SUM(quota), 0) AS quota`).
 		Where("model_name <> ''").
 		Where("type = ?", LogTypeConsume)
 	query = applyModelStatusTimeRange(query, startTime, endTime)
-	err := query.Scan(&row).Error
-	return row, err
+	err := query.Scan(&tokenQuota).Error
+	return ModelStatusTodaySummary{
+		RequestCount: tokenQuota.RequestCount,
+		TokenCount:   tokenQuota.PromptTokens + tokenQuota.CompletionTokens,
+		Quota:        tokenQuota.Quota,
+	}, err
 }
 
 func GetModelStatusFirstResponseSamples(startTime int64, endTime int64, modelNames []string, limit int) ([]ModelStatusFirstResponseSample, error) {
@@ -131,6 +265,22 @@ func GetModelStatusFirstResponseSamples(startTime int64, endTime int64, modelNam
 
 func modelStatusBucketExpr(bucketSeconds int64) string {
 	return fmt.Sprintf("(created_at - (created_at %% %d))", bucketSeconds)
+}
+
+func mergeModelStatusBucketCounts(bucketRowsByKey map[modelStatusBucketKey]ModelStatusLogBucket, countRows []modelStatusBucketCount, success bool) {
+	for _, countRow := range countRows {
+		key := modelStatusBucketKey{modelName: countRow.ModelName, bucketStart: countRow.BucketStart}
+		bucketRow := bucketRowsByKey[key]
+		bucketRow.ModelName = countRow.ModelName
+		bucketRow.BucketStart = countRow.BucketStart
+		bucketRow.RequestCount += countRow.Count
+		if success {
+			bucketRow.SuccessCount += countRow.Count
+		} else {
+			bucketRow.ErrorCount += countRow.Count
+		}
+		bucketRowsByKey[key] = bucketRow
+	}
 }
 
 func applyModelStatusTimeRange(query *gorm.DB, startTime int64, endTime int64) *gorm.DB {

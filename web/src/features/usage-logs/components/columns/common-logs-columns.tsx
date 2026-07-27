@@ -46,6 +46,7 @@ import {
   formatModelName,
   getTieredBillingSummary,
   hasAnyCacheTokens,
+  isWebsocketLog,
   parseLogOther,
   isViolationFeeLog,
   renderAuditContent,
@@ -659,14 +660,28 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         const log = row.original
         if (!isDisplayableLogType(log.type)) return null
 
+        const other = parseLogOther(log.other)
         const modelInfo = formatModelName(log)
+        const showWebsocketBadge = isWebsocketLog(other)
 
         return (
-          <div className='flex w-fit flex-col gap-0.5'>
+          <div className='flex w-fit max-w-full flex-col gap-0.5'>
             <ModelBadge
               modelName={modelInfo.name}
               actualModel={modelInfo.actualModel}
             />
+            {showWebsocketBadge && (
+              <StatusBadge
+                label='WS'
+                variant='blue'
+                size='sm'
+                copyable={false}
+                showDot={false}
+                title='WebSocket'
+                aria-label='WebSocket'
+                className='h-5 w-fit border border-blue-500/20 bg-blue-500/10 px-1.5 font-mono text-[11px] text-blue-600 dark:text-blue-300'
+              />
+            )}
           </div>
         )
       },

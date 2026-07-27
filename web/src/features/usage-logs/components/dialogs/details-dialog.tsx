@@ -77,6 +77,7 @@ import {
   getTieredBillingSummary,
   hasAnyCacheTokens,
   isViolationFeeLog,
+  isWebsocketLog,
   getFirstResponseTimeColor,
   getResponseTimeColor,
   renderAuditContent,
@@ -578,12 +579,13 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const isTopup = props.log.type === 1
   const isManage = props.log.type === 3
   const isSubscription = other?.billing_source === 'subscription'
+  const isWebsocket = isWebsocketLog(other)
   const isTieredBilling =
     isConsume &&
     !isViolation &&
     other?.billing_mode === 'tiered_expr' &&
     !!other?.expr_b64
-  const hasAudioTokens = other?.ws || other?.audio
+  const hasAudioTokens = isWebsocket || other?.audio
   const showTiming = isTimingLogType(props.log.type)
   const showAdminIp =
     !!props.log.ip && (showTiming || (props.isAdmin && isTopup))
@@ -780,6 +782,22 @@ export function DetailsDialog(props: DetailsDialogProps) {
 
           {props.log.token_name && (
             <DetailRow label={t('Token')} value={props.log.token_name} mono />
+          )}
+
+          {isWebsocket && (
+            <DetailRow
+              label={t('Transport')}
+              value={
+                <StatusBadge
+                  label='WebSocket'
+                  variant='blue'
+                  size='sm'
+                  copyable={false}
+                  showDot={false}
+                  className='w-fit border border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-300'
+                />
+              }
+            />
           )}
 
           {(props.log.group || other?.group) && (
