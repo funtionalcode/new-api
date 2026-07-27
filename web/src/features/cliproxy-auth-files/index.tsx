@@ -106,12 +106,13 @@ import {
   type CliproxyXAIUsageWindow,
   type CliproxyUsageWindowKey,
 } from './lib/usage-summary'
-import { refreshCliproxyAuthFileBindingsUsageAll } from './lib/bulk-refresh'
+import { refreshCliproxyAuthFileBindingsUsageByType } from './lib/bulk-refresh'
 import {
   getCliproxyAuthFileEmail,
   getCliproxyAuthFileType,
   getCliproxyAuthFileTypeLabel,
   getCliproxyPlanLabel,
+  type CliproxyAuthFileType,
 } from './lib/auth-file-type'
 import type {
   CliproxyAuthFile,
@@ -149,6 +150,12 @@ const emptyBindingForm: BindingFormState = {
   last_plan_type: '',
   enabled: true,
 }
+
+const cliproxyAuthFileTypeOrder: CliproxyAuthFileType[] = [
+  'codex',
+  'claude',
+  'xai',
+]
 
 type PlanLabelConfig = {
   label: string
@@ -1034,7 +1041,8 @@ function BindingTable({
   const [authIndex, setAuthIndex] = useState('')
   const [deleteTarget, setDeleteTarget] =
     useState<CliproxyAuthFileBinding | null>(null)
-  const [refreshingAll, setRefreshingAll] = useState(false)
+  const [refreshingType, setRefreshingType] =
+    useState<CliproxyAuthFileType | null>(null)
 
   const query = useQuery({
     queryKey: ['cliproxy-auth-file-bindings', username, authIndex],
@@ -1046,6 +1054,17 @@ function BindingTable({
         auth_index: authIndex.trim() || undefined,
       }),
   })
+
+  const bindings = query.data?.data?.items ?? []
+  const refreshableTypes = cliproxyAuthFileTypeOrder
+    .map((type) => ({
+      type,
+      label: getCliproxyAuthFileTypeLabel(type),
+      count: bindings.filter(
+        (binding) => binding.enabled && getCliproxyAuthFileType(binding) === type
+      ).length,
+    }))
+    .filter((item) => item.count > 0)
 
   const refreshMutation = useMutation({
     mutationFn: refreshCliproxyAuthFileBindingUsage,
@@ -1072,27 +1091,31 @@ function BindingTable({
     },
   })
 
-  const refreshAll = async () => {
-    const enabledBindings = bindings.filter((binding) => binding.enabled)
-    if (enabledBindings.length === 0) {
-      toast.error(t('No bindings found'))
+  const refreshType = async (type: CliproxyAuthFileType) => {
+    const label = getCliproxyAuthFileTypeLabel(type)
+    if (!refreshableTypes.some((item) => item.type === type)) {
+      toast.error(`${label}: ${t('No bindings found')}`)
       return
     }
 
-    setRefreshingAll(true)
+    setRefreshingType(type)
     try {
-      const summary = await refreshCliproxyAuthFileBindingsUsageAll(
+      const summary = await refreshCliproxyAuthFileBindingsUsageByType(
         bindings,
+        type,
         refreshCliproxyAuthFileBindingUsage
       )
       if (summary.failed === 0) {
-        toast.success(t('Refresh succeeded'))
+        toast.success(`${label}: ${t('Refresh succeeded')}`)
       } else {
         toast.error(
-          t('Refresh completed: {{success}} succeeded, {{fail}} failed', {
-            success: summary.success,
-            fail: summary.failed,
-          })
+          `${label}: ${t(
+            'Refresh completed: {{success}} succeeded, {{fail}} failed',
+            {
+              success: summary.success,
+              fail: summary.failed,
+            }
+          )}`
         )
       }
       queryClient.invalidateQueries({
@@ -1101,7 +1124,7 @@ function BindingTable({
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('Refresh failed'))
     } finally {
-      setRefreshingAll(false)
+      setRefreshingType(null)
     }
   }
 
@@ -1127,8 +1150,6 @@ function BindingTable({
     },
   })
 
-  const bindings = query.data?.data?.items ?? []
-
   return (
     <Card>
       <CardHeader>
@@ -1151,16 +1172,30 @@ function BindingTable({
             placeholder={t('Filter by auth index')}
             onChange={(event) => setAuthIndex(event.target.value)}
           />
-          <Button
-            variant='outline'
-            onClick={refreshAll}
-            disabled={refreshingAll || query.isLoading}
-          >
-            <RefreshCw
-              className={refreshingAll ? 'animate-spin' : undefined}
-            />
-            {t('Refresh All')}
-          </Button>
+          <div className='flex flex-wrap justify-end gap-2'>
+            {refreshableTypes.length > 0 ? (
+              refreshableTypes.map((item) => (
+                <Button
+                  key={item.type}
+                  variant='outline'
+                  onClick={() => refreshType(item.type)}
+                  disabled={refreshingType !== null || query.isLoading}
+                >
+                  <RefreshCw
+                    className={
+                      refreshingType === item.type ? 'animate-spin' : undefined
+                    }
+                  />
+                  {t('Refresh')} {item.label} ({item.count})
+                </Button>
+              ))
+            ) : (
+              <Button variant='outline' disabled>
+                <RefreshCw />
+                {t('Refresh All')}
+              </Button>
+            )}
+          </div>
         </div>
 
         {query.data && !query.data.success ? (

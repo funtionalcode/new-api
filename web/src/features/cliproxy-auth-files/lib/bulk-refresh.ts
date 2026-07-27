@@ -17,6 +17,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { ApiResponse, CliproxyAuthFileBinding } from '../types'
+import {
+  getCliproxyAuthFileType,
+  type CliproxyAuthFileType,
+} from './auth-file-type'
 
 export type CliproxyAuthFileBulkRefreshSummary = {
   total: number
@@ -30,6 +34,14 @@ type RefreshCliproxyAuthFileBindingUsage = (
 
 /** Keep bulk refresh gentle so xAI dual billing calls do not stampede Cliproxy. */
 export const CLIPROXY_BULK_REFRESH_CONCURRENCY = 2
+export const CLIPROXY_BULK_REFRESH_CONCURRENCY_BY_TYPE: Record<
+  CliproxyAuthFileType,
+  number
+> = {
+  codex: 4,
+  claude: 2,
+  xai: 1,
+}
 
 export async function refreshCliproxyAuthFileBindingsUsageAll(
   bindings: CliproxyAuthFileBinding[],
@@ -62,6 +74,19 @@ export async function refreshCliproxyAuthFileBindingsUsageAll(
     success,
     failed,
   }
+}
+
+export async function refreshCliproxyAuthFileBindingsUsageByType(
+  bindings: CliproxyAuthFileBinding[],
+  type: CliproxyAuthFileType,
+  refreshUsage: RefreshCliproxyAuthFileBindingUsage,
+  concurrency = CLIPROXY_BULK_REFRESH_CONCURRENCY_BY_TYPE[type]
+): Promise<CliproxyAuthFileBulkRefreshSummary> {
+  return refreshCliproxyAuthFileBindingsUsageAll(
+    bindings.filter((binding) => getCliproxyAuthFileType(binding) === type),
+    refreshUsage,
+    concurrency
+  )
 }
 
 async function mapWithConcurrency<T, R>(

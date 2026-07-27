@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
 import type { CliproxyAuthFileBinding } from '../types'
-import { refreshCliproxyAuthFileBindingsUsageAll } from './bulk-refresh'
+import {
+  refreshCliproxyAuthFileBindingsUsageAll,
+  refreshCliproxyAuthFileBindingsUsageByType,
+} from './bulk-refresh'
 
 describe('cliproxy auth file bulk refresh', () => {
   test('refreshes enabled bindings and skips disabled ones', async () => {
@@ -59,9 +62,75 @@ describe('cliproxy auth file bulk refresh', () => {
       failed: 2,
     })
   })
+
+  test('refreshes only bindings matching the requested auth file type', async () => {
+    const refreshedIds: number[] = []
+
+    const summary = await refreshCliproxyAuthFileBindingsUsageByType(
+      [
+        createBinding(1, true, { auth_name: 'codex-a@example.com.json' }),
+        createBinding(2, true, { auth_name: 'claude-b@example.com.json' }),
+        createBinding(3, true, {
+          auth_name: 'xai-c@example.com.json',
+          last_plan_type: 'supergrokheavy',
+        }),
+        createBinding(4, false, {
+          auth_name: 'xai-disabled@example.com.json',
+          last_plan_type: 'supergrokheavy',
+        }),
+      ],
+      'xai',
+      async (id) => {
+        refreshedIds.push(id)
+        return {
+          success: true,
+          data: createBinding(id, true),
+        }
+      }
+    )
+
+    assert.deepEqual(refreshedIds, [3])
+    assert.deepEqual(summary, {
+      total: 1,
+      success: 1,
+      failed: 0,
+    })
+  })
+
+  test('limits concurrency while refreshing all bindings', async () => {
+    let inFlight = 0
+    let maxInFlight = 0
+    const summary = await refreshCliproxyAuthFileBindingsUsageAll(
+      [
+        createBinding(1, true),
+        createBinding(2, true),
+        createBinding(3, true),
+        createBinding(4, true),
+      ],
+      async (id) => {
+        inFlight++
+        maxInFlight = Math.max(maxInFlight, inFlight)
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        inFlight--
+        return {
+          success: true,
+          data: createBinding(id, true),
+        }
+      },
+      2
+    )
+
+    assert.equal(summary.success, 4)
+    assert.equal(summary.failed, 0)
+    assert.ok(maxInFlight <= 2)
+  })
 })
 
-function createBinding(id: number, enabled: boolean): CliproxyAuthFileBinding {
+function createBinding(
+  id: number,
+  enabled: boolean,
+  patch: Partial<CliproxyAuthFileBinding> = {}
+): CliproxyAuthFileBinding {
   return {
     id,
     user_id: 1,
@@ -95,33 +164,6 @@ function createBinding(id: number, enabled: boolean): CliproxyAuthFileBinding {
     last_error: '',
     created_at: 0,
     updated_at: 0,
+    ...patch,
   }
 }
-
-  test('limits concurrency while refreshing all bindings', async () => {
-    let inFlight = 0
-    let maxInFlight = 0
-    const summary = await refreshCliproxyAuthFileBindingsUsageAll(
-      [
-        createBinding(1, true),
-        createBinding(2, true),
-        createBinding(3, true),
-        createBinding(4, true),
-      ],
-      async (id) => {
-        inFlight++
-        maxInFlight = Math.max(maxInFlight, inFlight)
-        await new Promise((resolve) => setTimeout(resolve, 20))
-        inFlight--
-        return {
-          success: true,
-          data: createBinding(id, true),
-        }
-      },
-      2
-    )
-
-    assert.equal(summary.success, 4)
-    assert.equal(summary.failed, 0)
-    assert.ok(maxInFlight <= 2)
-  })
