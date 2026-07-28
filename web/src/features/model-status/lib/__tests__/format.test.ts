@@ -3,6 +3,7 @@ import { describe, test } from 'node:test'
 
 import {
   calculateModelStatusSuccessCount,
+  canInspectModelStatusErrors,
   formatModelStatusMs,
   modelStatusVisual,
 } from '../format'
@@ -13,6 +14,13 @@ describe('model status formatting', () => {
     assert.equal(modelStatusVisual('warning').labelKey, 'Warning')
     assert.equal(modelStatusVisual('error').labelKey, 'Error')
     assert.equal(modelStatusVisual('no_request').labelKey, 'No requests')
+  })
+
+  test('allows inspecting only warning and error status details', () => {
+    assert.equal(canInspectModelStatusErrors('normal'), false)
+    assert.equal(canInspectModelStatusErrors('no_request'), false)
+    assert.equal(canInspectModelStatusErrors('warning'), true)
+    assert.equal(canInspectModelStatusErrors('error'), true)
   })
 
   test('shows a dash when latency data is unavailable', () => {

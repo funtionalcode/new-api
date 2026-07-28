@@ -114,3 +114,41 @@ func TestGetModelStatusTodaySummaryUsesConsumeLogsOnly(t *testing.T) {
 	assert.Equal(t, int64(100), summary.TokenCount)
 	assert.Equal(t, int64(300), summary.Quota)
 }
+
+func TestGetModelStatusErrorSamplesReturnsRecentWindowErrors(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, LOG_DB.Exec("DELETE FROM logs").Error)
+
+	base := time.Date(2026, time.July, 27, 8, 0, 0, 0, time.UTC).Unix()
+	require.NoError(t, LOG_DB.Create(&[]Log{
+		{
+			ModelName: "gpt-alpha", CreatedAt: base + 60, Type: LogTypeError,
+			Content: "first error", Other: `{"status_code":500}`,
+		},
+		{
+			ModelName: "gpt-alpha", CreatedAt: base + 120, Type: LogTypeConsume,
+			Content: "successful request",
+		},
+		{
+			ModelName: "gpt-alpha", CreatedAt: base + 180, Type: LogTypeError,
+			Content: "latest error", Other: `{"status_code":429}`,
+		},
+		{
+			ModelName: "gpt-beta", CreatedAt: base + 240, Type: LogTypeError,
+			Content: "other model error",
+		},
+		{
+			ModelName: "gpt-alpha", CreatedAt: base - 60, Type: LogTypeError,
+			Content: "old error",
+		},
+	}).Error)
+
+	rows, err := GetModelStatusErrorSamples(base, base+3600, []string{"gpt-alpha"}, 10)
+
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	assert.Equal(t, "latest error", rows[0].Content)
+	assert.Equal(t, base+180, rows[0].CreatedAt)
+	assert.Equal(t, "first error", rows[1].Content)
+	assert.Equal(t, `{"status_code":500}`, rows[1].Other)
+}

@@ -51,6 +51,12 @@ export function modelStatusVisual(
   return MODEL_STATUS_VISUALS[status] ?? MODEL_STATUS_VISUALS.no_request
 }
 
+export function canInspectModelStatusErrors(
+  status: ModelAvailabilityStatus
+): boolean {
+  return status === 'warning' || status === 'error'
+}
+
 export function formatModelStatusPercent(value: number): string {
   if (!Number.isFinite(value)) return '-'
   return Intl.NumberFormat(undefined, {
@@ -78,6 +84,11 @@ export function formatModelStatusMs(value: number): string {
 export function formatModelStatusTime(timestamp: number): string {
   if (!timestamp) return '-'
   return dayjs.unix(timestamp).format('HH:mm:ss')
+}
+
+export function formatModelStatusDateTime(timestamp: number): string {
+  if (!timestamp) return '-'
+  return dayjs.unix(timestamp).format('YYYY-MM-DD HH:mm:ss')
 }
 
 export function formatModelStatusBucketTime(timestamp: number): string {

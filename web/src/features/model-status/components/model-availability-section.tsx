@@ -1,8 +1,16 @@
-import { Radio } from 'lucide-react'
+import { AlertTriangle, Clock3, Radio } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   Tooltip,
   TooltipContent,
@@ -14,8 +22,10 @@ import { cn } from '@/lib/utils'
 
 import {
   calculateModelStatusSuccessCount,
+  canInspectModelStatusErrors,
   formatModelStatusBucketRange,
   formatModelStatusBucketTime,
+  formatModelStatusDateTime,
   formatModelStatusMetric,
   formatModelStatusMs,
   formatModelStatusNumber,
@@ -30,11 +40,18 @@ import {
 import type {
   ModelAvailabilityStatus,
   ModelStatusBucket,
+  ModelStatusErrorDetail,
   ModelStatusModel,
 } from '../types'
 
 type ModelAvailabilitySectionProps = {
   models: ModelStatusModel[]
+}
+
+type ModelStatusErrorDialogState = {
+  title: string
+  description: string
+  details: ModelStatusErrorDetail[]
 }
 
 export function ModelAvailabilitySection(props: ModelAvailabilitySectionProps) {
@@ -134,8 +151,28 @@ function StatusLegend() {
 
 function ModelAvailabilityCard(props: { model: ModelStatusModel }) {
   const { t } = useTranslation()
+  const [errorDialog, setErrorDialog] =
+    useState<ModelStatusErrorDialogState | null>(null)
   const visual = modelStatusVisual(props.model.status)
   const meta = getModelStatusModelMeta(props.model.model_name)
+  const canInspectModelErrors = canInspectModelStatusErrors(props.model.status)
+  const modelErrorDetails = props.model.error_details ?? []
+
+  function openModelErrorDetails() {
+    setErrorDialog({
+      title: t('Recent errors for {{model}}', {
+        model: props.model.model_name,
+      }),
+      description: t('Latest related errors in the last 24 hours.'),
+      details: modelErrorDetails,
+    })
+  }
+
+  function handleErrorDialogOpenChange(open: boolean) {
+    if (!open) {
+      setErrorDialog(null)
+    }
+  }
 
   return (
     <Card className='border-border bg-background hover:shadow-foreground/10 min-h-40 px-4 py-4 shadow-none transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg sm:px-5'>
@@ -149,7 +186,25 @@ function ModelAvailabilityCard(props: { model: ModelStatusModel }) {
               <h3 className='truncate text-base font-semibold'>
                 {props.model.model_name}
               </h3>
-              <Badge variant='outline' className={visual.badgeClassName}>
+              <Badge
+                variant='outline'
+                render={
+                  canInspectModelErrors ? <button type='button' /> : undefined
+                }
+                onClick={
+                  canInspectModelErrors ? openModelErrorDetails : undefined
+                }
+                aria-label={
+                  canInspectModelErrors
+                    ? `${t(visual.labelKey)} · ${t('View related error messages')}`
+                    : undefined
+                }
+                className={cn(
+                  visual.badgeClassName,
+                  canInspectModelErrors &&
+                    'cursor-pointer hover:brightness-95 focus-visible:ring-3 focus-visible:ring-ring/50'
+                )}
+              >
                 {t(visual.labelKey)}
               </Badge>
             </div>
@@ -184,7 +239,12 @@ function ModelAvailabilityCard(props: { model: ModelStatusModel }) {
       <div className='mt-5'>
         <div className='flex h-10 items-end gap-1'>
           {props.model.buckets.map((bucket) => (
-            <TimelineBar key={bucket.start} bucket={bucket} />
+            <TimelineBar
+              key={bucket.start}
+              bucket={bucket}
+              modelName={props.model.model_name}
+              onInspectErrors={setErrorDialog}
+            />
           ))}
         </div>
         <div className='text-muted-foreground mt-2 flex justify-between text-xs'>
@@ -199,13 +259,24 @@ function ModelAvailabilityCard(props: { model: ModelStatusModel }) {
           </span>
         </div>
       </div>
+
+      <ModelStatusErrorDetailsDialog
+        selection={errorDialog}
+        onOpenChange={handleErrorDialogOpenChange}
+      />
     </Card>
   )
 }
 
-function TimelineBar(props: { bucket: ModelStatusBucket }) {
+function TimelineBar(props: {
+  bucket: ModelStatusBucket
+  modelName: string
+  onInspectErrors: (selection: ModelStatusErrorDialogState) => void
+}) {
   const { t } = useTranslation()
   const visual = modelStatusVisual(props.bucket.status)
+  const canInspectErrors = canInspectModelStatusErrors(props.bucket.status)
+  const errorDetails = props.bucket.error_details ?? []
   const successCount = calculateModelStatusSuccessCount(
     props.bucket.request_count,
     props.bucket.success_rate
@@ -220,21 +291,46 @@ function TimelineBar(props: { bucket: ModelStatusBucket }) {
       : t('{{time}} · No requests', {
           time: formatModelStatusBucketTime(props.bucket.start),
         })
+  const errorDescription = t('{{time}} · {{count}} related errors', {
+    time: formatModelStatusBucketRange(props.bucket.start),
+    count: formatModelStatusNumber(errorDetails.length),
+  })
+  const barClassName = cn(
+    'min-w-1 flex-1 appearance-none rounded-sm border-0 p-0 transition-all hover:-translate-y-0.5 hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none',
+    canInspectErrors && 'cursor-pointer',
+    props.bucket.request_count > 0 ? 'h-9' : 'h-2',
+    visual.barClassName
+  )
+
+  function openBucketErrorDetails() {
+    props.onInspectErrors({
+      title: t('Recent errors for {{model}}', {
+        model: props.modelName,
+      }),
+      description: errorDescription,
+      details: errorDetails,
+    })
+  }
 
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <div
-            tabIndex={0}
-            role='img'
-            aria-label={title}
-            className={cn(
-              'min-w-1 flex-1 rounded-sm transition-all hover:-translate-y-0.5 hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none',
-              props.bucket.request_count > 0 ? 'h-9' : 'h-2',
-              visual.barClassName
-            )}
-          />
+          canInspectErrors ? (
+            <button
+              type='button'
+              aria-label={`${title}. ${t('View related error messages')}`}
+              onClick={openBucketErrorDetails}
+              className={barClassName}
+            />
+          ) : (
+            <div
+              tabIndex={0}
+              role='img'
+              aria-label={title}
+              className={barClassName}
+            />
+          )
         }
       />
       <TooltipContent
@@ -261,6 +357,105 @@ function TimelineBar(props: { bucket: ModelStatusBucket }) {
       </TooltipContent>
     </Tooltip>
   )
+}
+
+function ModelStatusErrorDetailsDialog(props: {
+  selection: ModelStatusErrorDialogState | null
+  onOpenChange: (open: boolean) => void
+}) {
+  const { t } = useTranslation()
+  const details = props.selection?.details ?? []
+
+  return (
+    <Dialog
+      open={props.selection !== null}
+      onOpenChange={props.onOpenChange}
+    >
+      <DialogContent className='max-h-[calc(100vh-2rem)] overflow-hidden sm:max-w-2xl'>
+        <DialogHeader>
+          <DialogTitle>
+            {props.selection?.title ?? t('Related error messages')}
+          </DialogTitle>
+          <DialogDescription>
+            {props.selection?.description ??
+              t('Latest related errors in the last 24 hours.')}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className='max-h-[min(56vh,420px)] overflow-y-auto pr-1'>
+          {details.length === 0 ? (
+            <div className='border-border bg-muted/30 flex flex-col items-center justify-center rounded-lg border border-dashed px-4 py-8 text-center'>
+              <AlertTriangle
+                className='text-muted-foreground size-5'
+                aria-hidden='true'
+              />
+              <p className='text-muted-foreground mt-2 text-sm'>
+                {t('No related error messages found.')}
+              </p>
+            </div>
+          ) : (
+            <div className='space-y-3'>
+              {details.map((detail) => (
+                <ModelStatusErrorDetailItem
+                  key={modelStatusErrorDetailKey(detail)}
+                  detail={detail}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ModelStatusErrorDetailItem(props: {
+  detail: ModelStatusErrorDetail
+}) {
+  const { t } = useTranslation()
+  const metaItems = [
+    props.detail.status_code
+      ? { label: t('Status Code'), value: String(props.detail.status_code) }
+      : null,
+    props.detail.error_type
+      ? { label: t('Error Type'), value: props.detail.error_type }
+      : null,
+    props.detail.error_code
+      ? { label: t('Error Code'), value: props.detail.error_code }
+      : null,
+  ].filter((item): item is { label: string; value: string } => item !== null)
+
+  return (
+    <div className='border-border bg-muted/20 rounded-lg border p-3'>
+      <div className='flex flex-wrap items-center gap-2 text-xs'>
+        <span className='text-muted-foreground inline-flex items-center gap-1'>
+          <Clock3 className='size-3.5' aria-hidden='true' />
+          {formatModelStatusDateTime(props.detail.created_at)}
+        </span>
+        {metaItems.map((item) => (
+          <span
+            key={item.label}
+            className='bg-background text-muted-foreground rounded-md border px-1.5 py-0.5'
+          >
+            {item.label}: <span className='text-foreground'>{item.value}</span>
+          </span>
+        ))}
+      </div>
+      <p className='mt-2 whitespace-pre-wrap break-words text-sm leading-6'>
+        {props.detail.message || t('Request error occurred')}
+      </p>
+    </div>
+  )
+}
+
+function modelStatusErrorDetailKey(detail: ModelStatusErrorDetail): string {
+  return [
+    detail.created_at,
+    detail.status_code ?? '',
+    detail.error_type ?? '',
+    detail.error_code ?? '',
+    detail.message,
+  ].join('|')
 }
 
 function TimelineTooltipRow(props: { label: string; value: string }) {

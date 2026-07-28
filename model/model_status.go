@@ -38,6 +38,13 @@ type ModelStatusFirstResponseSample struct {
 	Other     string `json:"other" gorm:"column:other"`
 }
 
+type ModelStatusErrorSample struct {
+	ModelName string `json:"model_name" gorm:"column:model_name"`
+	CreatedAt int64  `json:"created_at" gorm:"column:created_at"`
+	Content   string `json:"content" gorm:"column:content"`
+	Other     string `json:"other" gorm:"column:other"`
+}
+
 type modelStatusConsumeSummary struct {
 	ModelName        string `gorm:"column:model_name"`
 	SuccessCount     int64  `gorm:"column:success_count"`
@@ -256,6 +263,22 @@ func GetModelStatusFirstResponseSamples(startTime int64, endTime int64, modelNam
 		Where("model_name IN ?", modelNames).
 		Where("type = ?", LogTypeConsume).
 		Where("other <> ''").
+		Order("created_at DESC").
+		Limit(limit)
+	query = applyModelStatusTimeRange(query, startTime, endTime)
+	err := query.Scan(&rows).Error
+	return rows, err
+}
+
+func GetModelStatusErrorSamples(startTime int64, endTime int64, modelNames []string, limit int) ([]ModelStatusErrorSample, error) {
+	if len(modelNames) == 0 || limit <= 0 {
+		return make([]ModelStatusErrorSample, 0), nil
+	}
+	var rows []ModelStatusErrorSample
+	query := LOG_DB.Table("logs").
+		Select("model_name, created_at, content, other").
+		Where("model_name IN ?", modelNames).
+		Where("type = ?", LogTypeError).
 		Order("created_at DESC").
 		Limit(limit)
 	query = applyModelStatusTimeRange(query, startTime, endTime)

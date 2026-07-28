@@ -3,6 +3,7 @@ package service
 import (
 	"math"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +17,9 @@ const (
 	modelStatusBucketSeconds      = int64(3600)
 	modelStatusMaxModels          = 200
 	modelStatusFirstResponseLimit = 20000
+	modelStatusErrorSampleLimit   = 20000
+	modelStatusMaxModelErrors     = 20
+	modelStatusMaxBucketErrors    = 10
 	modelStatusAutoRefreshSeconds = 60
 )
 
@@ -57,14 +61,24 @@ type ModelStatusModel struct {
 	AvgLatencyMs           float64                   `json:"avg_latency_ms"`
 	Tps                    float64                   `json:"tps"`
 	Status                 string                    `json:"status"`
+	ErrorDetails           []ModelStatusErrorDetail  `json:"error_details,omitempty"`
 	Buckets                []ModelStatusBucketStatus `json:"buckets"`
 }
 
 type ModelStatusBucketStatus struct {
-	Start        int64   `json:"start"`
-	RequestCount int64   `json:"request_count"`
-	SuccessRate  float64 `json:"success_rate"`
-	Status       string  `json:"status"`
+	Start        int64                    `json:"start"`
+	RequestCount int64                    `json:"request_count"`
+	SuccessRate  float64                  `json:"success_rate"`
+	Status       string                   `json:"status"`
+	ErrorDetails []ModelStatusErrorDetail `json:"error_details,omitempty"`
+}
+
+type ModelStatusErrorDetail struct {
+	CreatedAt  int64  `json:"created_at"`
+	Message    string `json:"message"`
+	StatusCode int    `json:"status_code,omitempty"`
+	ErrorType  string `json:"error_type,omitempty"`
+	ErrorCode  string `json:"error_code,omitempty"`
 }
 
 type modelStatusCacheItem struct {
@@ -129,6 +143,10 @@ func buildModelStatusSnapshot(now time.Time) (*ModelStatusSnapshot, error) {
 	if err != nil {
 		return nil, err
 	}
+	errorSamples, err := model.GetModelStatusErrorSamples(windowStart, windowEnd, modelNames, modelStatusErrorSampleLimit)
+	if err != nil {
+		return nil, err
+	}
 
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
 	todaySummary, err := model.GetModelStatusTodaySummary(todayStart, windowEnd)
@@ -138,6 +156,7 @@ func buildModelStatusSnapshot(now time.Time) (*ModelStatusSnapshot, error) {
 
 	firstResponseMsByModel := modelStatusFirstResponseAverages(firstResponseSamples)
 	bucketRowsByModel := modelStatusBucketsByModel(buckets)
+	errorDetailsByModel, errorDetailsByBucket := modelStatusErrorDetails(errorSamples)
 	modelRows := make([]ModelStatusModel, 0, len(summaries))
 	overview := ModelStatusOverview{
 		ModelCount:         len(summaries),
@@ -172,7 +191,8 @@ func buildModelStatusSnapshot(now time.Time) (*ModelStatusSnapshot, error) {
 			AvgLatencyMs:           summary.AvgUseTime * 1000,
 			Tps:                    modelStatusTps(summary.CompletionTokens, summary.TotalUseTime),
 			Status:                 status,
-			Buckets:                modelStatusTimeline(bucketStarts, bucketRowsByModel[summary.ModelName]),
+			ErrorDetails:           errorDetailsByModel[summary.ModelName],
+			Buckets:                modelStatusTimeline(bucketStarts, bucketRowsByModel[summary.ModelName], errorDetailsByBucket[summary.ModelName]),
 		})
 	}
 	overview.AvgSuccessRate = modelStatusSuccessRate(successCount, overview.RequestCount)
@@ -215,7 +235,7 @@ func modelStatusBucketsByModel(rows []model.ModelStatusLogBucket) map[string]map
 	return result
 }
 
-func modelStatusTimeline(bucketStarts []int64, rows map[int64]model.ModelStatusLogBucket) []ModelStatusBucketStatus {
+func modelStatusTimeline(bucketStarts []int64, rows map[int64]model.ModelStatusLogBucket, errorDetailsByBucket map[int64][]ModelStatusErrorDetail) []ModelStatusBucketStatus {
 	timeline := make([]ModelStatusBucketStatus, 0, len(bucketStarts))
 	for _, start := range bucketStarts {
 		row := rows[start]
@@ -225,9 +245,55 @@ func modelStatusTimeline(bucketStarts []int64, rows map[int64]model.ModelStatusL
 			RequestCount: row.RequestCount,
 			SuccessRate:  successRate,
 			Status:       modelStatusState(row.RequestCount, successRate),
+			ErrorDetails: errorDetailsByBucket[start],
 		})
 	}
 	return timeline
+}
+
+func modelStatusErrorDetails(samples []model.ModelStatusErrorSample) (map[string][]ModelStatusErrorDetail, map[string]map[int64][]ModelStatusErrorDetail) {
+	detailsByModel := make(map[string][]ModelStatusErrorDetail)
+	detailsByBucket := make(map[string]map[int64][]ModelStatusErrorDetail)
+
+	for _, sample := range samples {
+		if strings.TrimSpace(sample.ModelName) == "" {
+			continue
+		}
+		modelName := sample.ModelName
+		detail := modelStatusErrorDetail(sample)
+		if len(detailsByModel[modelName]) < modelStatusMaxModelErrors {
+			detailsByModel[modelName] = append(detailsByModel[modelName], detail)
+		}
+
+		bucketStart := sample.CreatedAt - sample.CreatedAt%modelStatusBucketSeconds
+		if _, ok := detailsByBucket[modelName]; !ok {
+			detailsByBucket[modelName] = make(map[int64][]ModelStatusErrorDetail)
+		}
+		if len(detailsByBucket[modelName][bucketStart]) < modelStatusMaxBucketErrors {
+			detailsByBucket[modelName][bucketStart] = append(detailsByBucket[modelName][bucketStart], detail)
+		}
+	}
+
+	return detailsByModel, detailsByBucket
+}
+
+func modelStatusErrorDetail(sample model.ModelStatusErrorSample) ModelStatusErrorDetail {
+	detail := ModelStatusErrorDetail{
+		CreatedAt: sample.CreatedAt,
+		Message:   strings.TrimSpace(sample.Content),
+	}
+	if sample.Other == "" {
+		return detail
+	}
+
+	var payload map[string]interface{}
+	if err := common.UnmarshalJsonStr(sample.Other, &payload); err != nil {
+		return detail
+	}
+	detail.StatusCode = modelStatusStatusCode(payload["status_code"])
+	detail.ErrorType = modelStatusString(payload["error_type"])
+	detail.ErrorCode = modelStatusString(payload["error_code"])
+	return detail
 }
 
 func modelStatusSuccessRate(successCount int64, requestCount int64) float64 {
@@ -330,4 +396,19 @@ func modelStatusFloat(value interface{}) (float64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func modelStatusString(value interface{}) string {
+	if text, ok := value.(string); ok {
+		return strings.TrimSpace(text)
+	}
+	return ""
+}
+
+func modelStatusStatusCode(value interface{}) int {
+	parsed, ok := modelStatusFloat(value)
+	if !ok || parsed < 100 || parsed > 999 {
+		return 0
+	}
+	return int(parsed)
 }

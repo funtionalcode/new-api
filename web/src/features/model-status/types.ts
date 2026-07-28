@@ -27,6 +27,15 @@ export type ModelStatusBucket = {
   request_count: number
   success_rate: number
   status: ModelAvailabilityStatus
+  error_details?: ModelStatusErrorDetail[]
+}
+
+export type ModelStatusErrorDetail = {
+  created_at: number
+  message: string
+  status_code?: number
+  error_type?: string
+  error_code?: string
 }
 
 export type ModelStatusModel = {
@@ -39,6 +48,7 @@ export type ModelStatusModel = {
   avg_latency_ms: number
   tps: number
   status: ModelAvailabilityStatus
+  error_details?: ModelStatusErrorDetail[]
   buckets: ModelStatusBucket[]
 }
 
