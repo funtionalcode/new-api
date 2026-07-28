@@ -36,6 +36,7 @@ export type ModelStatusErrorDetail = {
   status_code?: number
   error_type?: string
   error_code?: string
+  request_id?: string
 }
 
 export type ModelStatusModel = {

@@ -43,6 +43,7 @@ type ModelStatusErrorSample struct {
 	CreatedAt int64  `json:"created_at" gorm:"column:created_at"`
 	Content   string `json:"content" gorm:"column:content"`
 	Other     string `json:"other" gorm:"column:other"`
+	RequestId string `json:"request_id" gorm:"column:request_id"`
 }
 
 type modelStatusConsumeSummary struct {
@@ -276,7 +277,7 @@ func GetModelStatusErrorSamples(startTime int64, endTime int64, modelNames []str
 	}
 	var rows []ModelStatusErrorSample
 	query := LOG_DB.Table("logs").
-		Select("model_name, created_at, content, other").
+		Select("model_name, created_at, content, other, request_id").
 		Where("model_name IN ?", modelNames).
 		Where("type = ?", LogTypeError).
 		Order("created_at DESC").

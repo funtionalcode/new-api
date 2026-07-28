@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 import { AlertTriangle, Clock3, Radio } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -20,6 +21,7 @@ import {
 import { getLobeIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
 
+import { buildModelStatusErrorUsageLogSearch } from '../lib/error-log-link'
 import {
   calculateModelStatusSuccessCount,
   canInspectModelStatusErrors,
@@ -51,6 +53,7 @@ type ModelAvailabilitySectionProps = {
 type ModelStatusErrorDialogState = {
   title: string
   description: string
+  modelName: string
   details: ModelStatusErrorDetail[]
 }
 
@@ -164,6 +167,7 @@ function ModelAvailabilityCard(props: { model: ModelStatusModel }) {
         model: props.model.model_name,
       }),
       description: t('Latest related errors in the last 24 hours.'),
+      modelName: props.model.model_name,
       details: modelErrorDetails,
     })
   }
@@ -308,6 +312,7 @@ function TimelineBar(props: {
         model: props.modelName,
       }),
       description: errorDescription,
+      modelName: props.modelName,
       details: errorDetails,
     })
   }
@@ -365,6 +370,7 @@ function ModelStatusErrorDetailsDialog(props: {
 }) {
   const { t } = useTranslation()
   const details = props.selection?.details ?? []
+  const modelName = props.selection?.modelName?.trim() ?? ''
 
   return (
     <Dialog
@@ -399,6 +405,7 @@ function ModelStatusErrorDetailsDialog(props: {
                 <ModelStatusErrorDetailItem
                   key={modelStatusErrorDetailKey(detail)}
                   detail={detail}
+                  modelName={modelName}
                 />
               ))}
             </div>
@@ -411,6 +418,7 @@ function ModelStatusErrorDetailsDialog(props: {
 
 function ModelStatusErrorDetailItem(props: {
   detail: ModelStatusErrorDetail
+  modelName: string
 }) {
   const { t } = useTranslation()
   const metaItems = [
@@ -424,9 +432,12 @@ function ModelStatusErrorDetailItem(props: {
       ? { label: t('Error Code'), value: props.detail.error_code }
       : null,
   ].filter((item): item is { label: string; value: string } => item !== null)
+  const canOpenUsageLog = props.modelName !== ''
+  const itemClassName =
+    'border-border bg-muted/20 block w-full rounded-lg border p-3 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-ring'
 
-  return (
-    <div className='border-border bg-muted/20 rounded-lg border p-3'>
+  const content = (
+    <>
       <div className='flex flex-wrap items-center gap-2 text-xs'>
         <span className='text-muted-foreground inline-flex items-center gap-1'>
           <Clock3 className='size-3.5' aria-hidden='true' />
@@ -444,13 +455,41 @@ function ModelStatusErrorDetailItem(props: {
       <p className='mt-2 whitespace-pre-wrap break-words text-sm leading-6'>
         {props.detail.message || t('Request error occurred')}
       </p>
-    </div>
+      {canOpenUsageLog ? (
+        <p className='text-muted-foreground mt-2 text-xs'>
+          {t('Click to view related usage logs')}
+        </p>
+      ) : null}
+    </>
+  )
+
+  if (!canOpenUsageLog) {
+    return <div className={itemClassName}>{content}</div>
+  }
+
+  return (
+    <Link
+      to='/usage-logs/$section'
+      params={{ section: 'common' }}
+      search={buildModelStatusErrorUsageLogSearch({
+        modelName: props.modelName,
+        detail: props.detail,
+      })}
+      aria-label={t('View related usage logs')}
+      className={cn(
+        itemClassName,
+        'hover:bg-muted/40 cursor-pointer no-underline'
+      )}
+    >
+      {content}
+    </Link>
   )
 }
 
 function modelStatusErrorDetailKey(detail: ModelStatusErrorDetail): string {
   return [
     detail.created_at,
+    detail.request_id ?? '',
     detail.status_code ?? '',
     detail.error_type ?? '',
     detail.error_code ?? '',

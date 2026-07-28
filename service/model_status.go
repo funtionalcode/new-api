@@ -79,6 +79,7 @@ type ModelStatusErrorDetail struct {
 	StatusCode int    `json:"status_code,omitempty"`
 	ErrorType  string `json:"error_type,omitempty"`
 	ErrorCode  string `json:"error_code,omitempty"`
+	RequestId  string `json:"request_id,omitempty"`
 }
 
 type modelStatusCacheItem struct {
@@ -281,6 +282,7 @@ func modelStatusErrorDetail(sample model.ModelStatusErrorSample) ModelStatusErro
 	detail := ModelStatusErrorDetail{
 		CreatedAt: sample.CreatedAt,
 		Message:   strings.TrimSpace(sample.Content),
+		RequestId: strings.TrimSpace(sample.RequestId),
 	}
 	if sample.Other == "" {
 		return detail

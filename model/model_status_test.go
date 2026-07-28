@@ -123,7 +123,7 @@ func TestGetModelStatusErrorSamplesReturnsRecentWindowErrors(t *testing.T) {
 	require.NoError(t, LOG_DB.Create(&[]Log{
 		{
 			ModelName: "gpt-alpha", CreatedAt: base + 60, Type: LogTypeError,
-			Content: "first error", Other: `{"status_code":500}`,
+			Content: "first error", Other: `{"status_code":500}`, RequestId: "req-first",
 		},
 		{
 			ModelName: "gpt-alpha", CreatedAt: base + 120, Type: LogTypeConsume,
@@ -131,7 +131,7 @@ func TestGetModelStatusErrorSamplesReturnsRecentWindowErrors(t *testing.T) {
 		},
 		{
 			ModelName: "gpt-alpha", CreatedAt: base + 180, Type: LogTypeError,
-			Content: "latest error", Other: `{"status_code":429}`,
+			Content: "latest error", Other: `{"status_code":429}`, RequestId: "req-latest",
 		},
 		{
 			ModelName: "gpt-beta", CreatedAt: base + 240, Type: LogTypeError,
@@ -149,6 +149,8 @@ func TestGetModelStatusErrorSamplesReturnsRecentWindowErrors(t *testing.T) {
 	require.Len(t, rows, 2)
 	assert.Equal(t, "latest error", rows[0].Content)
 	assert.Equal(t, base+180, rows[0].CreatedAt)
+	assert.Equal(t, "req-latest", rows[0].RequestId)
 	assert.Equal(t, "first error", rows[1].Content)
 	assert.Equal(t, `{"status_code":500}`, rows[1].Other)
+	assert.Equal(t, "req-first", rows[1].RequestId)
 }
