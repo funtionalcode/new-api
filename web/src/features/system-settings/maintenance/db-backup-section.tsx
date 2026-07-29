@@ -104,6 +104,7 @@ export function DBBackupSection() {
   const [savingScript, setSavingScript] = useState(false)
   const [scriptContent, setScriptContent] = useState('')
   const [scriptSha, setScriptSha] = useState('')
+  const [scriptIsDefault, setScriptIsDefault] = useState(false)
   const [showScriptConfirm, setShowScriptConfirm] = useState(false)
   const [showTriggerConfirm, setShowTriggerConfirm] = useState(false)
   const [isStarting, setIsStarting] = useState(false)
@@ -143,6 +144,7 @@ export function DBBackupSection() {
         if (scriptRes.success && scriptRes.data) {
           setScriptContent(scriptRes.data.content || '')
           setScriptSha(scriptRes.data.sha256 || '')
+          setScriptIsDefault(Boolean(scriptRes.data.is_default))
         }
         if (taskRes.success && taskRes.data) {
           setTask(taskRes.data)
@@ -237,6 +239,7 @@ export function DBBackupSection() {
         throw new Error(res.message || t('Failed to save backup script.'))
       }
       setScriptSha(res.data?.sha256 || '')
+      setScriptIsDefault(false)
       setShowScriptConfirm(false)
       toast.success(t('Backup script saved. Host agent will apply it on next poll.'))
     } catch (error) {
@@ -388,6 +391,15 @@ export function DBBackupSection() {
               'Empty script keeps the current host file. Saving overwrites /usr/local/bin/backup-new-api-db.sh on next agent poll.'
             )}
           </p>
+          {scriptIsDefault ? (
+            <Alert>
+              <AlertDescription>
+                {t(
+                  'Showing the default template. Saving will materialize it on the host agent.'
+                )}
+              </AlertDescription>
+            </Alert>
+          ) : null}
           {scriptSha ? (
             <p className='text-muted-foreground font-mono text-xs'>
               SHA256: {scriptSha}
@@ -397,7 +409,10 @@ export function DBBackupSection() {
         <Textarea
           className='min-h-64 font-mono text-xs'
           value={scriptContent}
-          onChange={(event) => setScriptContent(event.target.value)}
+          onChange={(event) => {
+            setScriptContent(event.target.value)
+            if (scriptIsDefault) setScriptIsDefault(false)
+          }}
           spellCheck={false}
         />
         <div>

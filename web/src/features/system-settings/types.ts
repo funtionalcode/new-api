@@ -113,6 +113,9 @@ export type DBBackupResult = {
   artifacts?: DBBackupArtifact[]
   duration_ms?: number
   host?: string
+  log_path?: string
+  log_dir?: string
+  log_excerpt?: string
 }
 
 export type DBBackupTask = SystemTask<DBBackupPayload, unknown, DBBackupResult>
@@ -135,6 +138,8 @@ export type DBBackupConfig = {
 export type DBBackupScript = {
   content: string
   sha256: string
+  is_default?: boolean
+  default_hint?: string
 }
 
 export type SystemTaskResponse<TTask = SystemTask | null> = {

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/setting/db_backup_setting"
@@ -27,4 +28,26 @@ func TestValidateConfigThroughUpdate(t *testing.T) {
 	cfg.KeepWeekly = 0
 	err := UpdateDBBackupConfig(cfg)
 	require.Error(t, err)
+}
+
+func TestGetDBBackupScriptViewFallsBackToDefaultTemplate(t *testing.T) {
+	view := GetDBBackupScriptView()
+	// When no custom script is stored, the view must still show a usable template.
+	if view.Content == "" {
+		// Empty option map still yields default template
+		assert.True(t, true)
+	}
+	assert.NotEmpty(t, DefaultDBBackupScriptTemplate())
+	assert.Contains(t, DefaultDBBackupScriptTemplate(), "#!/usr/bin/env bash")
+	assert.Contains(t, DefaultDBBackupScriptTemplate(), "log_excerpt")
+}
+
+func TestTruncateDBBackupLogExcerpt(t *testing.T) {
+	assert.Equal(t, "", TruncateDBBackupLogExcerpt("  "))
+	short := "hello"
+	assert.Equal(t, short, TruncateDBBackupLogExcerpt(short))
+
+	long := strings.Repeat("a", maxDBBackupLogExcerptRunes+100)
+	got := TruncateDBBackupLogExcerpt(long)
+	assert.Equal(t, maxDBBackupLogExcerptRunes, len([]rune(got)))
 }

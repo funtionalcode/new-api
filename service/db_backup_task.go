@@ -1,6 +1,7 @@
 package service
 
 import (
+	_ "embed"
 	"fmt"
 	"strings"
 
@@ -8,6 +9,15 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/db_backup_setting"
 )
+
+//go:embed db_backup_script.default.sh
+var defaultDBBackupScriptTemplate string
+
+// DefaultDBBackupScriptTemplate returns the built-in host backup script template
+// shown in the UI when no custom script has been saved yet.
+func DefaultDBBackupScriptTemplate() string {
+	return defaultDBBackupScriptTemplate
+}
 
 const dbBackupHostRunnerID = "host-backup-agent"
 
@@ -30,6 +40,9 @@ type DBBackupResult struct {
 	Artifacts  []DBBackupArtifact `json:"artifacts"`
 	DurationMs int64              `json:"duration_ms,omitempty"`
 	Host       string             `json:"host,omitempty"`
+	LogPath    string             `json:"log_path,omitempty"`
+	LogDir     string             `json:"log_dir,omitempty"`
+	LogExcerpt string             `json:"log_excerpt,omitempty"`
 }
 
 type DBBackupConfigView struct {
@@ -39,8 +52,10 @@ type DBBackupConfigView struct {
 }
 
 type DBBackupScriptView struct {
-	Content string `json:"content"`
-	SHA256  string `json:"sha256"`
+	Content     string `json:"content"`
+	SHA256      string `json:"sha256"`
+	IsDefault   bool   `json:"is_default,omitempty"`
+	DefaultHint string `json:"default_hint,omitempty"`
 }
 
 type DBBackupAgentBundle struct {
@@ -125,6 +140,14 @@ func UpdateDBBackupConfig(cfg db_backup_setting.DBBackupSetting) error {
 
 func GetDBBackupScriptView() DBBackupScriptView {
 	content, sha := model.GetDBBackupScript()
+	if strings.TrimSpace(content) == "" {
+		return DBBackupScriptView{
+			Content:     DefaultDBBackupScriptTemplate(),
+			SHA256:      "",
+			IsDefault:   true,
+			DefaultHint: "Showing the default template. Saving will materialize it on the host agent.",
+		}
+	}
 	return DBBackupScriptView{Content: content, SHA256: sha}
 }
 
@@ -158,6 +181,21 @@ func BuildDBBackupAgentBundle(localScriptSHA string) DBBackupAgentBundle {
 	return bundle
 }
 
+const maxDBBackupLogExcerptRunes = 32000
+
+// TruncateDBBackupLogExcerpt bounds agent-reported log text stored on the task.
+func TruncateDBBackupLogExcerpt(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	runes := []rune(s)
+	if len(runes) <= maxDBBackupLogExcerptRunes {
+		return s
+	}
+	return string(runes[len(runes)-maxDBBackupLogExcerptRunes:])
+}
+
 func buildDBBackupLogContent(status model.SystemTaskStatus, result DBBackupResult, errMsg string) string {
 	parts := []string{fmt.Sprintf("db_backup %s", status)}
 	if result.Host != "" {
@@ -165,6 +203,9 @@ func buildDBBackupLogContent(status model.SystemTaskStatus, result DBBackupResul
 	}
 	if result.DurationMs > 0 {
 		parts = append(parts, fmt.Sprintf("duration_ms=%d", result.DurationMs))
+	}
+	if result.LogPath != "" {
+		parts = append(parts, "log="+result.LogPath)
 	}
 	if len(result.Artifacts) > 0 {
 		files := make([]string, 0, len(result.Artifacts))

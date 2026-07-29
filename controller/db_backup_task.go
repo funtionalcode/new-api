@@ -18,6 +18,9 @@ type reportDBBackupTaskRequest struct {
 	Host        string                     `json:"host"`
 	Error       string                     `json:"error"`
 	TriggeredBy string                     `json:"triggered_by"`
+	LogPath     string                     `json:"log_path"`
+	LogDir      string                     `json:"log_dir"`
+	LogExcerpt  string                     `json:"log_excerpt"`
 }
 
 type updateDBBackupScriptRequest struct {
@@ -157,6 +160,9 @@ func ReportDBBackupTask(c *gin.Context) {
 		Artifacts:  req.Artifacts,
 		DurationMs: req.DurationMs,
 		Host:       req.Host,
+		LogPath:    req.LogPath,
+		LogDir:     req.LogDir,
+		LogExcerpt: service.TruncateDBBackupLogExcerpt(req.LogExcerpt),
 	}
 	if err := service.FinishDBBackupReport(req.TaskID, req.Success, payload, result, req.Error); err != nil {
 		common.ApiError(c, err)

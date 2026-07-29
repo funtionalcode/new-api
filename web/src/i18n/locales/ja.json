@@ -5536,6 +5536,15 @@
     "Days": "Days",
     "Date": "Date",
     "Interval": "Interval",
-    "Codex resets sync": "Codex resets sync"
+    "Codex resets sync": "Codex resets sync",
+    "Showing the default template. Saving will materialize it on the host agent.": "Showing the default template. Saving will materialize it on the host agent.",
+    "Task detail": "Task detail",
+    "No task selected.": "No task selected.",
+    "Log file": "Log file",
+    "Artifacts": "Artifacts",
+    "Size": "Size",
+    "Backup log": "Backup log",
+    "No log excerpt reported. Ensure the host backup script writes to the configured log directory and reports log_excerpt.": "No log excerpt reported. Ensure the host backup script writes to the configured log directory and reports log_excerpt.",
+    "No additional detail for this task.": "No additional detail for this task."
   }
 }

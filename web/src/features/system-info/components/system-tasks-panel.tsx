@@ -18,11 +18,19 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { ListChecks, RefreshCw } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ErrorState } from '@/components/error-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -35,6 +43,8 @@ import {
 } from '@/components/ui/table'
 import { listSystemTasks } from '@/features/system-settings/api'
 import type {
+  DBBackupArtifact,
+  DBBackupResult,
   SystemTask,
   SystemTaskStatus,
 } from '@/features/system-settings/types'
@@ -104,8 +114,236 @@ function getProgress(task: SystemTask): number | null {
   return Math.min(100, Math.max(0, progress))
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
+function asDBBackupResult(value: unknown): DBBackupResult | null {
+  const record = asRecord(value)
+  if (!record) return null
+  return {
+    artifacts: Array.isArray(record.artifacts)
+      ? (record.artifacts as DBBackupArtifact[])
+      : undefined,
+    duration_ms:
+      typeof record.duration_ms === 'number' ? record.duration_ms : undefined,
+    host: typeof record.host === 'string' ? record.host : undefined,
+    log_path: typeof record.log_path === 'string' ? record.log_path : undefined,
+    log_dir: typeof record.log_dir === 'string' ? record.log_dir : undefined,
+    log_excerpt:
+      typeof record.log_excerpt === 'string' ? record.log_excerpt : undefined,
+  }
+}
+
+function formatBytes(bytes: number | undefined): string {
+  if (bytes == null || Number.isNaN(bytes)) return '-'
+  if (bytes < 1024) return `${bytes} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let value = bytes
+  let unit = -1
+  do {
+    value /= 1024
+    unit += 1
+  } while (value >= 1024 && unit < units.length - 1)
+  return `${value.toFixed(1)} ${units[unit]}`
+}
+
+function taskHasDetail(task: SystemTask): boolean {
+  if (task.error) return true
+  if (task.result == null) return false
+  if (typeof task.result === 'string') return task.result.trim() !== ''
+  if (typeof task.result === 'object') return Object.keys(task.result).length > 0
+  return true
+}
+
+type SystemTaskDetailDialogProps = {
+  task: SystemTask | null
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}
+
+function SystemTaskDetailDialog({
+  task,
+  open,
+  onOpenChange,
+}: SystemTaskDetailDialogProps) {
+  const { t, i18n } = useTranslation()
+  const backupResult = useMemo(
+    () => (task?.type === 'db_backup' ? asDBBackupResult(task.result) : null),
+    [task]
+  )
+  const genericResult = useMemo(() => {
+    if (!task?.result) return ''
+    if (typeof task.result === 'string') return task.result
+    try {
+      return JSON.stringify(task.result, null, 2)
+    } catch {
+      return String(task.result)
+    }
+  }, [task])
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className='max-h-[85vh] overflow-y-auto sm:max-w-2xl'>
+        <DialogHeader>
+          <DialogTitle>{t('Task detail')}</DialogTitle>
+          <DialogDescription>
+            {task
+              ? `${t(TYPE_LABEL[task.type] ?? task.type)} · ${task.task_id}`
+              : t('No task selected.')}
+          </DialogDescription>
+        </DialogHeader>
+        {task ? (
+          <div className='space-y-4'>
+            <div className='grid gap-3 sm:grid-cols-2'>
+              <div className='space-y-1'>
+                <div className='text-muted-foreground text-xs'>{t('Status')}</div>
+                <div className='text-sm font-medium'>{t(task.status)}</div>
+              </div>
+              <div className='space-y-1'>
+                <div className='text-muted-foreground text-xs'>{t('Executor')}</div>
+                <div className='font-mono text-xs break-all'>
+                  {task.locked_by || '-'}
+                </div>
+              </div>
+              <div className='space-y-1'>
+                <div className='text-muted-foreground text-xs'>{t('Updated')}</div>
+                <div className='text-sm'>
+                  {formatTimestampToDate(task.updated_at)}
+                  <span className='text-muted-foreground ml-2 text-xs'>
+                    (
+                    {formatTimestampRelative(
+                      task.updated_at,
+                      'seconds',
+                      toIntlLocale(i18n.language)
+                    )}
+                    )
+                  </span>
+                </div>
+              </div>
+              {backupResult?.duration_ms != null ? (
+                <div className='space-y-1'>
+                  <div className='text-muted-foreground text-xs'>
+                    {t('Duration')}
+                  </div>
+                  <div className='text-sm tabular-nums'>
+                    {(backupResult.duration_ms / 1000).toFixed(1)}s
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            {task.error ? (
+              <div className='space-y-1'>
+                <div className='text-muted-foreground text-xs'>{t('Error')}</div>
+                <pre className='bg-destructive/5 text-destructive max-h-40 overflow-auto rounded-md border p-3 text-xs whitespace-pre-wrap'>
+                  {task.error}
+                </pre>
+              </div>
+            ) : null}
+
+            {backupResult ? (
+              <>
+                {(backupResult.log_dir || backupResult.log_path) && (
+                  <div className='grid gap-3 sm:grid-cols-2'>
+                    {backupResult.log_dir ? (
+                      <div className='space-y-1'>
+                        <div className='text-muted-foreground text-xs'>
+                          {t('Log directory')}
+                        </div>
+                        <div className='font-mono text-xs break-all'>
+                          {backupResult.log_dir}
+                        </div>
+                      </div>
+                    ) : null}
+                    {backupResult.log_path ? (
+                      <div className='space-y-1'>
+                        <div className='text-muted-foreground text-xs'>
+                          {t('Log file')}
+                        </div>
+                        <div className='font-mono text-xs break-all'>
+                          {backupResult.log_path}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+
+                {backupResult.artifacts && backupResult.artifacts.length > 0 ? (
+                  <div className='space-y-2'>
+                    <div className='text-muted-foreground text-xs'>
+                      {t('Artifacts')}
+                    </div>
+                    <div className='overflow-x-auto rounded-md border'>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className='text-xs'>{t('Type')}</TableHead>
+                            <TableHead className='text-xs'>{t('File')}</TableHead>
+                            <TableHead className='text-xs'>{t('Size')}</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {backupResult.artifacts.map((artifact, index) => (
+                            <TableRow key={`${artifact.file}-${index}`}>
+                              <TableCell className='text-xs'>
+                                {artifact.type}
+                                {artifact.database ? ` · ${artifact.database}` : ''}
+                              </TableCell>
+                              <TableCell className='max-w-[280px] truncate font-mono text-[11px]'>
+                                {artifact.file}
+                              </TableCell>
+                              <TableCell className='text-xs tabular-nums'>
+                                {formatBytes(artifact.size_bytes)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                ) : null}
+
+                {backupResult.log_excerpt ? (
+                  <div className='space-y-1'>
+                    <div className='text-muted-foreground text-xs'>
+                      {t('Backup log')}
+                    </div>
+                    <pre className='bg-muted/40 max-h-72 overflow-auto rounded-md border p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap'>
+                      {backupResult.log_excerpt}
+                    </pre>
+                  </div>
+                ) : (
+                  <p className='text-muted-foreground text-xs'>
+                    {t(
+                      'No log excerpt reported. Ensure the host backup script writes to the configured log directory and reports log_excerpt.'
+                    )}
+                  </p>
+                )}
+              </>
+            ) : genericResult ? (
+              <div className='space-y-1'>
+                <div className='text-muted-foreground text-xs'>{t('Result')}</div>
+                <pre className='bg-muted/40 max-h-72 overflow-auto rounded-md border p-3 font-mono text-[11px] whitespace-pre-wrap'>
+                  {genericResult}
+                </pre>
+              </div>
+            ) : (
+              <p className='text-muted-foreground text-sm'>
+                {t('No additional detail for this task.')}
+              </p>
+            )}
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 type SystemTasksTableProps = {
   tasks: SystemTask[]
+  onOpenDetail: (task: SystemTask) => void
 }
 
 function SystemTasksTable(props: SystemTasksTableProps) {
@@ -131,7 +369,7 @@ function SystemTasksTable(props: SystemTasksTableProps) {
             <TableHead className='h-9 w-[190px] text-xs'>
               {t('Updated')}
             </TableHead>
-            <TableHead className='h-9 w-[220px] pr-4 text-xs'>
+            <TableHead className='h-9 w-[120px] pr-4 text-xs'>
               {t('Detail')}
             </TableHead>
           </TableRow>
@@ -139,6 +377,7 @@ function SystemTasksTable(props: SystemTasksTableProps) {
         <TableBody>
           {props.tasks.map((task) => {
             const progress = getProgress(task)
+            const hasDetail = taskHasDetail(task)
             return (
               <TableRow key={task.task_id} className='hover:bg-muted/30'>
                 <TableCell className='px-4 py-3 align-middle'>
@@ -193,11 +432,19 @@ function SystemTasksTable(props: SystemTasksTableProps) {
                     toIntlLocale(i18n.language)
                   )}
                 </TableCell>
-                <TableCell
-                  className='text-destructive max-w-[220px] truncate py-3 pr-4 align-middle text-xs'
-                  title={task.error || undefined}
-                >
-                  {task.error || '-'}
+                <TableCell className='py-3 pr-4 align-middle'>
+                  {hasDetail ? (
+                    <Button
+                      type='button'
+                      variant='ghost'
+                      size='sm'
+                      onClick={() => props.onOpenDetail(task)}
+                    >
+                      {t('View')}
+                    </Button>
+                  ) : (
+                    <span className='text-muted-foreground text-xs'>-</span>
+                  )}
                 </TableCell>
               </TableRow>
             )
@@ -210,6 +457,9 @@ function SystemTasksTable(props: SystemTasksTableProps) {
 
 export function SystemTasksPanel() {
   const { t } = useTranslation()
+  const [detailTask, setDetailTask] = useState<SystemTask | null>(null)
+  const [detailOpen, setDetailOpen] = useState(false)
+
   const tasksQuery = useQuery({
     queryKey: ['system-info', 'system-tasks'],
     queryFn: async () => {
@@ -233,6 +483,11 @@ export function SystemTasksPanel() {
   const hasActiveTasks = tasks.some((task) => isActiveStatus(task.status))
   const activeTasks = tasks.filter((task) => isActiveStatus(task.status))
   const historyTasks = tasks.filter((task) => !isActiveStatus(task.status))
+
+  const openDetail = (task: SystemTask) => {
+    setDetailTask(task)
+    setDetailOpen(true)
+  }
 
   return (
     <section className='bg-card overflow-hidden rounded-lg border shadow-xs'>
@@ -334,7 +589,10 @@ export function SystemTasksPanel() {
                 <Badge variant='outline'>{activeTasks.length}</Badge>
               </div>
               {activeTasks.length > 0 ? (
-                <SystemTasksTable tasks={activeTasks} />
+                <SystemTasksTable
+                  tasks={activeTasks}
+                  onOpenDetail={openDetail}
+                />
               ) : (
                 <div className='text-muted-foreground rounded-md border border-dashed px-4 py-6 text-center text-sm'>
                   {t('No active system tasks.')}
@@ -353,7 +611,10 @@ export function SystemTasksPanel() {
                 <Badge variant='outline'>{historyTasks.length}</Badge>
               </div>
               {historyTasks.length > 0 ? (
-                <SystemTasksTable tasks={historyTasks} />
+                <SystemTasksTable
+                  tasks={historyTasks}
+                  onOpenDetail={openDetail}
+                />
               ) : (
                 <div className='text-muted-foreground rounded-md border border-dashed px-4 py-6 text-center text-sm'>
                   {t('No historical system tasks.')}
@@ -363,6 +624,15 @@ export function SystemTasksPanel() {
           </div>
         )}
       </div>
+
+      <SystemTaskDetailDialog
+        task={detailTask}
+        open={detailOpen}
+        onOpenChange={(open) => {
+          setDetailOpen(open)
+          if (!open) setDetailTask(null)
+        }}
+      />
     </section>
   )
 }

@@ -5536,6 +5536,15 @@
     "Days": "天",
     "Date": "日期",
     "Interval": "间隔",
-    "Codex resets sync": "Codex 重置同步"
+    "Codex resets sync": "Codex 重置同步",
+    "Showing the default template. Saving will materialize it on the host agent.": "当前显示默认模板。保存后将在宿主机 agent 下次轮询时物化到固定路径。",
+    "Task detail": "任务详情",
+    "No task selected.": "未选择任务。",
+    "Log file": "日志文件",
+    "Artifacts": "备份产物",
+    "Size": "大小",
+    "Backup log": "备份日志",
+    "No log excerpt reported. Ensure the host backup script writes to the configured log directory and reports log_excerpt.": "暂无日志摘要。请确认宿主机备份脚本写入配置的日志目录，并在回报中附带 log_excerpt。",
+    "No additional detail for this task.": "该任务没有更多详情。"
   }
 }
