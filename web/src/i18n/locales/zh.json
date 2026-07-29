@@ -5545,6 +5545,8 @@
     "Size": "大小",
     "Backup log": "备份日志",
     "No log excerpt reported. Ensure the host backup script writes to the configured log directory and reports log_excerpt.": "暂无日志摘要。请确认宿主机备份脚本写入配置的日志目录，并在回报中附带 log_excerpt。",
-    "No additional detail for this task.": "该任务没有更多详情。"
+    "No additional detail for this task.": "该任务没有更多详情。",
+    "{{date}}: {{count}} reset(s)": "{{date}}：{{count}} 次重置",
+    "{{count}} reset(s)": "{{count}} 次重置"
   }
 }

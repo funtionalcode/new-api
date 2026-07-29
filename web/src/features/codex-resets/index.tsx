@@ -49,6 +49,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { useIsAdmin } from '@/hooks/use-admin'
 import { formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -79,6 +85,8 @@ function formatRelative(ts: number | undefined, now = Date.now()): string {
 }
 
 function Heatmap({ points }: { points: CodexResetsHeatmapPoint[] }) {
+  const { t } = useTranslation()
+
   const weeks = useMemo(() => {
     const cols: CodexResetsHeatmapPoint[][] = []
     for (let i = 0; i < points.length; i += 7) {
@@ -95,24 +103,43 @@ function Heatmap({ points }: { points: CodexResetsHeatmapPoint[] }) {
   }
 
   return (
-    <div className='overflow-x-auto'>
-      <div className='flex min-w-max gap-1'>
-        {weeks.map((week, weekIdx) => (
-          <div key={weekIdx} className='flex flex-col gap-1'>
-            {week.map((day) => (
-              <div
-                key={day.date}
-                title={`${day.date}: ${day.count}`}
-                className={cn(
-                  'size-3 rounded-[2px] transition-colors',
-                  levelClass(day.level)
-                )}
-              />
-            ))}
-          </div>
-        ))}
+    <TooltipProvider delay={0}>
+      <div className='overflow-x-auto'>
+        <div className='flex min-w-max gap-1'>
+          {weeks.map((week, weekIdx) => (
+            <div key={weekIdx} className='flex flex-col gap-1'>
+              {week.map((day) => (
+                <Tooltip key={day.date}>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type='button'
+                        aria-label={t('{{date}}: {{count}} reset(s)', {
+                          date: day.date,
+                          count: day.count,
+                        })}
+                        className={cn(
+                          'size-3 rounded-[2px] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
+                          levelClass(day.level)
+                        )}
+                      />
+                    }
+                  />
+                  <TooltipContent side='top' sideOffset={6}>
+                    <div className='flex flex-col gap-0.5'>
+                      <span className='font-medium tabular-nums'>{day.date}</span>
+                      <span className='text-background/80'>
+                        {t('{{count}} reset(s)', { count: day.count })}
+                      </span>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              ))}
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
+    </TooltipProvider>
   )
 }
 
