@@ -42,6 +42,8 @@ import { toIntlLocale } from '@/i18n/languages'
 import { formatTimestampRelative, formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
+import { DBBackupTriggerButton } from './db-backup-trigger-button'
+
 const TASK_LIMIT = 20
 const ACTIVE_POLL_INTERVAL_MS = 8000
 
@@ -84,6 +86,7 @@ const TYPE_LABEL: Record<string, string> = {
   model_update: 'Batch upstream model update',
   midjourney_poll: 'Drawing task polling',
   async_task_poll: 'Async task polling',
+  db_backup: 'Database backup',
 }
 
 const TYPE_DISPLAY_ID: Record<string, string> = {
@@ -266,6 +269,7 @@ export function SystemTasksPanel() {
                 })
               : t('Live refresh pauses when no task is running')}
           </span>
+          <DBBackupTriggerButton />
           <Button
             type='button'
             variant='outline'

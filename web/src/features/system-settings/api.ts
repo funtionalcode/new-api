@@ -20,6 +20,7 @@ import { api } from '@/lib/api'
 
 import type {
   ConfirmPaymentComplianceResponse,
+  DBBackupTask,
   FetchUpstreamRatiosRequest,
   LogCleanupTask,
   SystemOptionsResponse,
@@ -70,17 +71,39 @@ export async function getCurrentLogCleanupTask() {
   return res.data
 }
 
-export async function getSystemTask(taskId: string) {
-  const res = await api.get<SystemTaskResponse<LogCleanupTask>>(
+export async function getSystemTask<TTask = LogCleanupTask | DBBackupTask>(
+  taskId: string
+) {
+  const res = await api.get<SystemTaskResponse<TTask>>(
     `/api/system-task/${taskId}`
   )
   return res.data
 }
 
-export async function listSystemTasks(limit = 20) {
+export async function listSystemTasks(limit = 20, taskType?: string) {
   const res = await api.get<SystemTaskListResponse>('/api/system-task/list', {
-    params: { limit },
+    params: {
+      limit,
+      ...(taskType ? { type: taskType } : {}),
+    },
   })
+  return res.data
+}
+
+export async function triggerDBBackup() {
+  const res = await api.post<SystemTaskResponse<DBBackupTask>>(
+    '/api/system-task/db-backup/trigger'
+  )
+  return res.data
+}
+
+export async function getCurrentDBBackupTask() {
+  const res = await api.get<SystemTaskResponse<DBBackupTask | null>>(
+    '/api/system-task/current',
+    {
+      params: { type: 'db_backup' },
+    }
+  )
   return res.data
 }
 

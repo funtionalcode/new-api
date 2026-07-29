@@ -67,8 +67,9 @@ func GetCurrentSystemTask(c *gin.Context) {
 
 func ListSystemTasks(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.Query("limit"))
+	taskType := c.Query("type")
 
-	tasks, err := model.ListSystemTasks(limit)
+	tasks, err := model.ListSystemTasks(limit, taskType)
 	if err != nil {
 		common.ApiError(c, err)
 		return

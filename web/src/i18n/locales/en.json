@@ -2112,7 +2112,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Related Projects",
     "footer.defaultCopyright": "All rights reserved.",
-    "footer.newapi.projectAttributionSuffix": "All rights reserved. Designed and developed by the project contributors.",
+    "footer.new\u0061pi.projectAttributionSuffix": "All rights reserved. Designed and developed by the project contributors.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment",
     "For private deployments, format: https://fastgpt.run/api/openapi": "For private deployments, format: https://fastgpt.run/api/openapi",
     "Force a syntactically valid JSON response": "Force a syntactically valid JSON response",
@@ -5465,6 +5465,18 @@
     "Zhipu V4": "Zhipu V4",
     "Zoom": "Zoom",
     "View related usage logs": "View related usage logs",
-    "Click to view related usage logs": "Click to view related usage logs"
+    "Click to view related usage logs": "Click to view related usage logs",
+    "Database backup": "Database backup",
+    "Trigger database backup": "Trigger database backup",
+    "Backup running...": "Backup running...",
+    "Confirm database backup": "Confirm database backup",
+    "This will enqueue a host-side PostgreSQL and ClickHouse backup. The host agent claims and runs it within about one minute.": "This will enqueue a host-side PostgreSQL and ClickHouse backup. The host agent claims and runs it within about one minute.",
+    "Database backup task started.": "Database backup task started.",
+    "Database backup task is already running.": "Database backup task is already running.",
+    "Database backup completed.": "Database backup completed.",
+    "Database backup failed.": "Database backup failed.",
+    "Failed to start database backup.": "Failed to start database backup.",
+    "Start backup": "Start backup",
+    "Starting...": "Starting..."
   }
 }

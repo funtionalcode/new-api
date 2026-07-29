@@ -21,6 +21,7 @@ const (
 	SystemTaskTypeModelUpdate    = "model_update"
 	SystemTaskTypeMidjourneyPoll = "midjourney_poll"
 	SystemTaskTypeAsyncTaskPoll  = "async_task_poll"
+	SystemTaskTypeDBBackup       = "db_backup"
 )
 
 var ErrSystemTaskLockLost = errors.New("system task lock lost")
@@ -118,6 +119,43 @@ func CreateSystemTask(taskType string, payload any, state any) (*SystemTask, err
 	return task, nil
 }
 
+// CreateCompletedSystemTask records a terminal task after the fact (for example
+// a host-side weekly cron that never created a pending row). ActiveKey stays
+// nil so the unique active-task index is not occupied by a finished run.
+func CreateCompletedSystemTask(taskType string, payload any, status SystemTaskStatus, result any, errorMessage string, lockedBy string) (*SystemTask, error) {
+	if status != SystemTaskStatusSucceeded && status != SystemTaskStatusFailed {
+		return nil, errors.New("completed system task status must be succeeded or failed")
+	}
+	taskID, err := GenerateSystemTaskID()
+	if err != nil {
+		return nil, err
+	}
+	payloadText, err := marshalSystemTaskJSON(payload)
+	if err != nil {
+		return nil, err
+	}
+	resultText, err := marshalSystemTaskJSON(result)
+	if err != nil {
+		return nil, err
+	}
+
+	task := &SystemTask{
+		TaskID:    taskID,
+		Type:      taskType,
+		Status:    status,
+		ActiveKey: nil,
+		Payload:   payloadText,
+		Result:    resultText,
+		Error:     errorMessage,
+		LockedBy:  lockedBy,
+	}
+
+	if err := DB.Create(task).Error; err != nil {
+		return nil, err
+	}
+	return task, nil
+}
+
 func GetSystemTaskByTaskID(taskID string) (*SystemTask, error) {
 	var task SystemTask
 	if err := DB.Where("task_id = ?", taskID).First(&task).Error; err != nil {
@@ -175,7 +213,7 @@ func FindEarliestPendingSystemTasks(taskTypes []string) (map[string]*SystemTask,
 	return tasksByType, nil
 }
 
-func ListSystemTasks(limit int) ([]*SystemTask, error) {
+func ListSystemTasks(limit int, taskType string) ([]*SystemTask, error) {
 	if limit <= 0 {
 		limit = 20
 	}
@@ -183,7 +221,11 @@ func ListSystemTasks(limit int) ([]*SystemTask, error) {
 		limit = 100
 	}
 	var tasks []*SystemTask
-	err := DB.Order("id desc").Limit(limit).Find(&tasks).Error
+	query := DB.Order("id desc").Limit(limit)
+	if taskType != "" {
+		query = query.Where("type = ?", taskType)
+	}
+	err := query.Find(&tasks).Error
 	return tasks, err
 }
 

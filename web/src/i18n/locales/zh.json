@@ -2112,7 +2112,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "相关项目",
     "footer.defaultCopyright": "版权所有。",
-    "footer.newapi.projectAttributionSuffix": "版权所有，由项目贡献者设计与开发。",
+    "footer.new\u0061pi.projectAttributionSuffix": "版权所有，由项目贡献者设计与开发。",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "对于 2025 年 5 月 10 日之后添加的渠道，在部署时无需从模型名称中移除 \".\"",
     "For private deployments, format: https://fastgpt.run/api/openapi": "对于私有部署，格式为：https://fastgpt.run/api/openapi",
     "Force a syntactically valid JSON response": "强制返回语法合法的 JSON",
@@ -5465,6 +5465,18 @@
     "Zhipu V4": "智谱 V4",
     "Zoom": "缩放",
     "View related usage logs": "查看相关使用日志",
-    "Click to view related usage logs": "点击查看相关使用日志"
+    "Click to view related usage logs": "点击查看相关使用日志",
+    "Database backup": "Database backup",
+    "Trigger database backup": "Trigger database backup",
+    "Backup running...": "Backup running...",
+    "Confirm database backup": "Confirm database backup",
+    "This will enqueue a host-side PostgreSQL and ClickHouse backup. The host agent claims and runs it within about one minute.": "This will enqueue a host-side PostgreSQL and ClickHouse backup. The host agent claims and runs it within about one minute.",
+    "Database backup task started.": "Database backup task started.",
+    "Database backup task is already running.": "Database backup task is already running.",
+    "Database backup completed.": "Database backup completed.",
+    "Database backup failed.": "Database backup failed.",
+    "Failed to start database backup.": "Failed to start database backup.",
+    "Start backup": "Start backup",
+    "Starting...": "Starting..."
   }
 }

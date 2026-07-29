@@ -283,6 +283,53 @@ func TestRenewSystemTaskLock(t *testing.T) {
 	assert.ErrorIs(t, RenewSystemTaskLock(task.TaskID, runnerID, common.GetTimestamp()+600), ErrSystemTaskLockLost)
 }
 
+func TestCreateCompletedSystemTask(t *testing.T) {
+	truncateTables(t)
+
+	_, err := CreateCompletedSystemTask(SystemTaskTypeDBBackup, map[string]string{"triggered_by": "cron"}, SystemTaskStatusPending, nil, "", "host-backup-agent")
+	require.Error(t, err)
+
+	_, err = CreateCompletedSystemTask(SystemTaskTypeDBBackup, map[string]string{"triggered_by": "cron"}, SystemTaskStatusRunning, nil, "", "host-backup-agent")
+	require.Error(t, err)
+
+	result := map[string]any{"host": "node-a"}
+	task, err := CreateCompletedSystemTask(SystemTaskTypeDBBackup, map[string]string{"triggered_by": "cron"}, SystemTaskStatusSucceeded, result, "", "host-backup-agent")
+	require.NoError(t, err)
+	require.NotNil(t, task)
+	assert.Nil(t, task.ActiveKey)
+	assert.Equal(t, SystemTaskStatusSucceeded, task.Status)
+	assert.Equal(t, "host-backup-agent", task.LockedBy)
+	assert.Equal(t, SystemTaskTypeDBBackup, task.Type)
+
+	// Completed rows must not block a new active task of the same type.
+	active, err := CreateSystemTask(SystemTaskTypeDBBackup, nil, nil)
+	require.NoError(t, err)
+	require.NotNil(t, active.ActiveKey)
+}
+
+func TestListSystemTasksFilterByType(t *testing.T) {
+	truncateTables(t)
+
+	cleanup, err := CreateSystemTask(SystemTaskTypeLogCleanup, nil, nil)
+	require.NoError(t, err)
+	backup, err := CreateSystemTask(SystemTaskTypeDBBackup, nil, nil)
+	require.NoError(t, err)
+
+	all, err := ListSystemTasks(20, "")
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(all), 2)
+
+	filtered, err := ListSystemTasks(20, SystemTaskTypeDBBackup)
+	require.NoError(t, err)
+	require.Len(t, filtered, 1)
+	assert.Equal(t, backup.TaskID, filtered[0].TaskID)
+
+	filteredCleanup, err := ListSystemTasks(20, SystemTaskTypeLogCleanup)
+	require.NoError(t, err)
+	require.Len(t, filteredCleanup, 1)
+	assert.Equal(t, cleanup.TaskID, filteredCleanup[0].TaskID)
+}
+
 func TestFinishSystemTaskRetainsExecutor(t *testing.T) {
 	truncateTables(t)
 

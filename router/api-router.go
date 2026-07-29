@@ -284,9 +284,16 @@ func SetApiRouter(router *gin.Engine) {
 		systemTaskRoute.Use(middleware.RootAuth())
 		{
 			systemTaskRoute.POST("/log-cleanup", controller.CreateLogCleanupSystemTask)
+			systemTaskRoute.POST("/db-backup/trigger", controller.TriggerDBBackupTask)
 			systemTaskRoute.GET("/list", controller.ListSystemTasks)
 			systemTaskRoute.GET("/current", controller.GetCurrentSystemTask)
 			systemTaskRoute.GET("/:task_id", controller.GetSystemTask)
+		}
+		dbBackupAgentRoute := apiRouter.Group("/system-task/db-backup/agent")
+		dbBackupAgentRoute.Use(middleware.BackupAgentAuth())
+		{
+			dbBackupAgentRoute.POST("/pending", controller.GetPendingDBBackupTask)
+			dbBackupAgentRoute.POST("/report", controller.ReportDBBackupTask)
 		}
 		systemInfoRoute := apiRouter.Group("/system-info")
 		systemInfoRoute.Use(middleware.RootAuth())

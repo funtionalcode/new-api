@@ -16,5 +16,7 @@
   "Failed to save binding": "Failed to save binding",
   "Leave blank to keep unchanged": "Leave blank to keep unchanged",
   "Manage the relationship between Cliproxy auth files and new-api users.": "Manage the relationship between Cliproxy auth files and new-api users.",
-  "Please select a user": "Please select a user"
+  "Please select a user": "Please select a user",
+  "This will enqueue a host-side PostgreSQL and ClickHouse backup. The host agent claims and runs it within about one minute.": "This will enqueue a host-side PostgreSQL and ClickHouse backup. The host agent claims and runs it within about one minute.",
+  "Failed to start database backup.": "Failed to start database backup."
 }

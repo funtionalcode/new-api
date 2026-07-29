@@ -1,0 +1,14 @@
+{
+  "Database backup": "Database backup",
+  "Trigger database backup": "Trigger database backup",
+  "Backup running...": "Backup running...",
+  "Confirm database backup": "Confirm database backup",
+  "This will enqueue a host-side PostgreSQL and ClickHouse backup. The host agent claims and runs it within about one minute.": "This will enqueue a host-side PostgreSQL and ClickHouse backup. The host agent claims and runs it within about one minute.",
+  "Database backup task started.": "Database backup task started.",
+  "Database backup task is already running.": "Database backup task is already running.",
+  "Database backup completed.": "Database backup completed.",
+  "Database backup failed.": "Database backup failed.",
+  "Failed to start database backup.": "Failed to start database backup.",
+  "Start backup": "Start backup",
+  "Starting...": "Starting..."
+}

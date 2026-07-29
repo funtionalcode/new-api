@@ -94,6 +94,29 @@ export type LogCleanupTask = SystemTask<
   LogCleanupTaskResult
 >
 
+export type DBBackupPayload = {
+  triggered_by?: string
+  triggered_at?: number
+}
+
+export type DBBackupArtifact = {
+  type: string
+  database?: string
+  container?: string
+  file: string
+  size_bytes: number
+  sha256: string
+  format?: string
+}
+
+export type DBBackupResult = {
+  artifacts?: DBBackupArtifact[]
+  duration_ms?: number
+  host?: string
+}
+
+export type DBBackupTask = SystemTask<DBBackupPayload, unknown, DBBackupResult>
+
 export type SystemTaskResponse<TTask = SystemTask | null> = {
   success: boolean
   message: string
