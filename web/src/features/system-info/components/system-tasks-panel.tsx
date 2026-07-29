@@ -87,6 +87,7 @@ const TYPE_LABEL: Record<string, string> = {
   midjourney_poll: 'Drawing task polling',
   async_task_poll: 'Async task polling',
   db_backup: 'Database backup',
+  codex_resets_sync: 'Codex resets sync',
 }
 
 const TYPE_DISPLAY_ID: Record<string, string> = {

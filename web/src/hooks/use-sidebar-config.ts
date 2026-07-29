@@ -53,6 +53,7 @@ const DEFAULT_SIDEBAR_MODULES: SidebarModulesAdminConfig = {
     glmQuota: true,
     deepseekQuota: true,
     kimiQuota: true,
+    codexResets: true,
   },
   personal: {
     enabled: true,
@@ -122,6 +123,7 @@ const URL_TO_CONFIG_MAP: Record<string, { section: string; module: string }> = {
   '/glm-quota': { section: 'console', module: 'glmQuota' },
   '/deepseek-quota': { section: 'console', module: 'deepseekQuota' },
   '/kimi-quota': { section: 'console', module: 'kimiQuota' },
+  '/codex-resets': { section: 'console', module: 'codexResets' },
   '/user-consumption': { section: 'admin', module: 'userConsumption' },
   '/redemption-codes': { section: 'admin', module: 'redemption' },
   '/subscriptions': { section: 'admin', module: 'subscription' },

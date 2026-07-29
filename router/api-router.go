@@ -369,6 +369,12 @@ func SetApiRouter(router *gin.Engine) {
 			}
 		}
 
+		codexResetsRoute := apiRouter.Group("/codex-resets")
+		{
+			codexResetsRoute.GET("", middleware.UserAuth(), controller.GetCodexResets)
+			codexResetsRoute.POST("/sync", middleware.AdminAuth(), controller.SyncCodexResets)
+		}
+
 		logRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())
 		{
 			logRoute.GET("/token", middleware.TokenAuthReadOnly(), controller.GetLogByKey)

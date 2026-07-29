@@ -75,6 +75,7 @@ export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
     glmQuota: true,
     deepseekQuota: true,
     kimiQuota: true,
+    codexResets: true,
   },
   personal: {
     enabled: true,

@@ -134,6 +134,12 @@ export function SidebarModulesSection({
         title: t('Kimi Quota'),
         description: t('Track Kimi account quota usage.'),
       },
+      codexResets: {
+        title: t('Codex Resets'),
+        description: t(
+          'Track Codex usage limit resets and publish announcements.'
+        ),
+      },
     },
     personal: {
       topup: {
