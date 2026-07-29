@@ -5,6 +5,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/db_backup_setting"
 
 	"github.com/gin-gonic/gin"
 )
@@ -17,6 +18,15 @@ type reportDBBackupTaskRequest struct {
 	Host        string                     `json:"host"`
 	Error       string                     `json:"error"`
 	TriggeredBy string                     `json:"triggered_by"`
+}
+
+type updateDBBackupScriptRequest struct {
+	Content string `json:"content"`
+	Confirm bool   `json:"confirm"`
+}
+
+type agentBundleRequest struct {
+	LocalScriptSHA256 string `json:"local_script_sha256"`
 }
 
 func TriggerDBBackupTask(c *gin.Context) {
@@ -35,6 +45,65 @@ func TriggerDBBackupTask(c *gin.Context) {
 		"success": true,
 		"message": message,
 		"data":    task.ToResponse(),
+	})
+}
+
+func GetDBBackupConfig(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    service.GetDBBackupConfigView(),
+	})
+}
+
+func UpdateDBBackupConfig(c *gin.Context) {
+	var req db_backup_setting.DBBackupSetting
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "invalid request body",
+		})
+		return
+	}
+	if err := service.UpdateDBBackupConfig(req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    service.GetDBBackupConfigView(),
+	})
+}
+
+func GetDBBackupScript(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    service.GetDBBackupScriptView(),
+	})
+}
+
+func UpdateDBBackupScript(c *gin.Context) {
+	var req updateDBBackupScriptRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "invalid request body",
+		})
+		return
+	}
+	sha, err := service.UpdateDBBackupScript(req.Content, req.Confirm)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"sha256": sha,
+		},
 	})
 }
 
@@ -57,6 +126,16 @@ func GetPendingDBBackupTask(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"data":    task.ToResponse(),
+	})
+}
+
+func GetDBBackupAgentBundle(c *gin.Context) {
+	var req agentBundleRequest
+	_ = c.ShouldBindJSON(&req)
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    service.BuildDBBackupAgentBundle(req.LocalScriptSHA256),
 	})
 }
 

@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/db_backup_setting"
 )
 
 const dbBackupHostRunnerID = "host-backup-agent"
@@ -29,6 +30,26 @@ type DBBackupResult struct {
 	Artifacts  []DBBackupArtifact `json:"artifacts"`
 	DurationMs int64              `json:"duration_ms,omitempty"`
 	Host       string             `json:"host,omitempty"`
+}
+
+type DBBackupConfigView struct {
+	db_backup_setting.DBBackupSetting
+	ScriptSHA256 string `json:"script_sha256"`
+	HasScript    bool   `json:"has_script"`
+}
+
+type DBBackupScriptView struct {
+	Content string `json:"content"`
+	SHA256  string `json:"sha256"`
+}
+
+type DBBackupAgentBundle struct {
+	Config           map[string]string `json:"config"`
+	ScriptApply      bool              `json:"script_apply"`
+	ScriptSHA256     string            `json:"script_sha256,omitempty"`
+	ScriptContent    string            `json:"script_content,omitempty"`
+	ScriptUnchanged  bool              `json:"script_unchanged,omitempty"`
+	ScriptPathHint   string            `json:"script_path_hint"`
 }
 
 func TriggerDBBackup(triggeredBy string) (*model.SystemTask, bool, error) {
@@ -83,6 +104,58 @@ func FinishDBBackupReport(taskID string, succeeded bool, payload DBBackupPayload
 
 	model.RecordLog(0, model.LogTypeSystem, buildDBBackupLogContent(status, result, errMsg), "")
 	return nil
+}
+
+func GetDBBackupConfigView() DBBackupConfigView {
+	cfg := db_backup_setting.GetDBBackupSetting()
+	content, sha := model.GetDBBackupScript()
+	return DBBackupConfigView{
+		DBBackupSetting: cfg,
+		ScriptSHA256:    sha,
+		HasScript:       content != "",
+	}
+}
+
+func UpdateDBBackupConfig(cfg db_backup_setting.DBBackupSetting) error {
+	if err := db_backup_setting.Validate(cfg); err != nil {
+		return err
+	}
+	return model.UpdateOptionsBulk(db_backup_setting.ToOptionMap(cfg))
+}
+
+func GetDBBackupScriptView() DBBackupScriptView {
+	content, sha := model.GetDBBackupScript()
+	return DBBackupScriptView{Content: content, SHA256: sha}
+}
+
+func UpdateDBBackupScript(content string, confirm bool) (string, error) {
+	if !confirm {
+		return "", fmt.Errorf("confirm must be true to update backup script")
+	}
+	return model.SetDBBackupScript(content)
+}
+
+func BuildDBBackupAgentBundle(localScriptSHA string) DBBackupAgentBundle {
+	cfg := db_backup_setting.GetDBBackupSetting()
+	content, sha := model.GetDBBackupScript()
+	bundle := DBBackupAgentBundle{
+		Config:         db_backup_setting.ToEnvMap(cfg),
+		ScriptPathHint: "/usr/local/bin/backup-new-api-db.sh",
+	}
+
+	if !cfg.ScriptEnabled || content == "" {
+		bundle.ScriptApply = false
+		return bundle
+	}
+
+	bundle.ScriptApply = true
+	bundle.ScriptSHA256 = sha
+	if localScriptSHA != "" && localScriptSHA == sha {
+		bundle.ScriptUnchanged = true
+		return bundle
+	}
+	bundle.ScriptContent = content
+	return bundle
 }
 
 func buildDBBackupLogContent(status model.SystemTaskStatus, result DBBackupResult, errMsg string) string {

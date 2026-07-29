@@ -20,6 +20,8 @@ import { api } from '@/lib/api'
 
 import type {
   ConfirmPaymentComplianceResponse,
+  DBBackupConfig,
+  DBBackupScript,
   DBBackupTask,
   FetchUpstreamRatiosRequest,
   LogCleanupTask,
@@ -103,6 +105,36 @@ export async function getCurrentDBBackupTask() {
     {
       params: { type: 'db_backup' },
     }
+  )
+  return res.data
+}
+
+export async function getDBBackupConfig() {
+  const res = await api.get<SystemTaskResponse<DBBackupConfig>>(
+    '/api/system-task/db-backup/config'
+  )
+  return res.data
+}
+
+export async function updateDBBackupConfig(config: DBBackupConfig) {
+  const res = await api.put<SystemTaskResponse<DBBackupConfig>>(
+    '/api/system-task/db-backup/config',
+    config
+  )
+  return res.data
+}
+
+export async function getDBBackupScript() {
+  const res = await api.get<SystemTaskResponse<DBBackupScript>>(
+    '/api/system-task/db-backup/script'
+  )
+  return res.data
+}
+
+export async function updateDBBackupScript(content: string, confirm = true) {
+  const res = await api.put<SystemTaskResponse<{ sha256: string }>>(
+    '/api/system-task/db-backup/script',
+    { content, confirm }
   )
   return res.data
 }

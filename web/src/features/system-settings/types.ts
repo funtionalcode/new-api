@@ -117,6 +117,26 @@ export type DBBackupResult = {
 
 export type DBBackupTask = SystemTask<DBBackupPayload, unknown, DBBackupResult>
 
+export type DBBackupConfig = {
+  backup_root: string
+  pg_container: string
+  ck_container: string
+  pg_user: string
+  pg_db: string
+  ck_user: string
+  ck_databases: string
+  keep_weekly: number
+  log_dir: string
+  script_enabled: boolean
+  script_sha256?: string
+  has_script?: boolean
+}
+
+export type DBBackupScript = {
+  content: string
+  sha256: string
+}
+
 export type SystemTaskResponse<TTask = SystemTask | null> = {
   success: boolean
   message: string

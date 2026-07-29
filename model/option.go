@@ -1,9 +1,13 @@
 package model
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting"
@@ -71,6 +75,8 @@ func InitOptionMap() {
 	common.OptionMap["Notice"] = ""
 	common.OptionMap["About"] = ""
 	common.OptionMap["HomePageContent"] = ""
+	common.OptionMap["DBBackupScript"] = ""
+	common.OptionMap["DBBackupScriptSHA256"] = ""
 	common.OptionMap["Footer"] = common.Footer
 	common.OptionMap["SystemName"] = common.SystemName
 	common.OptionMap["Logo"] = common.Logo
@@ -222,6 +228,14 @@ func SyncOptions(frequency int) {
 }
 
 func UpdateOption(key string, value string) error {
+	if key == "DBBackupScriptSHA256" {
+		return fmt.Errorf("DBBackupScriptSHA256 is read-only")
+	}
+	if key == "DBBackupScript" {
+		if err := validateDBBackupScript(value); err != nil {
+			return err
+		}
+	}
 	// Save to database first
 	option := Option{
 		Key: key,
@@ -234,7 +248,13 @@ func UpdateOption(key string, value string) error {
 	// otherwise it will execute Update (with all fields).
 	DB.Save(&option)
 	// Update OptionMap
-	return updateOptionMap(key, value)
+	if err := updateOptionMap(key, value); err != nil {
+		return err
+	}
+	if key == "DBBackupScript" {
+		return persistDBBackupScriptSHA(value)
+	}
+	return nil
 }
 
 // UpdateOptionsBulk persists multiple key/value pairs in a single database
@@ -245,6 +265,14 @@ func UpdateOption(key string, value string) error {
 func UpdateOptionsBulk(values map[string]string) error {
 	if len(values) == 0 {
 		return nil
+	}
+	if _, ok := values["DBBackupScriptSHA256"]; ok {
+		return fmt.Errorf("DBBackupScriptSHA256 is read-only")
+	}
+	if script, ok := values["DBBackupScript"]; ok {
+		if err := validateDBBackupScript(script); err != nil {
+			return err
+		}
 	}
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		for k, v := range values {
@@ -267,6 +295,11 @@ func UpdateOptionsBulk(values map[string]string) error {
 			return err
 		}
 	}
+	if script, ok := values["DBBackupScript"]; ok {
+		if err := persistDBBackupScriptSHA(script); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -277,9 +310,26 @@ func updateOptionMap(key string, value string) (err error) {
 		common.OptionMapRWMutex.Unlock()
 		return nil
 	}
+	if key == "DBBackupScriptSHA256" {
+		// Allow internal/map loads, but still store the value.
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap[key] = value
+		common.OptionMapRWMutex.Unlock()
+		return nil
+	}
+	if key == "DBBackupScript" {
+		if err := validateDBBackupScript(value); err != nil {
+			return err
+		}
+	}
 	common.OptionMapRWMutex.Lock()
 	defer common.OptionMapRWMutex.Unlock()
 	common.OptionMap[key] = value
+
+	if key == "DBBackupScript" {
+		sum := sha256.Sum256([]byte(value))
+		common.OptionMap["DBBackupScriptSHA256"] = hex.EncodeToString(sum[:])
+	}
 
 	// 检查是否是模型配置 - 使用更规范的方式处理
 	if handleConfigUpdate(key, value) {
@@ -662,4 +712,61 @@ func handleConfigUpdate(key, value string) bool {
 	}
 
 	return true // 已处理
+}
+
+const maxDBBackupScriptBytes = 512 * 1024
+
+func validateDBBackupScript(value string) error {
+	if value == "" {
+		return nil
+	}
+	if len(value) > maxDBBackupScriptBytes {
+		return fmt.Errorf("DBBackupScript exceeds %d bytes", maxDBBackupScriptBytes)
+	}
+	if !utf8.ValidString(value) {
+		return fmt.Errorf("DBBackupScript must be valid UTF-8")
+	}
+	trimmed := strings.TrimSpace(value)
+	if strings.HasPrefix(trimmed, string([]byte{0xEF, 0xBB, 0xBF})) {
+		trimmed = strings.TrimSpace(trimmed[len(string([]byte{0xEF, 0xBB, 0xBF})):])
+	}
+	if !strings.HasPrefix(trimmed, "#!") {
+		return fmt.Errorf("DBBackupScript must start with a shebang")
+	}
+	return nil
+}
+
+func dbBackupScriptSHA(content string) string {
+	sum := sha256.Sum256([]byte(content))
+	return hex.EncodeToString(sum[:])
+}
+
+func persistDBBackupScriptSHA(content string) error {
+	sha := dbBackupScriptSHA(content)
+	option := Option{Key: "DBBackupScriptSHA256"}
+	if err := DB.FirstOrCreate(&option, Option{Key: "DBBackupScriptSHA256"}).Error; err != nil {
+		return err
+	}
+	option.Value = sha
+	if err := DB.Save(&option).Error; err != nil {
+		return err
+	}
+	return updateOptionMap("DBBackupScriptSHA256", sha)
+}
+
+// SetDBBackupScript stores script content and its sha256.
+func SetDBBackupScript(content string) (string, error) {
+	if err := validateDBBackupScript(content); err != nil {
+		return "", err
+	}
+	if err := UpdateOption("DBBackupScript", content); err != nil {
+		return "", err
+	}
+	return dbBackupScriptSHA(content), nil
+}
+
+func GetDBBackupScript() (content string, sha string) {
+	common.OptionMapRWMutex.RLock()
+	defer common.OptionMapRWMutex.RUnlock()
+	return common.OptionMap["DBBackupScript"], common.OptionMap["DBBackupScriptSHA256"]
 }

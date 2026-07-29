@@ -285,6 +285,10 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			systemTaskRoute.POST("/log-cleanup", controller.CreateLogCleanupSystemTask)
 			systemTaskRoute.POST("/db-backup/trigger", controller.TriggerDBBackupTask)
+			systemTaskRoute.GET("/db-backup/config", controller.GetDBBackupConfig)
+			systemTaskRoute.PUT("/db-backup/config", controller.UpdateDBBackupConfig)
+			systemTaskRoute.GET("/db-backup/script", controller.GetDBBackupScript)
+			systemTaskRoute.PUT("/db-backup/script", controller.UpdateDBBackupScript)
 			systemTaskRoute.GET("/list", controller.ListSystemTasks)
 			systemTaskRoute.GET("/current", controller.GetCurrentSystemTask)
 			systemTaskRoute.GET("/:task_id", controller.GetSystemTask)
@@ -292,6 +296,7 @@ func SetApiRouter(router *gin.Engine) {
 		dbBackupAgentRoute := apiRouter.Group("/system-task/db-backup/agent")
 		dbBackupAgentRoute.Use(middleware.BackupAgentAuth())
 		{
+			dbBackupAgentRoute.POST("/bundle", controller.GetDBBackupAgentBundle)
 			dbBackupAgentRoute.POST("/pending", controller.GetPendingDBBackupTask)
 			dbBackupAgentRoute.POST("/report", controller.ReportDBBackupTask)
 		}

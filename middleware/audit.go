@@ -95,6 +95,8 @@ var auditRouteActions = map[string]string{
 	// 日志
 	"POST /api/system-task/log-cleanup":       "log.cleanup_start",
 	"POST /api/system-task/db-backup/trigger": "db_backup.trigger_start",
+	"PUT /api/system-task/db-backup/config":   "db_backup.config_update",
+	"PUT /api/system-task/db-backup/script":   "db_backup.script_update",
 }
 
 // beginAdminAudit 在管理/root 写操作进入 handler 前包装 ResponseWriter，

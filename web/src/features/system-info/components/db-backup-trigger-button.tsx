@@ -17,7 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQueryClient } from '@tanstack/react-query'
-import { DatabaseBackup } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { DatabaseBackup, Settings2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -138,7 +139,20 @@ export function DBBackupTriggerButton() {
   }
 
   return (
-    <>
+    <div className='flex items-center gap-2'>
+      <Button type='button' variant='outline' size='sm' asChild>
+        <Link
+          to='/system-settings/operations/$section'
+          params={{ section: 'db-backup' }}
+        >
+          <Settings2
+            data-icon='inline-start'
+            className='size-3.5'
+            aria-hidden='true'
+          />
+          {t('Manage backup settings')}
+        </Link>
+      </Button>
       <Button
         type='button'
         variant='outline'
@@ -159,9 +173,7 @@ export function DBBackupTriggerButton() {
       <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t('Confirm database backup')}
-            </AlertDialogTitle>
+            <AlertDialogTitle>{t('Confirm database backup')}</AlertDialogTitle>
             <AlertDialogDescription>
               {t(
                 'This will enqueue a host-side PostgreSQL and ClickHouse backup. The host agent claims and runs it within about one minute.'
@@ -184,6 +196,6 @@ export function DBBackupTriggerButton() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </div>
   )
 }
