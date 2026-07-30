@@ -76,7 +76,6 @@ export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
     deepseekQuota: true,
     kimiQuota: true,
     codexResets: true,
-    userConsumption: true,
   },
   personal: {
     enabled: true,
@@ -89,6 +88,7 @@ export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
     models: true,
     redemption: true,
     user: true,
+    userConsumption: true,
     setting: true,
     subscription: true,
   },

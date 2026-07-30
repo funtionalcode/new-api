@@ -40,6 +40,7 @@ import { getUserConsumption } from './api'
 import {
   TokenStatCards,
   TokenConsumptionCharts,
+  TokenQuotaCharts,
   UserQuotaCharts,
 } from './components'
 
@@ -216,6 +217,11 @@ export function UserConsumption() {
 
           <div className='grid gap-4 xl:grid-cols-2'>
             <TokenConsumptionCharts
+              data={rows}
+              loading={query.isLoading}
+              renderKey={timeRangeKey}
+            />
+            <TokenQuotaCharts
               data={rows}
               loading={query.isLoading}
               renderKey={timeRangeKey}
