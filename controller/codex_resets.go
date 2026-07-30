@@ -77,15 +77,15 @@ func SyncCodexResets(c *gin.Context) {
 	common.ApiSuccess(c, result)
 }
 
-// DeleteCodexReset 删除一条本地缓存的重置记录（管理员）。
-// 注意：若上游仍有该事件，后续同步可能再次写入。
+// DeleteCodexReset 软删除一条本地缓存的重置记录（管理员）。
+// 软删除后同步不会再从上游写回同一 tweet_id。
 func DeleteCodexReset(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || id <= 0 {
 		common.ApiErrorMsg(c, "invalid id")
 		return
 	}
-	ok, err := model.DeleteCodexResetEvent(id)
+	event, ok, err := model.DeleteCodexResetEvent(id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -93,6 +93,11 @@ func DeleteCodexReset(c *gin.Context) {
 	if !ok {
 		common.ApiErrorMsg(c, "reset event not found")
 		return
+	}
+	if event != nil && event.TweetID != "" {
+		if removeErr := service.RemoveCodexResetAnnouncement(event.TweetID); removeErr != nil {
+			common.SysError("codex-resets remove announcement failed: " + removeErr.Error())
+		}
 	}
 	if state, stateErr := model.GetOrCreateCodexResetSyncState(); stateErr == nil && state != nil {
 		if total, countErr := model.CountCodexResetEvents(); countErr == nil {

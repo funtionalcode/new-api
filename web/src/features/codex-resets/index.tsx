@@ -531,7 +531,13 @@ export function CodexResetsPage() {
                                   variant='ghost'
                                   size='sm'
                                   className='text-destructive hover:text-destructive'
-                                  onClick={() => setDeleteTarget(event)}
+                                  onClick={() => {
+                                    if (!event.id) {
+                                      toast.error(t('Invalid reset event id'))
+                                      return
+                                    }
+                                    setDeleteTarget(event)
+                                  }}
                                   disabled={
                                     deleteMutation.isPending &&
                                     deleteTarget?.id === event.id
@@ -570,7 +576,7 @@ export function CodexResetsPage() {
             <AlertDialogTitle>{t('Delete reset event')}</AlertDialogTitle>
             <AlertDialogDescription>
               {t(
-                'Remove this reset from local history? A later sync may re-import it if the upstream source still lists the announcement.'
+                'Remove this reset from local history? It will stay removed even after later syncs from the upstream source.'
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -584,11 +590,13 @@ export function CodexResetsPage() {
               {t('Cancel')}
             </AlertDialogCancel>
             <AlertDialogAction
-              disabled={deleteMutation.isPending || !deleteTarget}
-              className='bg-destructive text-destructive-foreground hover:bg-destructive/90'
-              onClick={(event) => {
-                event.preventDefault()
-                if (!deleteTarget) return
+              variant='destructive'
+              disabled={deleteMutation.isPending || !deleteTarget?.id}
+              onClick={() => {
+                if (!deleteTarget?.id) {
+                  toast.error(t('Invalid reset event id'))
+                  return
+                }
                 deleteMutation.mutate(deleteTarget.id)
               }}
             >

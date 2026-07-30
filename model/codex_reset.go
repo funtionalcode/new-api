@@ -15,8 +15,11 @@ type CodexResetEvent struct {
 	TweetURL    string `json:"tweet_url" gorm:"type:varchar(512)"`
 	Text        string `json:"text" gorm:"type:text"`
 	AnnouncedAt int64  `json:"announced_at" gorm:"bigint;index;not null"` // Unix 秒（UTC）
-	CreatedAt   int64  `json:"created_at" gorm:"bigint"`
-	UpdatedAt   int64  `json:"updated_at" gorm:"bigint"`
+	// DeletedAt 为软删除时间戳（Unix 秒）。0 表示未删除。
+	// 使用软删除是为了阻止定时同步从上游再次写回已手动移除的事件。
+	DeletedAt int64 `json:"deleted_at" gorm:"bigint;index"`
+	CreatedAt int64 `json:"created_at" gorm:"bigint"`
+	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
 }
 
 func (CodexResetEvent) TableName() string {
@@ -54,7 +57,12 @@ func (e *CodexResetEvent) BeforeUpdate(tx *gorm.DB) error {
 	return nil
 }
 
+func codexResetActiveScope(db *gorm.DB) *gorm.DB {
+	return db.Where("deleted_at = 0 OR deleted_at IS NULL")
+}
+
 // UpsertCodexResetEvent 按 tweet_id 幂等写入。返回是否新增。
+// 若该 tweet_id 已被软删除，则保持删除状态，不恢复、不更新。
 func UpsertCodexResetEvent(event *CodexResetEvent) (created bool, err error) {
 	if event == nil || strings.TrimSpace(event.TweetID) == "" {
 		return false, errors.New("tweet_id is required")
@@ -62,6 +70,9 @@ func UpsertCodexResetEvent(event *CodexResetEvent) (created bool, err error) {
 	var existing CodexResetEvent
 	err = DB.Where("tweet_id = ?", event.TweetID).First(&existing).Error
 	if err == nil {
+		if existing.DeletedAt > 0 {
+			return false, nil
+		}
 		updates := map[string]any{
 			"tweet_url":    event.TweetURL,
 			"text":         event.Text,
@@ -90,19 +101,19 @@ func ListCodexResetEvents(limit int) ([]*CodexResetEvent, error) {
 		limit = 500
 	}
 	var events []*CodexResetEvent
-	err := DB.Order("announced_at desc").Limit(limit).Find(&events).Error
+	err := codexResetActiveScope(DB).Order("announced_at desc").Limit(limit).Find(&events).Error
 	return events, err
 }
 
 func CountCodexResetEvents() (int64, error) {
 	var total int64
-	err := DB.Model(&CodexResetEvent{}).Count(&total).Error
+	err := codexResetActiveScope(DB.Model(&CodexResetEvent{})).Count(&total).Error
 	return total, err
 }
 
 func GetLatestCodexResetEvent() (*CodexResetEvent, error) {
 	var event CodexResetEvent
-	err := DB.Order("announced_at desc").First(&event).Error
+	err := codexResetActiveScope(DB).Order("announced_at desc").First(&event).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
@@ -114,7 +125,7 @@ func GetLatestCodexResetEvent() (*CodexResetEvent, error) {
 
 func GetCodexResetEventByTweetID(tweetID string) (*CodexResetEvent, error) {
 	var event CodexResetEvent
-	err := DB.Where("tweet_id = ?", tweetID).First(&event).Error
+	err := codexResetActiveScope(DB).Where("tweet_id = ?", tweetID).First(&event).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
@@ -124,17 +135,34 @@ func GetCodexResetEventByTweetID(tweetID string) (*CodexResetEvent, error) {
 	return &event, nil
 }
 
-// DeleteCodexResetEvent removes a cached reset event by primary key.
-// Returns false when no row matched.
-func DeleteCodexResetEvent(id int64) (bool, error) {
+// DeleteCodexResetEvent soft-deletes a cached reset event by primary key.
+// Returns the deleted event (for cleanup) and false when no active row matched.
+func DeleteCodexResetEvent(id int64) (*CodexResetEvent, bool, error) {
 	if id <= 0 {
-		return false, errors.New("invalid id")
+		return nil, false, errors.New("invalid id")
 	}
-	result := DB.Where("id = ?", id).Delete(&CodexResetEvent{})
+	var event CodexResetEvent
+	err := codexResetActiveScope(DB).Where("id = ?", id).First(&event).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	now := time.Now().Unix()
+	result := DB.Model(&event).Updates(map[string]any{
+		"deleted_at": now,
+		"updated_at": now,
+	})
 	if result.Error != nil {
-		return false, result.Error
+		return nil, false, result.Error
 	}
-	return result.RowsAffected > 0, nil
+	if result.RowsAffected == 0 {
+		return nil, false, nil
+	}
+	event.DeletedAt = now
+	event.UpdatedAt = now
+	return &event, true, nil
 }
 
 // GetOrCreateCodexResetSyncState 返回单行同步状态（id=1）。

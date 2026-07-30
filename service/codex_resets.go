@@ -205,6 +205,40 @@ func SyncCodexResets(ctx context.Context, announceNew bool) (*CodexResetsSyncRes
 	return result, nil
 }
 
+// RemoveCodexResetAnnouncement 按 tweet_id 移除对应系统公告（若存在）。
+func RemoveCodexResetAnnouncement(tweetID string) error {
+	tweetID = strings.TrimSpace(tweetID)
+	if tweetID == "" {
+		return nil
+	}
+	announcementID := codexResetAnnouncementTag + tweetID
+	cs := console_setting.GetConsoleSetting()
+	if strings.TrimSpace(cs.Announcements) == "" {
+		return nil
+	}
+	var list []map[string]any
+	if err := common.UnmarshalJsonStr(cs.Announcements, &list); err != nil {
+		return err
+	}
+	filtered := make([]map[string]any, 0, len(list))
+	removed := false
+	for _, item := range list {
+		if id, ok := item["id"].(string); ok && id == announcementID {
+			removed = true
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	if !removed {
+		return nil
+	}
+	encoded, err := common.Marshal(filtered)
+	if err != nil {
+		return err
+	}
+	return model.UpdateOption("console_setting.announcements", string(encoded))
+}
+
 func publishCodexResetAnnouncement(event *model.CodexResetEvent) error {
 	if event == nil {
 		return nil

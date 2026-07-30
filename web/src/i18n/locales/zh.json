@@ -5585,6 +5585,8 @@
     "{{count}} reset(s)": "{{count}} 次重置",
     "Delete reset event": "删除重置记录",
     "Remove this reset from local history? A later sync may re-import it if the upstream source still lists the announcement.": "从本地历史中删除该重置记录？若上游仍保留对应公告，后续同步可能会再次导入。",
-    "User Quota Consumption Ranking": "用户额度消耗排行"
+    "User Quota Consumption Ranking": "用户额度消耗排行",
+    "Remove this reset from local history? It will stay removed even after later syncs from the upstream source.": "从本地历史中删除该重置记录？删除后即使后续从上游同步也不会再写回。",
+    "Invalid reset event id": "无效的重置记录 ID"
   }
 }
