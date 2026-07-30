@@ -56,7 +56,11 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { getUserConsumption } from './api'
-import { TokenStatCards, TokenConsumptionCharts } from './components'
+import {
+  TokenStatCards,
+  TokenConsumptionCharts,
+  TokenQuotaCharts,
+} from './components'
 import type { UserConsumptionSummary } from './types'
 
 const defaultRangeDays = 29
@@ -357,11 +361,18 @@ export function UserConsumption() {
 
           <TokenStatCards data={rows} loading={query.isLoading} />
 
-          <TokenConsumptionCharts
-            data={rankRows}
-            loading={rankQuery.isLoading}
-            renderKey={timeRangeKey}
-          />
+          <div className='grid gap-4 xl:grid-cols-2'>
+            <TokenConsumptionCharts
+              data={rankRows}
+              loading={rankQuery.isLoading}
+              renderKey={timeRangeKey}
+            />
+            <TokenQuotaCharts
+              data={rankRows}
+              loading={rankQuery.isLoading}
+              renderKey={timeRangeKey}
+            />
+          </div>
 
           <Card>
             <CardHeader>

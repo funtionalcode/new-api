@@ -8,39 +8,47 @@ import (
 	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/robfig/cron/v3"
 )
 
 // DBBackupSetting holds non-secret host backup parameters managed from the UI.
 // Secrets (CK password, agent token) stay on the host only.
 type DBBackupSetting struct {
-	BackupRoot   string `json:"backup_root"`
-	PGContainer  string `json:"pg_container"`
-	CKContainer  string `json:"ck_container"`
-	PGUser       string `json:"pg_user"`
-	PGDB         string `json:"pg_db"`
-	CKUser       string `json:"ck_user"`
-	CKDatabases  string `json:"ck_databases"`
-	KeepWeekly   int    `json:"keep_weekly"`
-	LogDir       string `json:"log_dir"`
-	ScriptEnabled bool  `json:"script_enabled"`
+	BackupRoot       string `json:"backup_root"`
+	PGContainer      string `json:"pg_container"`
+	CKContainer      string `json:"ck_container"`
+	PGUser           string `json:"pg_user"`
+	PGDB             string `json:"pg_db"`
+	CKUser           string `json:"ck_user"`
+	CKDatabases      string `json:"ck_databases"`
+	KeepWeekly       int    `json:"keep_weekly"`
+	LogDir           string `json:"log_dir"`
+	ScriptEnabled    bool   `json:"script_enabled"`
+	ScheduleEnabled  bool   `json:"schedule_enabled"`
+	CronExpression   string `json:"cron_expression"`
 }
 
 var dbBackupSetting = DBBackupSetting{
-	BackupRoot:    "/data/backups/new-api",
-	PGContainer:   "postgres",
-	CKContainer:   "clickhouse",
-	PGUser:        "newapi",
-	PGDB:          "newapi",
-	CKUser:        "default",
-	CKDatabases:   "new_api_logs clash_metrics",
-	KeepWeekly:    4,
-	LogDir:        "/var/log/new-api-backup",
-	ScriptEnabled: true,
+	BackupRoot:      "/data/backups/new-api",
+	PGContainer:     "postgres",
+	CKContainer:     "clickhouse",
+	PGUser:          "newapi",
+	PGDB:            "newapi",
+	CKUser:          "default",
+	CKDatabases:     "new_api_logs clash_metrics",
+	KeepWeekly:      4,
+	LogDir:          "/var/log/new-api-backup",
+	ScriptEnabled:   true,
+	ScheduleEnabled: false,
+	// Weekly Sunday 03:00 local time (5-field cron).
+	CronExpression: "0 3 * * 0",
 }
 
 var (
-	namePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+	namePattern   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 	dbListPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*(?:[ \t]+[A-Za-z0-9][A-Za-z0-9._-]*)*$`)
+	// Standard 5-field cron (minute hour day-of-month month day-of-week).
+	cronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
 )
 
 func init() {
@@ -85,7 +93,41 @@ func Validate(s DBBackupSetting) error {
 	if s.KeepWeekly < 1 || s.KeepWeekly > 52 {
 		return fmt.Errorf("keep_weekly must be between 1 and 52")
 	}
+	if err := ValidateCronExpression(s.CronExpression, s.ScheduleEnabled); err != nil {
+		return err
+	}
 	return nil
+}
+
+// ValidateCronExpression validates a 5-field cron expression.
+// When required is false, empty expressions are allowed.
+func ValidateCronExpression(expr string, required bool) error {
+	expr = strings.TrimSpace(expr)
+	if expr == "" {
+		if required {
+			return fmt.Errorf("cron_expression is required when schedule is enabled")
+		}
+		return nil
+	}
+	if utf8.RuneCountInString(expr) > 128 {
+		return fmt.Errorf("cron_expression is too long")
+	}
+	if strings.ContainsAny(expr, "\x00\n\r") {
+		return fmt.Errorf("invalid cron_expression")
+	}
+	if _, err := cronParser.Parse(expr); err != nil {
+		return fmt.Errorf("invalid cron_expression: %w", err)
+	}
+	return nil
+}
+
+// ParseCronSchedule parses a validated 5-field cron expression.
+func ParseCronSchedule(expr string) (cron.Schedule, error) {
+	expr = strings.TrimSpace(expr)
+	if expr == "" {
+		return nil, fmt.Errorf("empty cron_expression")
+	}
+	return cronParser.Parse(expr)
 }
 
 func validateName(value, field string) error {
@@ -116,30 +158,32 @@ func validateAbsPath(value, field string) error {
 // ToOptionMap returns flattened option keys for bulk update.
 func ToOptionMap(s DBBackupSetting) map[string]string {
 	return map[string]string{
-		"db_backup_setting.backup_root":    strings.TrimSpace(s.BackupRoot),
-		"db_backup_setting.pg_container":   strings.TrimSpace(s.PGContainer),
-		"db_backup_setting.ck_container":   strings.TrimSpace(s.CKContainer),
-		"db_backup_setting.pg_user":        strings.TrimSpace(s.PGUser),
-		"db_backup_setting.pg_db":          strings.TrimSpace(s.PGDB),
-		"db_backup_setting.ck_user":        strings.TrimSpace(s.CKUser),
-		"db_backup_setting.ck_databases":   strings.TrimSpace(s.CKDatabases),
-		"db_backup_setting.keep_weekly":    fmt.Sprintf("%d", s.KeepWeekly),
-		"db_backup_setting.log_dir":        strings.TrimSpace(s.LogDir),
-		"db_backup_setting.script_enabled": fmt.Sprintf("%t", s.ScriptEnabled),
+		"db_backup_setting.backup_root":       strings.TrimSpace(s.BackupRoot),
+		"db_backup_setting.pg_container":      strings.TrimSpace(s.PGContainer),
+		"db_backup_setting.ck_container":      strings.TrimSpace(s.CKContainer),
+		"db_backup_setting.pg_user":           strings.TrimSpace(s.PGUser),
+		"db_backup_setting.pg_db":             strings.TrimSpace(s.PGDB),
+		"db_backup_setting.ck_user":           strings.TrimSpace(s.CKUser),
+		"db_backup_setting.ck_databases":      strings.TrimSpace(s.CKDatabases),
+		"db_backup_setting.keep_weekly":       fmt.Sprintf("%d", s.KeepWeekly),
+		"db_backup_setting.log_dir":           strings.TrimSpace(s.LogDir),
+		"db_backup_setting.script_enabled":    fmt.Sprintf("%t", s.ScriptEnabled),
+		"db_backup_setting.schedule_enabled":  fmt.Sprintf("%t", s.ScheduleEnabled),
+		"db_backup_setting.cron_expression":   strings.TrimSpace(s.CronExpression),
 	}
 }
 
 // ToEnvMap returns host env assignments for non-secret parameters.
 func ToEnvMap(s DBBackupSetting) map[string]string {
 	return map[string]string{
-		"BACKUP_ROOT":   strings.TrimSpace(s.BackupRoot),
-		"PG_CONTAINER":  strings.TrimSpace(s.PGContainer),
-		"CK_CONTAINER":  strings.TrimSpace(s.CKContainer),
-		"PG_USER":       strings.TrimSpace(s.PGUser),
-		"PG_DB":         strings.TrimSpace(s.PGDB),
-		"CK_USER":       strings.TrimSpace(s.CKUser),
-		"CK_DATABASES":  strings.TrimSpace(s.CKDatabases),
-		"KEEP_WEEKLY":   fmt.Sprintf("%d", s.KeepWeekly),
-		"LOG_DIR":       strings.TrimSpace(s.LogDir),
+		"BACKUP_ROOT":  strings.TrimSpace(s.BackupRoot),
+		"PG_CONTAINER": strings.TrimSpace(s.PGContainer),
+		"CK_CONTAINER": strings.TrimSpace(s.CKContainer),
+		"PG_USER":      strings.TrimSpace(s.PGUser),
+		"PG_DB":        strings.TrimSpace(s.PGDB),
+		"CK_USER":      strings.TrimSpace(s.CKUser),
+		"CK_DATABASES": strings.TrimSpace(s.CKDatabases),
+		"KEEP_WEEKLY":  fmt.Sprintf("%d", s.KeepWeekly),
+		"LOG_DIR":      strings.TrimSpace(s.LogDir),
 	}
 }

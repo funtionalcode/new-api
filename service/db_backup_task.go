@@ -135,7 +135,13 @@ func UpdateDBBackupConfig(cfg db_backup_setting.DBBackupSetting) error {
 	if err := db_backup_setting.Validate(cfg); err != nil {
 		return err
 	}
-	return model.UpdateOptionsBulk(db_backup_setting.ToOptionMap(cfg))
+	if err := model.UpdateOptionsBulk(db_backup_setting.ToOptionMap(cfg)); err != nil {
+		return err
+	}
+	// Option map update reloads settings asynchronously via the option watcher;
+	// reset the in-process next-fire so the scheduler re-arms from the new cron.
+	ResetDBBackupSchedule()
+	return nil
 }
 
 func GetDBBackupScriptView() DBBackupScriptView {

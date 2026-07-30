@@ -19,7 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 import { useMemo } from 'react'
 import { Layers, Hash, Zap, Coins } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { formatNumber, formatTokenDetails, formatTokens } from '@/lib/format'
+import {
+  formatLogQuota,
+  formatNumber,
+  formatTokenDetails,
+  formatTokens,
+} from '@/lib/format'
 import {
   Tooltip,
   TooltipContent,
@@ -83,8 +88,8 @@ export function TokenStatCards({ data, loading }: TokenStatCardsProps) {
     },
     {
       title: t('Total Quota'),
-      value: formatNumber(stats.totalQuota),
-      detail: undefined,
+      value: formatLogQuota(stats.totalQuota),
+      detail: formatNumber(stats.totalQuota),
       desc: t('Quota consumed'),
       icon: Coins,
     },

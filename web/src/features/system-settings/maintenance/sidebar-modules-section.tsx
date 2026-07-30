@@ -140,6 +140,10 @@ export function SidebarModulesSection({
           'Track Codex usage limit resets and publish announcements.'
         ),
       },
+      userConsumption: {
+        title: t('User Consumption'),
+        description: t('Analyze token-level user consumption.'),
+      },
     },
     personal: {
       topup: {
@@ -167,10 +171,6 @@ export function SidebarModulesSection({
       user: {
         title: t('Users'),
         description: t('Administer user accounts and roles.'),
-      },
-      userConsumption: {
-        title: t('User Consumption'),
-        description: t('Analyze token-level user consumption.'),
       },
       setting: {
         title: t('System settings'),

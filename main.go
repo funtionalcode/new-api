@@ -144,6 +144,8 @@ func main() {
 	// switch are enforced inside the runner and each handler's Enabled().
 	controller.RegisterScheduledSystemTasks()
 	service.StartSystemTaskRunner()
+	// Master-only cron that only enqueues db_backup tasks; host agent executes dumps.
+	service.StartDBBackupScheduler()
 
 	if os.Getenv("BATCH_UPDATE_ENABLED") == "true" {
 		common.BatchUpdateEnabled = true

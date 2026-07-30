@@ -131,6 +131,8 @@ export type DBBackupConfig = {
   keep_weekly: number
   log_dir: string
   script_enabled: boolean
+  schedule_enabled: boolean
+  cron_expression: string
   script_sha256?: string
   has_script?: boolean
 }

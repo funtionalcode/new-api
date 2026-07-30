@@ -136,6 +136,11 @@ export function useSidebarData(): SidebarData {
             url: '/codex-resets',
             icon: RotateCcw,
           },
+          {
+            title: t('User Consumption'),
+            url: '/user-consumption',
+            icon: ChartNoAxesColumn,
+          },
         ],
       },
       {
@@ -176,11 +181,6 @@ export function useSidebarData(): SidebarData {
             title: t('Users'),
             url: '/users',
             icon: Users,
-          },
-          {
-            title: t('User Consumption'),
-            url: '/user-consumption',
-            icon: ChartNoAxesColumn,
           },
           {
             title: t('Redemption Codes'),

@@ -64,18 +64,41 @@ import { SettingsForm } from '../components/settings-form-layout'
 import { SettingsSection } from '../components/settings-section'
 import type { DBBackupConfig, DBBackupTask } from '../types'
 
-const configSchema = z.object({
-  backup_root: z.string().min(1),
-  pg_container: z.string().min(1),
-  ck_container: z.string().min(1),
-  pg_user: z.string().min(1),
-  pg_db: z.string().min(1),
-  ck_user: z.string().min(1),
-  ck_databases: z.string().min(1),
-  keep_weekly: z.coerce.number().min(1).max(52),
-  log_dir: z.string().min(1),
-  script_enabled: z.boolean(),
-})
+const configSchema = z
+  .object({
+    backup_root: z.string().min(1),
+    pg_container: z.string().min(1),
+    ck_container: z.string().min(1),
+    pg_user: z.string().min(1),
+    pg_db: z.string().min(1),
+    ck_user: z.string().min(1),
+    ck_databases: z.string().min(1),
+    keep_weekly: z.coerce.number().min(1).max(52),
+    log_dir: z.string().min(1),
+    script_enabled: z.boolean(),
+    schedule_enabled: z.boolean(),
+    cron_expression: z.string().max(128),
+  })
+  .superRefine((values, ctx) => {
+    if (!values.schedule_enabled) return
+    const expr = values.cron_expression.trim()
+    if (!expr) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['cron_expression'],
+        message: 'Cron expression is required when schedule is enabled',
+      })
+      return
+    }
+    // Basic 5-field shape check; server re-validates with robfig/cron.
+    if (expr.split(/\s+/).length !== 5) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['cron_expression'],
+        message: 'Use a standard 5-field cron expression',
+      })
+    }
+  })
 
 type ConfigFormValues = z.infer<typeof configSchema>
 
@@ -94,6 +117,8 @@ const emptyConfig: ConfigFormValues = {
   keep_weekly: 4,
   log_dir: '/var/log/new-api-backup',
   script_enabled: true,
+  schedule_enabled: false,
+  cron_expression: '0 3 * * 0',
 }
 
 export function DBBackupSection() {
@@ -138,6 +163,8 @@ export function DBBackupSection() {
             keep_weekly: data.keep_weekly,
             log_dir: data.log_dir,
             script_enabled: data.script_enabled,
+            schedule_enabled: Boolean(data.schedule_enabled),
+            cron_expression: data.cron_expression || '0 3 * * 0',
           })
           if (data.script_sha256) setScriptSha(data.script_sha256)
         }
@@ -216,6 +243,8 @@ export function DBBackupSection() {
           keep_weekly: res.data.keep_weekly,
           log_dir: res.data.log_dir,
           script_enabled: res.data.script_enabled,
+          schedule_enabled: Boolean(res.data.schedule_enabled),
+          cron_expression: res.data.cron_expression || '0 3 * * 0',
         })
         if (res.data.script_sha256) setScriptSha(res.data.script_sha256)
       }
@@ -368,6 +397,51 @@ export function DBBackupSection() {
                         onCheckedChange={field.onChange}
                       />
                     </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='schedule_enabled'
+                render={({ field }) => (
+                  <FormItem className='flex flex-row items-center justify-between rounded-lg border p-3'>
+                    <div className='space-y-0.5'>
+                      <FormLabel>{t('Enable scheduled backup')}</FormLabel>
+                      <FormDescription>
+                        {t(
+                          'When enabled, new-api enqueues a host backup on the cron schedule. The host agent still executes the dump.'
+                        )}
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='cron_expression'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Backup cron expression')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        placeholder='0 3 * * 0'
+                        className='font-mono'
+                        disabled={!form.watch('schedule_enabled')}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Standard 5-field cron (minute hour day month weekday), local server time. Example: 0 3 * * 0 = every Sunday 03:00.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
                   </FormItem>
                 )}
               />
