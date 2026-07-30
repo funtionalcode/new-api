@@ -373,6 +373,7 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			codexResetsRoute.GET("", middleware.UserAuth(), controller.GetCodexResets)
 			codexResetsRoute.POST("/sync", middleware.AdminAuth(), controller.SyncCodexResets)
+			codexResetsRoute.DELETE("/:id", middleware.AdminAuth(), controller.DeleteCodexReset)
 		}
 
 		logRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())

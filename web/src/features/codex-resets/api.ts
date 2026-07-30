@@ -29,3 +29,10 @@ export async function syncCodexResets() {
   const res = await api.post<CodexResetsSyncResponse>('/api/codex-resets/sync')
   return res.data
 }
+
+export async function deleteCodexReset(id: number) {
+  const res = await api.delete<{ success: boolean; message?: string }>(
+    `/api/codex-resets/${id}`
+  )
+  return res.data
+}

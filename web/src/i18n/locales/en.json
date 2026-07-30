@@ -5554,6 +5554,8 @@
     "No log excerpt reported. Ensure the host backup script writes to the configured log directory and reports log_excerpt.": "No log excerpt reported. Ensure the host backup script writes to the configured log directory and reports log_excerpt.",
     "No additional detail for this task.": "No additional detail for this task.",
     "{{date}}: {{count}} reset(s)": "{{date}}: {{count}} reset(s)",
-    "{{count}} reset(s)": "{{count}} reset(s)"
+    "{{count}} reset(s)": "{{count}} reset(s)",
+    "Delete reset event": "Delete reset event",
+    "Remove this reset from local history? A later sync may re-import it if the upstream source still lists the announcement.": "Remove this reset from local history? A later sync may re-import it if the upstream source still lists the announcement."
   }
 }

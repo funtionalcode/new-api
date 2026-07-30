@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -74,6 +75,32 @@ func SyncCodexResets(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, result)
+}
+
+// DeleteCodexReset 删除一条本地缓存的重置记录（管理员）。
+// 注意：若上游仍有该事件，后续同步可能再次写入。
+func DeleteCodexReset(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		common.ApiErrorMsg(c, "invalid id")
+		return
+	}
+	ok, err := model.DeleteCodexResetEvent(id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if !ok {
+		common.ApiErrorMsg(c, "reset event not found")
+		return
+	}
+	if state, stateErr := model.GetOrCreateCodexResetSyncState(); stateErr == nil && state != nil {
+		if total, countErr := model.CountCodexResetEvents(); countErr == nil {
+			state.TotalEvents = int(total)
+			_ = model.SaveCodexResetSyncState(state)
+		}
+	}
+	common.ApiSuccess(c, gin.H{"id": id})
 }
 
 type codexResetsSyncHandler struct{}

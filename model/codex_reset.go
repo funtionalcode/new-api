@@ -124,6 +124,19 @@ func GetCodexResetEventByTweetID(tweetID string) (*CodexResetEvent, error) {
 	return &event, nil
 }
 
+// DeleteCodexResetEvent removes a cached reset event by primary key.
+// Returns false when no row matched.
+func DeleteCodexResetEvent(id int64) (bool, error) {
+	if id <= 0 {
+		return false, errors.New("invalid id")
+	}
+	result := DB.Where("id = ?", id).Delete(&CodexResetEvent{})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
+}
+
 // GetOrCreateCodexResetSyncState 返回单行同步状态（id=1）。
 func GetOrCreateCodexResetSyncState() (*CodexResetSyncState, error) {
 	var state CodexResetSyncState

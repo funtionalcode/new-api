@@ -24,13 +24,24 @@ import {
   RefreshCw,
   RotateCcw,
   Timer,
+  Trash2,
 } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { SectionPageLayout } from '@/components/layout'
 import { ErrorState } from '@/components/error-state'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -55,13 +66,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { useTheme } from '@/context/theme-provider'
 import { useIsAdmin } from '@/hooks/use-admin'
 import { formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { VCHART_OPTION } from '@/lib/vchart'
 
-import { getCodexResets, syncCodexResets } from './api'
-import type { CodexResetsHeatmapPoint } from './types'
+import { deleteCodexReset, getCodexResets, syncCodexResets } from './api'
+import type { CodexResetEvent, CodexResetsHeatmapPoint } from './types'
 
 const QUERY_KEY = ['codex-resets'] as const
 
@@ -147,6 +159,8 @@ export function CodexResetsPage() {
   const { t } = useTranslation()
   const isAdmin = useIsAdmin()
   const queryClient = useQueryClient()
+  const { resolvedTheme } = useTheme()
+  const [deleteTarget, setDeleteTarget] = useState<CodexResetEvent | null>(null)
 
   const query = useQuery({
     queryKey: QUERY_KEY,
@@ -181,16 +195,43 @@ export function CodexResetsPage() {
     },
   })
 
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await deleteCodexReset(id)
+      if (!res.success) {
+        throw new Error(res.message || 'Delete failed')
+      }
+      return res
+    },
+    onSuccess: () => {
+      toast.success(t('Deleted successfully'))
+      setDeleteTarget(null)
+      void queryClient.invalidateQueries({ queryKey: QUERY_KEY })
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || t('Delete failed'))
+    },
+  })
+
   const data = query.data
   const stats = data?.stats
   const intervals = data?.charts.intervals ?? []
   const heatmap = data?.charts.heatmap ?? []
   const events = data?.events ?? []
+  const isDark = resolvedTheme === 'dark'
 
   const intervalSpec = useMemo(() => {
     if (intervals.length === 0) return null
+    const axisLabelColor = isDark
+      ? 'rgba(255,255,255,0.72)'
+      : 'rgba(15,23,42,0.72)'
+    const gridColor = isDark
+      ? 'rgba(255,255,255,0.08)'
+      : 'rgba(15,23,42,0.08)'
     return {
       type: 'bar' as const,
+      theme: isDark ? 'dark' : 'light',
+      background: 'transparent',
       data: [
         {
           id: 'intervals',
@@ -203,8 +244,27 @@ export function CodexResetsPage() {
       xField: 'date',
       yField: 'days',
       axes: [
-        { orient: 'bottom', type: 'band', label: { autoRotate: true } },
-        { orient: 'left', type: 'linear', title: { text: t('Days') } },
+        {
+          orient: 'bottom',
+          type: 'band',
+          label: {
+            autoRotate: true,
+            style: { fill: axisLabelColor },
+          },
+          domainLine: { style: { stroke: gridColor } },
+          tick: { style: { stroke: gridColor } },
+        },
+        {
+          orient: 'left',
+          type: 'linear',
+          title: {
+            text: t('Days'),
+            style: { fill: axisLabelColor },
+          },
+          label: { style: { fill: axisLabelColor } },
+          grid: { style: { stroke: gridColor } },
+          domainLine: { style: { stroke: gridColor } },
+        },
       ],
       tooltip: {
         mark: {
@@ -225,7 +285,7 @@ export function CodexResetsPage() {
         },
       },
     }
-  }, [intervals, t])
+  }, [intervals, isDark, t])
 
   return (
     <SectionPageLayout>
@@ -379,8 +439,12 @@ export function CodexResetsPage() {
                 </CardHeader>
                 <CardContent>
                   {intervalSpec ? (
-                    <div className='h-64 w-full'>
-                      <VChart spec={intervalSpec} option={VCHART_OPTION} />
+                    <div className='bg-transparent h-64 w-full'>
+                      <VChart
+                        key={`interval-trend-${resolvedTheme}`}
+                        spec={intervalSpec}
+                        option={VCHART_OPTION}
+                      />
                     </div>
                   ) : (
                     <div className='text-muted-foreground text-sm'>
@@ -423,6 +487,11 @@ export function CodexResetsPage() {
                           <TableHead>{t('When')}</TableHead>
                           <TableHead>{t('Announcement')}</TableHead>
                           <TableHead className='w-[100px]'>{t('Link')}</TableHead>
+                          {isAdmin ? (
+                            <TableHead className='w-[80px] text-right'>
+                              {t('Actions')}
+                            </TableHead>
+                          ) : null}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -456,6 +525,28 @@ export function CodexResetsPage() {
                                 '-'
                               )}
                             </TableCell>
+                            {isAdmin ? (
+                              <TableCell className='align-top text-right'>
+                                <Button
+                                  variant='ghost'
+                                  size='sm'
+                                  className='text-destructive hover:text-destructive'
+                                  onClick={() => setDeleteTarget(event)}
+                                  disabled={
+                                    deleteMutation.isPending &&
+                                    deleteTarget?.id === event.id
+                                  }
+                                  aria-label={t('Delete')}
+                                >
+                                  {deleteMutation.isPending &&
+                                  deleteTarget?.id === event.id ? (
+                                    <Loader2 className='size-4 animate-spin' />
+                                  ) : (
+                                    <Trash2 className='size-4' />
+                                  )}
+                                </Button>
+                              </TableCell>
+                            ) : null}
                           </TableRow>
                         ))}
                       </TableBody>
@@ -467,6 +558,45 @@ export function CodexResetsPage() {
           </div>
         )}
       </SectionPageLayout.Content>
+
+      <AlertDialog
+        open={deleteTarget != null}
+        onOpenChange={(open) => {
+          if (!open && !deleteMutation.isPending) setDeleteTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('Delete reset event')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t(
+                'Remove this reset from local history? A later sync may re-import it if the upstream source still lists the announcement.'
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteTarget?.text ? (
+            <p className='text-muted-foreground line-clamp-3 text-sm'>
+              {deleteTarget.text}
+            </p>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>
+              {t('Cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleteMutation.isPending || !deleteTarget}
+              className='bg-destructive text-destructive-foreground hover:bg-destructive/90'
+              onClick={(event) => {
+                event.preventDefault()
+                if (!deleteTarget) return
+                deleteMutation.mutate(deleteTarget.id)
+              }}
+            >
+              {deleteMutation.isPending ? t('Deleting...') : t('Delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </SectionPageLayout>
   )
 }
