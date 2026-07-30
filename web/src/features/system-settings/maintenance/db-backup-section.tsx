@@ -19,8 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQueryClient } from '@tanstack/react-query'
 import { DatabaseBackup } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useEffect, useMemo, useState } from 'react'
+import { useForm, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import * as z from 'zod'
@@ -50,6 +50,7 @@ import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
 
 import {
   getCurrentDBBackupTask,
@@ -63,6 +64,54 @@ import {
 import { SettingsForm } from '../components/settings-form-layout'
 import { SettingsSection } from '../components/settings-section'
 import type { DBBackupConfig, DBBackupTask } from '../types'
+
+const BACKUP_CRON_PRESETS = [
+  {
+    id: 'daily-3am',
+    expression: '0 3 * * *',
+    label: 'Every day at 03:00',
+  },
+  {
+    id: 'sunday-3am',
+    expression: '0 3 * * 0',
+    label: 'Every Sunday at 03:00',
+  },
+  {
+    id: 'monday-3am',
+    expression: '0 3 * * 1',
+    label: 'Every Monday at 03:00',
+  },
+  {
+    id: 'month-1st-3am',
+    expression: '0 3 1 * *',
+    label: '1st of each month at 03:00',
+  },
+  {
+    id: 'every-12h',
+    expression: '0 */12 * * *',
+    label: 'Every 12 hours',
+  },
+] as const
+
+const CRON_FIELD_GUIDE = [
+  { field: 'Cron minute', range: '0-59', example: '0' },
+  { field: 'Cron hour', range: '0-23', example: '3' },
+  { field: 'Cron day of month', range: '1-31', example: '*' },
+  { field: 'Cron month', range: '1-12', example: '*' },
+  { field: 'Cron day of week', range: '0-6 (Sun=0)', example: '0' },
+] as const
+
+function normalizeCronExpression(value: string) {
+  return value.trim().replace(/\s+/g, ' ')
+}
+
+function matchBackupCronPreset(expression: string) {
+  const normalized = normalizeCronExpression(expression)
+  return (
+    BACKUP_CRON_PRESETS.find((preset) => preset.expression === normalized) ??
+    null
+  )
+}
 
 const configSchema = z
   .object({
@@ -139,6 +188,18 @@ export function DBBackupSection() {
     resolver: zodResolver(configSchema),
     defaultValues: emptyConfig,
   })
+  const scheduleEnabled = useWatch({
+    control: form.control,
+    name: 'schedule_enabled',
+  })
+  const cronExpression = useWatch({
+    control: form.control,
+    name: 'cron_expression',
+  })
+  const matchedCronPreset = useMemo(
+    () => matchBackupCronPreset(cronExpression || ''),
+    [cronExpression]
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -404,7 +465,7 @@ export function DBBackupSection() {
                 control={form.control}
                 name='schedule_enabled'
                 render={({ field }) => (
-                  <FormItem className='flex flex-row items-center justify-between rounded-lg border p-3'>
+                  <FormItem className='flex flex-row items-center justify-between rounded-lg border p-3 md:col-span-2'>
                     <div className='space-y-0.5'>
                       <FormLabel>{t('Enable scheduled backup')}</FormLabel>
                       <FormDescription>
@@ -425,25 +486,118 @@ export function DBBackupSection() {
               <FormField
                 control={form.control}
                 name='cron_expression'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Backup cron expression')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        placeholder='0 3 * * 0'
-                        className='font-mono'
-                        disabled={!form.watch('schedule_enabled')}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t(
-                        'Standard 5-field cron (minute hour day month weekday), local server time. Example: 0 3 * * 0 = every Sunday 03:00.'
-                      )}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                render={({ field }) => {
+                  const disabled = !scheduleEnabled
+                  return (
+                    <FormItem className='md:col-span-2'>
+                      <FormLabel>{t('Backup schedule')}</FormLabel>
+                      <div
+                        className={cn(
+                          'space-y-3 rounded-lg border p-3',
+                          disabled && 'opacity-60'
+                        )}
+                      >
+                        <div className='space-y-2'>
+                          <div className='text-muted-foreground text-xs font-medium'>
+                            {t('Common schedules')}
+                          </div>
+                          <div className='flex flex-wrap gap-2'>
+                            {BACKUP_CRON_PRESETS.map((preset) => {
+                              const active =
+                                matchedCronPreset?.id === preset.id
+                              return (
+                                <Button
+                                  key={preset.id}
+                                  type='button'
+                                  size='sm'
+                                  variant={active ? 'default' : 'outline'}
+                                  disabled={disabled}
+                                  className='h-8'
+                                  onClick={() => {
+                                    field.onChange(preset.expression)
+                                    form.clearErrors('cron_expression')
+                                  }}
+                                >
+                                  {t(preset.label)}
+                                </Button>
+                              )
+                            })}
+                          </div>
+                        </div>
+
+                        <div className='space-y-2'>
+                          <div className='text-muted-foreground text-xs font-medium'>
+                            {t('Cron expression')}
+                          </div>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              value={field.value}
+                              onChange={(event) => {
+                                field.onChange(event.target.value)
+                              }}
+                              placeholder='0 3 * * 0'
+                              className='font-mono'
+                              disabled={disabled}
+                              spellCheck={false}
+                              autoComplete='off'
+                            />
+                          </FormControl>
+                          <div className='text-muted-foreground font-mono text-xs'>
+                            {matchedCronPreset
+                              ? `${t(matchedCronPreset.label)} · ${matchedCronPreset.expression}`
+                              : field.value?.trim()
+                                ? `${t('Custom expression')} · ${normalizeCronExpression(field.value)}`
+                                : t('Pick a preset or enter a 5-field cron')}
+                          </div>
+                        </div>
+
+                        <div className='overflow-x-auto rounded-md border'>
+                          <table className='w-full min-w-[420px] text-left text-xs'>
+                            <thead className='bg-muted/40 text-muted-foreground'>
+                              <tr>
+                                <th className='px-2 py-1.5 font-medium'>
+                                  {t('Cron field')}
+                                </th>
+                                <th className='px-2 py-1.5 font-medium'>
+                                  {t('Allowed values')}
+                                </th>
+                                <th className='px-2 py-1.5 font-medium'>
+                                  {t('Sample value')}
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {CRON_FIELD_GUIDE.map((item) => (
+                                <tr
+                                  key={item.field}
+                                  className='border-t border-border/60'
+                                >
+                                  <td className='px-2 py-1.5 font-mono'>
+                                    {t(item.field)}
+                                  </td>
+                                  <td className='px-2 py-1.5 font-mono'>
+                                    {item.range}
+                                  </td>
+                                  <td className='px-2 py-1.5 font-mono'>
+                                    {item.example}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <FormDescription>
+                          {t(
+                            'Standard 5-field cron (minute hour day month weekday), local server time. Prefer presets; disable any host crontab that also dumps the same databases.'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </div>
+                    </FormItem>
+                  )
+                }}
               />
             </div>
             <div className='flex gap-2'>
