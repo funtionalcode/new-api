@@ -17,8 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useQueryClient } from '@tanstack/react-query'
-import { DatabaseBackup } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -53,17 +51,15 @@ import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 
 import {
-  getCurrentDBBackupTask,
   getDBBackupConfig,
   getDBBackupScript,
-  getSystemTask,
-  triggerDBBackup,
   updateDBBackupConfig,
   updateDBBackupScript,
 } from '../api'
 import { SettingsForm } from '../components/settings-form-layout'
 import { SettingsSection } from '../components/settings-section'
-import type { DBBackupConfig, DBBackupTask } from '../types'
+import type { DBBackupConfig } from '../types'
+import { DBBackupHistoryPanel } from './db-backup-history-panel'
 
 const BACKUP_CRON_PRESETS = [
   {
@@ -151,10 +147,6 @@ const configSchema = z
 
 type ConfigFormValues = z.infer<typeof configSchema>
 
-function isActiveDBBackupTask(task: DBBackupTask | null) {
-  return task?.status === 'pending' || task?.status === 'running'
-}
-
 const emptyConfig: ConfigFormValues = {
   backup_root: '/data/backups/new-api',
   pg_container: 'postgres',
@@ -172,7 +164,6 @@ const emptyConfig: ConfigFormValues = {
 
 export function DBBackupSection() {
   const { t } = useTranslation()
-  const queryClient = useQueryClient()
   const [loading, setLoading] = useState(true)
   const [savingConfig, setSavingConfig] = useState(false)
   const [savingScript, setSavingScript] = useState(false)
@@ -180,9 +171,6 @@ export function DBBackupSection() {
   const [scriptSha, setScriptSha] = useState('')
   const [scriptIsDefault, setScriptIsDefault] = useState(false)
   const [showScriptConfirm, setShowScriptConfirm] = useState(false)
-  const [showTriggerConfirm, setShowTriggerConfirm] = useState(false)
-  const [isStarting, setIsStarting] = useState(false)
-  const [task, setTask] = useState<DBBackupTask | null>(null)
 
   const form = useForm<ConfigFormValues>({
     resolver: zodResolver(configSchema),
@@ -205,10 +193,9 @@ export function DBBackupSection() {
     let cancelled = false
     async function load() {
       try {
-        const [configRes, scriptRes, taskRes] = await Promise.all([
+        const [configRes, scriptRes] = await Promise.all([
           getDBBackupConfig(),
           getDBBackupScript(),
-          getCurrentDBBackupTask(),
         ])
         if (cancelled) return
         if (configRes.success && configRes.data) {
@@ -234,9 +221,6 @@ export function DBBackupSection() {
           setScriptSha(scriptRes.data.sha256 || '')
           setScriptIsDefault(Boolean(scriptRes.data.is_default))
         }
-        if (taskRes.success && taskRes.data) {
-          setTask(taskRes.data)
-        }
       } catch {
         toast.error(t('Failed to load database backup settings.'))
       } finally {
@@ -248,38 +232,6 @@ export function DBBackupSection() {
       cancelled = true
     }
   }, [form, t])
-
-  const active = isActiveDBBackupTask(task)
-  const taskId = task?.task_id
-
-  useEffect(() => {
-    if (!taskId || !active) return
-    let cancelled = false
-    const interval = window.setInterval(async () => {
-      try {
-        const res = await getSystemTask(taskId)
-        if (cancelled || !res.success || !res.data) return
-        const nextTask = res.data as DBBackupTask
-        setTask(nextTask)
-        if (!isActiveDBBackupTask(nextTask)) {
-          void queryClient.invalidateQueries({
-            queryKey: ['system-info', 'system-tasks'],
-          })
-          if (nextTask.status === 'succeeded') {
-            toast.success(t('Database backup completed.'))
-          } else if (nextTask.status === 'failed') {
-            toast.error(nextTask.error || t('Database backup failed.'))
-          }
-        }
-      } catch {
-        /* keep polling */
-      }
-    }, 2000)
-    return () => {
-      cancelled = true
-      window.clearInterval(interval)
-    }
-  }, [active, queryClient, t, taskId])
 
   const onSaveConfig = async (values: ConfigFormValues) => {
     setSavingConfig(true)
@@ -340,34 +292,6 @@ export function DBBackupSection() {
       )
     } finally {
       setSavingScript(false)
-    }
-  }
-
-  const handleTrigger = async () => {
-    setIsStarting(true)
-    try {
-      const res = await triggerDBBackup()
-      if (!res.success || !res.data) {
-        throw new Error(res.message || t('Failed to start database backup.'))
-      }
-      setTask(res.data)
-      setShowTriggerConfirm(false)
-      void queryClient.invalidateQueries({
-        queryKey: ['system-info', 'system-tasks'],
-      })
-      toast.success(
-        res.message
-          ? t('Database backup task is already running.')
-          : t('Database backup task started.')
-      )
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : t('Failed to start database backup.')
-      )
-    } finally {
-      setIsStarting(false)
     }
   }
 
@@ -657,27 +581,7 @@ export function DBBackupSection() {
 
       <Separator />
 
-      <div className='flex items-center gap-2'>
-        <Button
-          type='button'
-          disabled={isStarting || active}
-          onClick={() => setShowTriggerConfirm(true)}
-        >
-          <DatabaseBackup
-            data-icon='inline-start'
-            className='size-3.5'
-            aria-hidden='true'
-          />
-          {isStarting || active
-            ? t('Backup running...')
-            : t('Trigger database backup')}
-        </Button>
-        {task?.status ? (
-          <span className='text-muted-foreground text-sm'>
-            {t('Current status')}: {task.status}
-          </span>
-        ) : null}
-      </div>
+      <DBBackupHistoryPanel />
 
       <AlertDialog open={showScriptConfirm} onOpenChange={setShowScriptConfirm}>
         <AlertDialogContent>
@@ -701,36 +605,6 @@ export function DBBackupSection() {
               }}
             >
               {savingScript ? t('Saving...') : t('Save script')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog
-        open={showTriggerConfirm}
-        onOpenChange={setShowTriggerConfirm}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('Confirm database backup')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t(
-                'This will enqueue a host-side PostgreSQL and ClickHouse backup. The host agent claims and runs it within about one minute.'
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isStarting}>
-              {t('Cancel')}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              disabled={isStarting}
-              onClick={(event) => {
-                event.preventDefault()
-                void handleTrigger()
-              }}
-            >
-              {isStarting ? t('Starting...') : t('Start backup')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

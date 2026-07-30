@@ -52,8 +52,6 @@ import { toIntlLocale } from '@/i18n/languages'
 import { formatTimestampRelative, formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-import { DBBackupTriggerButton } from './db-backup-trigger-button'
-
 const TASK_LIMIT = 20
 const ACTIVE_POLL_INTERVAL_MS = 8000
 
@@ -525,7 +523,6 @@ export function SystemTasksPanel() {
                 })
               : t('Live refresh pauses when no task is running')}
           </span>
-          <DBBackupTriggerButton />
           <Button
             type='button'
             variant='outline'
