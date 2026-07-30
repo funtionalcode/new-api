@@ -32,7 +32,11 @@ export async function syncCodexResets() {
 
 export async function deleteCodexReset(id: number) {
   const res = await api.delete<{ success: boolean; message?: string }>(
-    `/api/codex-resets/${id}`
+    `/api/codex-resets/${id}`,
+    {
+      // mutation 自己处理 toast，避免业务失败时双弹。
+      skipBusinessError: true,
+    }
   )
   return res.data
 }

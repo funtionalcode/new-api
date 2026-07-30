@@ -5588,6 +5588,9 @@
     "User Quota Consumption Ranking": "用户额度消耗排行",
     "Remove this reset from local history? It will stay removed even after later syncs from the upstream source.": "从本地历史中删除该重置记录？删除后即使后续从上游同步也不会再写回。",
     "Invalid reset event id": "无效的重置记录 ID",
-    "Please fix the highlighted backup settings before saving.": "请先修正标红的备份设置项后再保存。"
+    "Please fix the highlighted backup settings before saving.": "请先修正标红的备份设置项后再保存。",
+    "No reset announcement on this day.": "这一天没有重置公告。",
+    "No source link for this reset day.": "这一天的重置记录没有可用来源链接。",
+    "Click to open source announcement": "点击打开来源公告"
   }
 }

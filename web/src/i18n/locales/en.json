@@ -5588,6 +5588,9 @@
     "User Quota Consumption Ranking": "User Quota Consumption Ranking",
     "Remove this reset from local history? It will stay removed even after later syncs from the upstream source.": "Remove this reset from local history? It will stay removed even after later syncs from the upstream source.",
     "Invalid reset event id": "Invalid reset event id",
-    "Please fix the highlighted backup settings before saving.": "Please fix the highlighted backup settings before saving."
+    "Please fix the highlighted backup settings before saving.": "Please fix the highlighted backup settings before saving.",
+    "No reset announcement on this day.": "No reset announcement on this day.",
+    "No source link for this reset day.": "No source link for this reset day.",
+    "Click to open source announcement": "Click to open source announcement"
   }
 }

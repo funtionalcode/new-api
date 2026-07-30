@@ -73,7 +73,11 @@ import { cn } from '@/lib/utils'
 import { VCHART_OPTION } from '@/lib/vchart'
 
 import { deleteCodexReset, getCodexResets, syncCodexResets } from './api'
-import type { CodexResetEvent, CodexResetsHeatmapPoint } from './types'
+import type {
+  CodexResetEvent,
+  CodexResetsData,
+  CodexResetsHeatmapPoint,
+} from './types'
 
 const QUERY_KEY = ['codex-resets'] as const
 
@@ -96,7 +100,18 @@ function formatRelative(ts: number | undefined, now = Date.now()): string {
   return `${days}d ago`
 }
 
-function Heatmap({ points }: { points: CodexResetsHeatmapPoint[] }) {
+function utcDateKey(ts: number): string {
+  if (!ts) return ''
+  return new Date(ts * 1000).toISOString().slice(0, 10)
+}
+
+function Heatmap({
+  points,
+  eventsByDate,
+}: {
+  points: CodexResetsHeatmapPoint[]
+  eventsByDate: Map<string, CodexResetEvent[]>
+}) {
   const { t } = useTranslation()
 
   const weeks = useMemo(() => {
@@ -114,39 +129,80 @@ function Heatmap({ points }: { points: CodexResetsHeatmapPoint[] }) {
     return 'bg-muted'
   }
 
+  const openDayAnnouncement = (day: CodexResetsHeatmapPoint) => {
+    if (!day.count) {
+      toast.message(t('No reset announcement on this day.'))
+      return
+    }
+    const dayEvents = [...(eventsByDate.get(day.date) ?? [])].sort(
+      (a, b) => b.announced_at - a.announced_at
+    )
+    const withUrl = dayEvents.find((event) => event.tweet_url?.trim())
+    if (withUrl?.tweet_url) {
+      window.open(withUrl.tweet_url, '_blank', 'noopener,noreferrer')
+      return
+    }
+    // Fallback: scroll to the first matching row in the recent list.
+    const target = dayEvents[0]
+    if (target?.tweet_id) {
+      const el = document.getElementById(`codex-reset-row-${target.tweet_id}`)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        el.classList.add('bg-muted/70')
+        window.setTimeout(() => el.classList.remove('bg-muted/70'), 1600)
+        return
+      }
+    }
+    toast.message(t('No source link for this reset day.'))
+  }
+
   return (
     <TooltipProvider delay={0}>
       <div className='overflow-x-auto'>
         <div className='flex min-w-max gap-1'>
           {weeks.map((week, weekIdx) => (
             <div key={weekIdx} className='flex flex-col gap-1'>
-              {week.map((day) => (
-                <Tooltip key={day.date}>
-                  <TooltipTrigger
-                    render={
-                      <button
-                        type='button'
-                        aria-label={t('{{date}}: {{count}} reset(s)', {
-                          date: day.date,
-                          count: day.count,
-                        })}
-                        className={cn(
-                          'size-3 rounded-[2px] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
-                          levelClass(day.level)
-                        )}
-                      />
-                    }
-                  />
-                  <TooltipContent side='top' sideOffset={6}>
-                    <div className='flex flex-col gap-0.5'>
-                      <span className='font-medium tabular-nums'>{day.date}</span>
-                      <span className='text-background/80'>
-                        {t('{{count}} reset(s)', { count: day.count })}
-                      </span>
-                    </div>
-                  </TooltipContent>
-                </Tooltip>
-              ))}
+              {week.map((day) => {
+                const clickable = day.count > 0
+                return (
+                  <Tooltip key={day.date}>
+                    <TooltipTrigger
+                      render={
+                        <button
+                          type='button'
+                          aria-label={t('{{date}}: {{count}} reset(s)', {
+                            date: day.date,
+                            count: day.count,
+                          })}
+                          onClick={() => openDayAnnouncement(day)}
+                          className={cn(
+                            'size-3 rounded-[2px] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
+                            levelClass(day.level),
+                            clickable
+                              ? 'cursor-pointer hover:ring-2 hover:ring-emerald-500/50'
+                              : 'cursor-default'
+                          )}
+                        />
+                      }
+                    />
+                    <TooltipContent side='top' sideOffset={6}>
+                      <div className='flex flex-col gap-0.5'>
+                        <span className='font-medium tabular-nums'>
+                          {day.date}
+                        </span>
+                        <span className='text-background/80'>
+                          {t('{{count}} reset(s)', { count: day.count })}
+                        </span>
+                        {clickable ? (
+                          <span className='text-background/70 text-xs'>
+                            {t('Click to open source announcement')}
+                          </span>
+                        ) : null}
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                )
+              })}
             </div>
           ))}
         </div>
@@ -199,11 +255,19 @@ export function CodexResetsPage() {
     mutationFn: async (id: number) => {
       const res = await deleteCodexReset(id)
       if (!res.success) {
-        throw new Error(res.message || 'Delete failed')
+        throw new Error(res.message || t('Delete failed'))
       }
-      return res
+      return id
     },
-    onSuccess: () => {
+    onSuccess: (id) => {
+      // 先本地摘掉，避免等待 refetch 期间仍显示旧行。
+      queryClient.setQueryData<CodexResetsData>(QUERY_KEY, (prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          events: (prev.events ?? []).filter((event) => event.id !== id),
+        }
+      })
       toast.success(t('Deleted successfully'))
       setDeleteTarget(null)
       void queryClient.invalidateQueries({ queryKey: QUERY_KEY })
@@ -218,6 +282,20 @@ export function CodexResetsPage() {
   const intervals = data?.charts.intervals ?? []
   const heatmap = data?.charts.heatmap ?? []
   const events = data?.events ?? []
+  const eventsByDate = useMemo(() => {
+    const map = new Map<string, CodexResetEvent[]>()
+    for (const event of events) {
+      const key = utcDateKey(event.announced_at)
+      if (!key) continue
+      const list = map.get(key)
+      if (list) {
+        list.push(event)
+      } else {
+        map.set(key, [event])
+      }
+    }
+    return map
+  }, [events])
   const isDark = resolvedTheme === 'dark'
 
   const intervalSpec = useMemo(() => {
@@ -425,7 +503,7 @@ export function CodexResetsPage() {
                       {t('No heatmap data yet. Sync to populate history.')}
                     </div>
                   ) : (
-                    <Heatmap points={heatmap} />
+                    <Heatmap points={heatmap} eventsByDate={eventsByDate} />
                   )}
                 </CardContent>
               </Card>
@@ -496,7 +574,11 @@ export function CodexResetsPage() {
                       </TableHeader>
                       <TableBody>
                         {events.slice(0, 30).map((event) => (
-                          <TableRow key={event.tweet_id}>
+                          <TableRow
+                            key={event.tweet_id}
+                            id={`codex-reset-row-${event.tweet_id}`}
+                            className='scroll-mt-24 transition-colors'
+                          >
                             <TableCell className='whitespace-nowrap align-top tabular-nums'>
                               <div>{formatTimestampToDate(event.announced_at)}</div>
                               <div className='text-muted-foreground text-xs'>
@@ -528,6 +610,7 @@ export function CodexResetsPage() {
                             {isAdmin ? (
                               <TableCell className='align-top text-right'>
                                 <Button
+                                  type='button'
                                   variant='ghost'
                                   size='sm'
                                   className='text-destructive hover:text-destructive'
@@ -590,14 +673,19 @@ export function CodexResetsPage() {
               {t('Cancel')}
             </AlertDialogCancel>
             <AlertDialogAction
+              type='button'
               variant='destructive'
               disabled={deleteMutation.isPending || !deleteTarget?.id}
-              onClick={() => {
-                if (!deleteTarget?.id) {
+              onClick={(event) => {
+                // 阻止可能的默认关闭/提交，确保异步删除请求发出。
+                event.preventDefault()
+                event.stopPropagation()
+                const id = deleteTarget?.id
+                if (!id) {
                   toast.error(t('Invalid reset event id'))
                   return
                 }
-                deleteMutation.mutate(deleteTarget.id)
+                deleteMutation.mutate(id)
               }}
             >
               {deleteMutation.isPending ? t('Deleting...') : t('Delete')}
