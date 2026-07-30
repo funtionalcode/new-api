@@ -5587,6 +5587,7 @@
     "Remove this reset from local history? A later sync may re-import it if the upstream source still lists the announcement.": "Remove this reset from local history? A later sync may re-import it if the upstream source still lists the announcement.",
     "User Quota Consumption Ranking": "User Quota Consumption Ranking",
     "Remove this reset from local history? It will stay removed even after later syncs from the upstream source.": "Remove this reset from local history? It will stay removed even after later syncs from the upstream source.",
-    "Invalid reset event id": "Invalid reset event id"
+    "Invalid reset event id": "Invalid reset event id",
+    "Please fix the highlighted backup settings before saving.": "Please fix the highlighted backup settings before saving."
   }
 }

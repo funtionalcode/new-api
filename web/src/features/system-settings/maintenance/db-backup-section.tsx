@@ -239,6 +239,7 @@ export function DBBackupSection() {
       const payload: DBBackupConfig = {
         ...values,
         keep_weekly: Number(values.keep_weekly),
+        cron_expression: normalizeCronExpression(values.cron_expression),
       }
       const res = await updateDBBackupConfig(payload)
       if (!res.success) {
@@ -255,7 +256,7 @@ export function DBBackupSection() {
           ck_databases: res.data.ck_databases,
           keep_weekly: res.data.keep_weekly,
           log_dir: res.data.log_dir,
-          script_enabled: res.data.script_enabled,
+          script_enabled: Boolean(res.data.script_enabled),
           schedule_enabled: Boolean(res.data.schedule_enabled),
           cron_expression: res.data.cron_expression || '0 3 * * 0',
         })
@@ -271,6 +272,10 @@ export function DBBackupSection() {
     } finally {
       setSavingConfig(false)
     }
+  }
+
+  const onSaveConfigInvalid = () => {
+    toast.error(t('Please fix the highlighted backup settings before saving.'))
   }
 
   const onSaveScript = async () => {
@@ -313,225 +318,222 @@ export function DBBackupSection() {
         </AlertDescription>
       </Alert>
 
-      <SettingsForm>
-        <Form {...form}>
-          <form
-            className='flex flex-col gap-4'
-            onSubmit={form.handleSubmit(onSaveConfig)}
-          >
-            <div className='grid gap-4 md:grid-cols-2'>
-              {(
-                [
-                  ['backup_root', 'Backup root path'],
-                  ['log_dir', 'Log directory'],
-                  ['pg_container', 'PostgreSQL container'],
-                  ['ck_container', 'ClickHouse container'],
-                  ['pg_user', 'PostgreSQL user'],
-                  ['pg_db', 'PostgreSQL database'],
-                  ['ck_user', 'ClickHouse user'],
-                  ['ck_databases', 'ClickHouse databases'],
-                ] as const
-              ).map(([name, label]) => (
-                <FormField
-                  key={name}
-                  control={form.control}
-                  name={name}
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t(label)}</FormLabel>
-                      <FormControl>
-                        <Input {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              ))}
+      <Form {...form}>
+        <SettingsForm
+          className='!grid-cols-1'
+          onSubmit={form.handleSubmit(onSaveConfig, onSaveConfigInvalid)}
+        >
+          <div className='grid gap-4 md:grid-cols-2'>
+            {(
+              [
+                ['backup_root', 'Backup root path'],
+                ['log_dir', 'Log directory'],
+                ['pg_container', 'PostgreSQL container'],
+                ['ck_container', 'ClickHouse container'],
+                ['pg_user', 'PostgreSQL user'],
+                ['pg_db', 'PostgreSQL database'],
+                ['ck_user', 'ClickHouse user'],
+                ['ck_databases', 'ClickHouse databases'],
+              ] as const
+            ).map(([name, label]) => (
               <FormField
+                key={name}
                 control={form.control}
-                name='keep_weekly'
+                name={name}
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Weekly backups to keep')}</FormLabel>
+                    <FormLabel>{t(label)}</FormLabel>
                     <FormControl>
-                      <Input type='number' min={1} max={52} {...field} />
+                      <Input {...field} />
                     </FormControl>
-                    <FormDescription>
-                      {t('Retention count for weekly backups (1-52).')}
-                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name='script_enabled'
-                render={({ field }) => (
-                  <FormItem className='flex flex-row items-center justify-between rounded-lg border p-3'>
-                    <div className='space-y-0.5'>
-                      <FormLabel>{t('Allow host to apply script')}</FormLabel>
-                      <FormDescription>
-                        {t(
-                          'When enabled, the host agent materializes the saved script to a fixed path.'
-                        )}
-                      </FormDescription>
-                    </div>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name='schedule_enabled'
-                render={({ field }) => (
-                  <FormItem className='flex flex-row items-center justify-between rounded-lg border p-3 md:col-span-2'>
-                    <div className='space-y-0.5'>
-                      <FormLabel>{t('Enable scheduled backup')}</FormLabel>
-                      <FormDescription>
-                        {t(
-                          'When enabled, new-api enqueues a host backup on the cron schedule. The host agent still executes the dump.'
-                        )}
-                      </FormDescription>
-                    </div>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name='cron_expression'
-                render={({ field }) => {
-                  const disabled = !scheduleEnabled
-                  return (
-                    <FormItem className='md:col-span-2'>
-                      <FormLabel>{t('Backup schedule')}</FormLabel>
-                      <div
-                        className={cn(
-                          'space-y-3 rounded-lg border p-3',
-                          disabled && 'opacity-60'
-                        )}
-                      >
-                        <div className='space-y-2'>
-                          <div className='text-muted-foreground text-xs font-medium'>
-                            {t('Common schedules')}
-                          </div>
-                          <div className='flex flex-wrap gap-2'>
-                            {BACKUP_CRON_PRESETS.map((preset) => {
-                              const active =
-                                matchedCronPreset?.id === preset.id
-                              return (
-                                <Button
-                                  key={preset.id}
-                                  type='button'
-                                  size='sm'
-                                  variant={active ? 'default' : 'outline'}
-                                  disabled={disabled}
-                                  className='h-8'
-                                  onClick={() => {
-                                    field.onChange(preset.expression)
-                                    form.clearErrors('cron_expression')
-                                  }}
-                                >
-                                  {t(preset.label)}
-                                </Button>
-                              )
-                            })}
-                          </div>
+            ))}
+            <FormField
+              control={form.control}
+              name='keep_weekly'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Weekly backups to keep')}</FormLabel>
+                  <FormControl>
+                    <Input type='number' min={1} max={52} {...field} />
+                  </FormControl>
+                  <FormDescription>
+                    {t('Retention count for weekly backups (1-52).')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='script_enabled'
+              render={({ field }) => (
+                <FormItem className='flex flex-row items-center justify-between rounded-lg border p-3'>
+                  <div className='space-y-0.5'>
+                    <FormLabel>{t('Allow host to apply script')}</FormLabel>
+                    <FormDescription>
+                      {t(
+                        'When enabled, the host agent materializes the saved script to a fixed path.'
+                      )}
+                    </FormDescription>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='schedule_enabled'
+              render={({ field }) => (
+                <FormItem className='flex flex-row items-center justify-between rounded-lg border p-3 md:col-span-2'>
+                  <div className='space-y-0.5'>
+                    <FormLabel>{t('Enable scheduled backup')}</FormLabel>
+                    <FormDescription>
+                      {t(
+                        'When enabled, new-api enqueues a host backup on the cron schedule. The host agent still executes the dump.'
+                      )}
+                    </FormDescription>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='cron_expression'
+              render={({ field }) => {
+                const disabled = !scheduleEnabled
+                return (
+                  <FormItem className='md:col-span-2'>
+                    <FormLabel>{t('Backup schedule')}</FormLabel>
+                    <div
+                      className={cn(
+                        'space-y-3 rounded-lg border p-3',
+                        disabled && 'opacity-60'
+                      )}
+                    >
+                      <div className='space-y-2'>
+                        <div className='text-muted-foreground text-xs font-medium'>
+                          {t('Common schedules')}
                         </div>
-
-                        <div className='space-y-2'>
-                          <div className='text-muted-foreground text-xs font-medium'>
-                            {t('Cron expression')}
-                          </div>
-                          <FormControl>
-                            <Input
-                              {...field}
-                              value={field.value}
-                              onChange={(event) => {
-                                field.onChange(event.target.value)
-                              }}
-                              placeholder='0 3 * * 0'
-                              className='font-mono'
-                              disabled={disabled}
-                              spellCheck={false}
-                              autoComplete='off'
-                            />
-                          </FormControl>
-                          <div className='text-muted-foreground font-mono text-xs'>
-                            {matchedCronPreset
-                              ? `${t(matchedCronPreset.label)} · ${matchedCronPreset.expression}`
-                              : field.value?.trim()
-                                ? `${t('Custom expression')} · ${normalizeCronExpression(field.value)}`
-                                : t('Pick a preset or enter a 5-field cron')}
-                          </div>
+                        <div className='flex flex-wrap gap-2'>
+                          {BACKUP_CRON_PRESETS.map((preset) => {
+                            const active = matchedCronPreset?.id === preset.id
+                            return (
+                              <Button
+                                key={preset.id}
+                                type='button'
+                                size='sm'
+                                variant={active ? 'default' : 'outline'}
+                                disabled={disabled}
+                                className='h-8'
+                                onClick={() => {
+                                  field.onChange(preset.expression)
+                                  form.clearErrors('cron_expression')
+                                }}
+                              >
+                                {t(preset.label)}
+                              </Button>
+                            )
+                          })}
                         </div>
-
-                        <div className='overflow-x-auto rounded-md border'>
-                          <table className='w-full min-w-[420px] text-left text-xs'>
-                            <thead className='bg-muted/40 text-muted-foreground'>
-                              <tr>
-                                <th className='px-2 py-1.5 font-medium'>
-                                  {t('Cron field')}
-                                </th>
-                                <th className='px-2 py-1.5 font-medium'>
-                                  {t('Allowed values')}
-                                </th>
-                                <th className='px-2 py-1.5 font-medium'>
-                                  {t('Sample value')}
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {CRON_FIELD_GUIDE.map((item) => (
-                                <tr
-                                  key={item.field}
-                                  className='border-t border-border/60'
-                                >
-                                  <td className='px-2 py-1.5 font-mono'>
-                                    {t(item.field)}
-                                  </td>
-                                  <td className='px-2 py-1.5 font-mono'>
-                                    {item.range}
-                                  </td>
-                                  <td className='px-2 py-1.5 font-mono'>
-                                    {item.example}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-
-                        <FormDescription>
-                          {t(
-                            'Standard 5-field cron (minute hour day month weekday), local server time. Prefer presets; disable any host crontab that also dumps the same databases.'
-                          )}
-                        </FormDescription>
-                        <FormMessage />
                       </div>
-                    </FormItem>
-                  )
-                }}
-              />
-            </div>
-            <div className='flex gap-2'>
-              <Button type='submit' disabled={savingConfig}>
-                {savingConfig ? t('Saving...') : t('Save backup settings')}
-              </Button>
-            </div>
-          </form>
-        </Form>
-      </SettingsForm>
+
+                      <div className='space-y-2'>
+                        <div className='text-muted-foreground text-xs font-medium'>
+                          {t('Cron expression')}
+                        </div>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            value={field.value}
+                            onChange={(event) => {
+                              field.onChange(event.target.value)
+                            }}
+                            placeholder='0 3 * * 0'
+                            className='font-mono'
+                            disabled={disabled}
+                            spellCheck={false}
+                            autoComplete='off'
+                          />
+                        </FormControl>
+                        <div className='text-muted-foreground font-mono text-xs'>
+                          {matchedCronPreset
+                            ? `${t(matchedCronPreset.label)} · ${matchedCronPreset.expression}`
+                            : field.value?.trim()
+                              ? `${t('Custom expression')} · ${normalizeCronExpression(field.value)}`
+                              : t('Pick a preset or enter a 5-field cron')}
+                        </div>
+                      </div>
+
+                      <div className='overflow-x-auto rounded-md border'>
+                        <table className='w-full min-w-[420px] text-left text-xs'>
+                          <thead className='bg-muted/40 text-muted-foreground'>
+                            <tr>
+                              <th className='px-2 py-1.5 font-medium'>
+                                {t('Cron field')}
+                              </th>
+                              <th className='px-2 py-1.5 font-medium'>
+                                {t('Allowed values')}
+                              </th>
+                              <th className='px-2 py-1.5 font-medium'>
+                                {t('Sample value')}
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {CRON_FIELD_GUIDE.map((item) => (
+                              <tr
+                                key={item.field}
+                                className='border-t border-border/60'
+                              >
+                                <td className='px-2 py-1.5 font-mono'>
+                                  {t(item.field)}
+                                </td>
+                                <td className='px-2 py-1.5 font-mono'>
+                                  {item.range}
+                                </td>
+                                <td className='px-2 py-1.5 font-mono'>
+                                  {item.example}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <FormDescription>
+                        {t(
+                          'Standard 5-field cron (minute hour day month weekday), local server time. Prefer presets; disable any host crontab that also dumps the same databases.'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </div>
+                  </FormItem>
+                )
+              }}
+            />
+          </div>
+          <div className='flex gap-2'>
+            <Button type='submit' disabled={savingConfig}>
+              {savingConfig ? t('Saving...') : t('Save backup settings')}
+            </Button>
+          </div>
+        </SettingsForm>
+      </Form>
 
       <Separator />
 
