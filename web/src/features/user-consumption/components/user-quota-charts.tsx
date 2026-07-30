@@ -18,28 +18,28 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo, useState } from 'react'
 import { VChart } from '@visactor/react-vchart'
-import { Coins } from 'lucide-react'
+import { Users } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { useTheme } from '@/context/theme-provider'
 import { VCHART_OPTION } from '@/lib/vchart'
 
-import { processTokenQuotaRankChartData } from '../lib/token-quota-rank'
+import { processUserQuotaRankChartData } from '../lib/user-quota-rank'
 import type { UserConsumptionSummary } from '../types'
 
-interface TokenQuotaChartsProps {
+interface UserQuotaChartsProps {
   data: UserConsumptionSummary[]
   loading?: boolean
   limit?: number
   renderKey?: string
 }
 
-export function TokenQuotaCharts({
+export function UserQuotaCharts({
   data,
   loading,
   limit = 15,
   renderKey = 'default',
-}: TokenQuotaChartsProps) {
+}: UserQuotaChartsProps) {
   const { t } = useTranslation()
   const { resolvedTheme } = useTheme()
   const [themeReady, setThemeReady] = useState(false)
@@ -50,7 +50,7 @@ export function TokenQuotaCharts({
   }, [resolvedTheme])
 
   const spec = useMemo(() => {
-    return processTokenQuotaRankChartData(data, t, limit)
+    return processUserQuotaRankChartData(data, t, limit)
   }, [data, limit, t])
 
   const hasData = spec.data[0].values.length > 0
@@ -67,9 +67,9 @@ export function TokenQuotaCharts({
     <div className='overflow-hidden rounded-lg border'>
       <div className='flex w-full items-center gap-2 border-b px-3 py-2 sm:px-5 sm:py-3'>
         <div className='flex items-center gap-2'>
-          <Coins className='text-muted-foreground/60 size-4' />
+          <Users className='text-muted-foreground/60 size-4' />
           <div className='text-sm font-semibold'>
-            {t('Quota Consumption Ranking')}
+            {t('User Quota Consumption Ranking')}
           </div>
         </div>
       </div>
@@ -77,7 +77,7 @@ export function TokenQuotaCharts({
       <div className='h-[300px] p-1.5 sm:h-96 sm:p-2'>
         {themeReady && hasData && (
           <VChart
-            key={`token-quota-rank-${renderKey}-${limit}-${resolvedTheme}`}
+            key={`user-quota-rank-${renderKey}-${limit}-${resolvedTheme}`}
             spec={{
               ...spec,
               theme: resolvedTheme === 'dark' ? 'dark' : 'light',

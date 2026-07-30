@@ -5556,6 +5556,7 @@
     "{{date}}: {{count}} reset(s)": "{{date}}：{{count}} 次重置",
     "{{count}} reset(s)": "{{count}} 次重置",
     "Delete reset event": "删除重置记录",
-    "Remove this reset from local history? A later sync may re-import it if the upstream source still lists the announcement.": "从本地历史中删除该重置记录？若上游仍保留对应公告，后续同步可能会再次导入。"
+    "Remove this reset from local history? A later sync may re-import it if the upstream source still lists the announcement.": "从本地历史中删除该重置记录？若上游仍保留对应公告，后续同步可能会再次导入。",
+    "User Quota Consumption Ranking": "用户额度消耗排行"
   }
 }

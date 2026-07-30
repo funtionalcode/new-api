@@ -5556,6 +5556,7 @@
     "{{date}}: {{count}} reset(s)": "{{date}}: {{count}} reset(s)",
     "{{count}} reset(s)": "{{count}} reset(s)",
     "Delete reset event": "Delete reset event",
-    "Remove this reset from local history? A later sync may re-import it if the upstream source still lists the announcement.": "Remove this reset from local history? A later sync may re-import it if the upstream source still lists the announcement."
+    "Remove this reset from local history? A later sync may re-import it if the upstream source still lists the announcement.": "Remove this reset from local history? A later sync may re-import it if the upstream source still lists the announcement.",
+    "User Quota Consumption Ranking": "User Quota Consumption Ranking"
   }
 }

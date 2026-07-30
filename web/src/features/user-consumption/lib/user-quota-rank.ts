@@ -21,7 +21,7 @@ import type { UserConsumptionSummary } from '../types'
 
 type TFunction = (key: string, options?: Record<string, unknown>) => string
 
-const QUOTA_RANK_COLORS = [
+const USER_QUOTA_RANK_COLORS = [
   '#E8684A',
   '#F6BD16',
   '#5B8FF9',
@@ -34,72 +34,79 @@ const QUOTA_RANK_COLORS = [
   '#5D7092',
 ]
 
-function emptyQuotaRankSpec(t: TFunction) {
+function emptyUserQuotaRankSpec(t: TFunction) {
   return {
     type: 'bar',
-    data: [{ id: 'tokenQuotaRankData', values: [] }],
+    data: [{ id: 'userQuotaRankData', values: [] }],
     xField: 'rawValue',
-    yField: 'Token',
-    seriesField: 'Token',
+    yField: 'User',
+    seriesField: 'User',
     direction: 'horizontal',
     title: {
       visible: true,
-      text: t('Quota Consumption Ranking'),
+      text: t('User Quota Consumption Ranking'),
       subtext: t('No data available'),
     },
     legends: { visible: false },
-    color: { type: 'ordinal', range: QUOTA_RANK_COLORS },
+    color: { type: 'ordinal', range: USER_QUOTA_RANK_COLORS },
     background: { fill: 'transparent' },
   }
 }
 
-export function processTokenQuotaRankChartData(
+export function processUserQuotaRankChartData(
   data: UserConsumptionSummary[],
   t?: TFunction,
   limit = 15
 ) {
   const translate = t ?? ((key) => key)
-  const emptySpec = emptyQuotaRankSpec(translate)
+  const emptySpec = emptyUserQuotaRankSpec(translate)
 
   if (!data || data.length === 0) return emptySpec
 
-  const tokenTotals = new Map<
+  const userTotals = new Map<
     string,
     {
       label: string
       quota: number
       tokens: number
       requests: number
-      userIds: Set<number>
+      tokenIds: Set<number>
     }
   >()
 
   for (const item of data) {
-    const tokenID = Number(item.token_id) || 0
-    const tokenName = item.token_name?.trim()
-    if (tokenID <= 0 && !tokenName) continue
+    const userID = Number(item.user_id) || 0
+    const username = item.username?.trim()
+    if (userID <= 0 && !username) continue
 
-    const key = tokenID > 0 ? `token:${tokenID}` : `token:${tokenName}`
-    const label =
-      tokenName ||
-      (tokenID > 0 ? translate('Deleted ({{id}})', { id: tokenID }) : '')
-    if (!label) continue
+    const key = userID > 0 ? `user:${userID}` : `user:${username}`
+    const baseLabel =
+      username ||
+      (userID > 0 ? translate('Deleted ({{id}})', { id: userID }) : '')
+    if (!baseLabel) continue
 
-    const existing = tokenTotals.get(key) || {
+    const remark = item.remark?.trim()
+    const label = remark ? `${baseLabel} (${remark})` : baseLabel
+
+    const existing = userTotals.get(key) || {
       label,
       quota: 0,
       tokens: 0,
       requests: 0,
-      userIds: new Set<number>(),
+      tokenIds: new Set<number>(),
+    }
+    // Prefer the first non-empty remark-enhanced label, keep stable key aggregation.
+    if (!existing.label.includes('(') && remark) {
+      existing.label = label
     }
     existing.quota += Number(item.quota) || 0
     existing.tokens += Number(item.total_tokens) || 0
     existing.requests += Number(item.request_count) || 0
-    if (item.user_id > 0) existing.userIds.add(item.user_id)
-    tokenTotals.set(key, existing)
+    if (item.token_id > 0) existing.tokenIds.add(item.token_id)
+    userTotals.set(key, existing)
   }
 
-  const sorted = [...tokenTotals.values()]
+  const sorted = [...userTotals.values()]
     .filter((item) => item.quota > 0)
     .sort((a, b) => b.quota - a.quota)
   if (sorted.length === 0) return emptySpec
@@ -107,15 +114,15 @@ export function processTokenQuotaRankChartData(
   const visibleItems = sorted.slice(0, limit)
   const totalValue = sorted.reduce((sum, item) => sum + item.quota, 0)
   const rankValues = visibleItems.map((item) => ({
-    Token: item.label,
+    User: item.label,
     rawValue: item.quota,
     tokens: item.tokens,
     requests: item.requests,
-    userCount: item.userIds.size,
+    tokenCount: item.tokenIds.size,
   }))
   const colorMap = rankValues.reduce<Record<string, string>>(
     (acc, item, index) => {
-      acc[item.Token] = QUOTA_RANK_COLORS[index % QUOTA_RANK_COLORS.length]
+      acc[item.User] = USER_QUOTA_RANK_COLORS[index % USER_QUOTA_RANK_COLORS.length]
       return acc
     },
     {}
@@ -123,14 +130,14 @@ export function processTokenQuotaRankChartData(
 
   return {
     type: 'bar',
-    data: [{ id: 'tokenQuotaRankData', values: rankValues }],
+    data: [{ id: 'userQuotaRankData', values: rankValues }],
     xField: 'rawValue',
-    yField: 'Token',
-    seriesField: 'Token',
+    yField: 'User',
+    seriesField: 'User',
     direction: 'horizontal',
     title: {
       visible: true,
-      text: translate('Quota Consumption Ranking'),
+      text: translate('User Quota Consumption Ranking'),
       subtext: `${translate('Total:')} ${formatLogQuota(totalValue)}`,
     },
     legends: { visible: false },
@@ -156,7 +163,7 @@ export function processTokenQuotaRankChartData(
       mark: {
         content: [
           {
-            key: (datum: Record<string, unknown>) => datum?.Token,
+            key: (datum: Record<string, unknown>) => datum?.User,
             value: (datum: Record<string, unknown>) =>
               formatLogQuota(Number(datum?.rawValue) || 0),
           },
@@ -171,9 +178,9 @@ export function processTokenQuotaRankChartData(
               Number(datum?.requests || 0).toLocaleString(),
           },
           {
-            key: translate('Users'),
+            key: translate('API Keys'),
             value: (datum: Record<string, unknown>) =>
-              Number(datum?.userCount || 0).toLocaleString(),
+              Number(datum?.tokenCount || 0).toLocaleString(),
           },
         ],
       },

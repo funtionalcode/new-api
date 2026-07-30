@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { processTokenQuotaRankChartData } from './token-quota-rank'
+import { processUserQuotaRankChartData } from './user-quota-rank'
 import type { UserConsumptionSummary } from '../types'
 
-describe('user consumption token quota rank chart data', () => {
-  test('aggregates consumption rows into quota ranking spec', () => {
+describe('user consumption user quota rank chart data', () => {
+  test('aggregates consumption rows into user quota ranking spec', () => {
     const rows: UserConsumptionSummary[] = [
       {
         user_id: 1,
         username: 'root',
-        remark: '',
+        remark: 'admin',
         token_id: 1,
         token_name: 'primary',
         auth_index: 'primary',
@@ -21,6 +21,21 @@ describe('user consumption token quota rank chart data', () => {
         total_tokens: 40,
         quota: 100,
         last_called_at: 100,
+      },
+      {
+        user_id: 1,
+        username: 'root',
+        remark: 'admin',
+        token_id: 2,
+        token_name: 'backup',
+        auth_index: 'backup',
+        auth_name: '',
+        request_count: 3,
+        prompt_tokens: 20,
+        completion_tokens: 70,
+        total_tokens: 90,
+        quota: 200,
+        last_called_at: 130,
       },
       {
         user_id: 2,
@@ -37,37 +52,22 @@ describe('user consumption token quota rank chart data', () => {
         quota: 50,
         last_called_at: 120,
       },
-      {
-        user_id: 1,
-        username: 'root',
-        remark: '',
-        token_id: 2,
-        token_name: 'backup',
-        auth_index: 'backup',
-        auth_name: '',
-        request_count: 3,
-        prompt_tokens: 20,
-        completion_tokens: 70,
-        total_tokens: 90,
-        quota: 200,
-        last_called_at: 130,
-      },
     ]
 
-    const spec = processTokenQuotaRankChartData(rows, (key) => key, 10)
+    const spec = processUserQuotaRankChartData(rows, (key) => key, 10)
     const values = spec.data[0].values
 
-    assert.equal(spec.title.text, 'Quota Consumption Ranking')
+    assert.equal(spec.title.text, 'User Quota Consumption Ranking')
     assert.deepEqual(
       values.map((item: Record<string, unknown>) => [
-        item.Token,
+        item.User,
         item.rawValue,
         item.requests,
-        item.userCount,
+        item.tokenCount,
       ]),
       [
-        ['backup', 200, 3, 1],
-        ['primary', 150, 3, 2],
+        ['root (admin)', 300, 5, 2],
+        ['demo', 50, 1, 1],
       ]
     )
   })
