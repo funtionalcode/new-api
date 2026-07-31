@@ -359,6 +359,13 @@ function CommonLogsCard<TData>({
         ) : (
           <SummaryField cell={cells.get('prompt_tokens')} />
         )}
+        {cells.has('ip') ? (
+          <SummaryField
+            label={t('IP')}
+            cell={cells.get('ip')}
+            valueClassName='font-mono text-xs'
+          />
+        ) : null}
         <SummaryField
           label={t('Details')}
           cell={cells.get('content')}

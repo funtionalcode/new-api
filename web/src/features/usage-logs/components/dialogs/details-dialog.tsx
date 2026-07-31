@@ -587,8 +587,8 @@ export function DetailsDialog(props: DetailsDialogProps) {
     !!other?.expr_b64
   const hasAudioTokens = isWebsocket || other?.audio
   const showTiming = isTimingLogType(props.log.type)
-  const showAdminIp =
-    !!props.log.ip && (showTiming || (props.isAdmin && isTopup))
+  // 有 IP 就展示：不再限定消费/错误或管理员充值，避免登录/管理等类型在详情里丢失。
+  const showIp = !!props.log.ip?.trim()
   const adminInfo = other?.admin_info
   const topupAuditFields =
     isTopup && props.isAdmin && adminInfo
@@ -662,15 +662,12 @@ export function DetailsDialog(props: DetailsDialogProps) {
 
   // Login audit (type=7); visible to the log owner, not admin-only.
   const isLogin = props.log.type === 7
+  // 登录 IP 已在基础详情区统一展示，这里只保留方法与 UA。
   const loginAuditFields = isLogin
     ? ([
         other?.login_method && {
           label: t('Login Method'),
           value: String(other.login_method),
-        },
-        props.log.ip && {
-          label: t('IP Address'),
-          value: props.log.ip,
         },
         other?.user_agent && {
           label: t('User Agent'),
@@ -808,7 +805,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
             />
           )}
 
-          {showAdminIp && (
+          {showIp && (
             <DetailRow
               label={t('IP Address')}
               value={

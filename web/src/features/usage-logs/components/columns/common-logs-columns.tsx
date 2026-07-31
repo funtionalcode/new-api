@@ -554,41 +554,44 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
             </button>
           )
         },
-      },
-      {
-        accessorKey: 'ip',
-        header: t('IP'),
-        cell: function IPCell({ row }) {
-          const { sensitiveVisible } = useUsageLogsContext()
-          const log = row.original
-          if (!isDisplayableLogType(log.type)) return null
-
-          const ip = log.ip?.trim()
-          if (!ip) return <span className='text-muted-foreground text-xs'>-</span>
-
-          return (
-            <TooltipProvider delay={300}>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <span className='text-muted-foreground block max-w-[130px] truncate font-mono text-xs' />
-                  }
-                >
-                  {sensitiveVisible ? ip : '••••'}
-                </TooltipTrigger>
-                {sensitiveVisible && ip.length > 12 && (
-                  <TooltipContent side='top' className='max-w-xs break-all'>
-                    {ip}
-                  </TooltipContent>
-                )}
-              </Tooltip>
-            </TooltipProvider>
-          )
-        },
-        size: 130,
       }
     )
   }
+
+  // IP 对管理员全站视图与「仅自己」/普通用户视图均展示：
+  // 用户侧接口只返回本人日志，不会泄露他人 IP。
+  columns.push({
+    accessorKey: 'ip',
+    header: t('IP'),
+    cell: function IPCell({ row }) {
+      const { sensitiveVisible } = useUsageLogsContext()
+      const log = row.original
+      const ip = log.ip?.trim()
+      if (!ip) {
+        return <span className='text-muted-foreground text-xs'>-</span>
+      }
+
+      return (
+        <TooltipProvider delay={300}>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span className='text-muted-foreground block max-w-[130px] truncate font-mono text-xs' />
+              }
+            >
+              {sensitiveVisible ? ip : '••••'}
+            </TooltipTrigger>
+            {sensitiveVisible && ip.length > 12 && (
+              <TooltipContent side='top' className='max-w-xs break-all'>
+                {ip}
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </TooltipProvider>
+      )
+    },
+    size: 130,
+  })
 
   columns.push({
     accessorKey: 'token_name',
