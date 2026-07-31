@@ -38,6 +38,14 @@ func ShouldCopyUpstreamHeader(c *gin.Context, k string, v []string) bool {
 		}
 		return false
 	}
+	// CPA exposes correlation via X-CPA-TRACE-ID; capture it for admin logs
+	// without forwarding it as a client-facing request id.
+	if strings.EqualFold(k, "X-CPA-TRACE-ID") {
+		if c != nil && len(v) > 0 && strings.TrimSpace(c.GetString(common.UpstreamRequestIdKey)) == "" {
+			c.Set(common.UpstreamRequestIdKey, v[0])
+		}
+		return true
+	}
 	return true
 }
 

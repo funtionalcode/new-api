@@ -450,6 +450,25 @@ func upstreamRequestFailureMessage(c *gin.Context, err error) string {
 	return fmt.Sprintf("upstream request failed (%s): %s", strings.Join(parts, ", "), maskedError)
 }
 
+// applyLocalRequestIDHeaders injects the local new-api request id into upstream
+// requests so providers such as CPA can reuse it as their log request id.
+// Existing values (for example from header override or client passthrough) win.
+func applyLocalRequestIDHeaders(c *gin.Context, header http.Header) {
+	if c == nil || header == nil {
+		return
+	}
+	requestID := strings.TrimSpace(c.GetString(common2.RequestIdKey))
+	if requestID == "" {
+		return
+	}
+	if strings.TrimSpace(header.Get("X-Client-Request-Id")) == "" {
+		header.Set("X-Client-Request-Id", requestID)
+	}
+	if strings.TrimSpace(header.Get(common2.RequestIdKey)) == "" {
+		header.Set(common2.RequestIdKey, requestID)
+	}
+}
+
 func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody io.Reader) (*http.Response, error) {
 	fullRequestURL, err := a.GetRequestURL(info)
 	if err != nil {
@@ -477,6 +496,7 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 		return nil, err
 	}
 	applyHeaderOverrideToRequest(req, headerOverride)
+	applyLocalRequestIDHeaders(c, req.Header)
 	resp, err := doRequest(c, req, info)
 	if err != nil {
 		return nil, fmt.Errorf("do request failed: %w", err)
@@ -518,6 +538,7 @@ func DoFormRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBod
 		return nil, err
 	}
 	applyHeaderOverrideToRequest(req, headerOverride)
+	applyLocalRequestIDHeaders(c, req.Header)
 	resp, err := doRequest(c, req, info)
 	if err != nil {
 		return nil, fmt.Errorf("do request failed: %w", err)
@@ -544,6 +565,7 @@ func DoWssRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 	for key, value := range headerOverride {
 		targetHeader.Set(key, value)
 	}
+	applyLocalRequestIDHeaders(c, targetHeader)
 	targetHeader.Set("Content-Type", c.Request.Header.Get("Content-Type"))
 	prepareResponsesWebsocketHeaders(c, info, targetHeader)
 	dialer, err := service.NewWebsocketDialerWithProxy(info.ChannelSetting.Proxy)
@@ -576,6 +598,7 @@ func prepareResponsesWebsocketHeaders(c *gin.Context, info *common.RelayInfo, ta
 			targetHeader.Set(name, value)
 		}
 	}
+	applyLocalRequestIDHeaders(c, targetHeader)
 }
 
 func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) (context.CancelFunc, <-chan struct{}) {
@@ -712,7 +735,10 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		return nil, errors.New("resp is nil")
 	}
 
-	if upID := resp.Header.Get(common2.RequestIdKey); upID != "" {
+	if upID := strings.TrimSpace(resp.Header.Get(common2.RequestIdKey)); upID != "" {
+		c.Set(common2.UpstreamRequestIdKey, upID)
+	} else if upID := strings.TrimSpace(resp.Header.Get("X-CPA-TRACE-ID")); upID != "" {
+		// CPA returns a local trace header rather than X-Oneapi-Request-Id.
 		c.Set(common2.UpstreamRequestIdKey, upID)
 	}
 
@@ -739,6 +765,7 @@ func DoTaskApiRequest(a TaskAdaptor, c *gin.Context, info *common.RelayInfo, req
 	if err != nil {
 		return nil, fmt.Errorf("setup request header failed: %w", err)
 	}
+	applyLocalRequestIDHeaders(c, req.Header)
 	resp, err := doRequest(c, req, info)
 	if err != nil {
 		return nil, fmt.Errorf("do request failed: %w", err)

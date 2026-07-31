@@ -1,6 +1,6 @@
 # 二开功能记录
 
-更新时间：2026-07-09
+更新时间：2026-07-31
 
 本文记录当前项目已做的二开功能，便于后续升级、排查和继续开发时快速确认改动范围。后续新增或调整二开功能时，需要同步更新本文。
 
@@ -8,6 +8,17 @@
 - 记录功能名称、涉及范围、关键提交和验证方式。
 - 不记录 curl、cookie、session、代理密码、SSH 密码等敏感信息。
 - 只记录项目代码和配置层面的改动；临时服务器排查操作不作为长期功能记录。
+- 同步 `upstream`（`QuantumNous/new-api`）后，必须对照本表逐项回归；新增二开必须先更新本表再合入。
+
+相关远程：
+
+- `origin`：`funtionalcode/new-api`
+- `upstream`：`QuantumNous/new-api`
+
+与兄弟项目联调时，另见：
+
+- CPA：`CLIProxyAPIPlus/docs/secondary-development-features.zh-CN.md`
+- CPAMP：`Cli-Proxy-API-Management-Center/docs/secondary-development-features.zh-CN.md`
 
 ## 功能清单
 
@@ -63,6 +74,21 @@
 | 游乐场 | 新增视频生成模式，xAI 视频模型走视频任务接口并轮询结果，生成完成后直接渲染视频控件 | `relay/channel/task/xai`、`relay/relay_adaptor.go`、`router/relay-router.go`、`middleware/distributor.go`、`web/src/features/playground` | 本次同步 |
 | 游乐场 | 图片/视频重试会保留视频模式并按当前模式纠正 xAI 图片/视频模型，Claude Fable 调用自动移除已废弃采样参数 | `relay/channel/claude`、`web/src/features/playground` | 本次同步 |
 | 构建上下文 | Docker 构建忽略运行态文件，缩小构建上下文 | `.dockerignore` | `c6c55020` |
+| 上游 Request ID 透传 | 向 CPA 等上游注入本地 request id，便于 CPA 日志与 new-api 使用同一 id 查询 | `relay/channel/api_request.go`、`service/http.go`、`common/constants.go` | 本次同步（本地未提交时以工作区为准） |
+| 上游 Request ID 透传 | `DoApiRequest` / `DoFormRequest` / `DoWssRequest` / `DoTaskApiRequest` / Responses WebSocket 头准备路径统一调用 `applyLocalRequestIDHeaders`；已有客户端头不覆盖 | `relay/channel/api_request.go` | 本次同步 |
+| 上游 Request ID 透传 | 注入头：`X-Client-Request-Id` 与 `X-Oneapi-Request-Id`（`RequestIdKey`），值为本地 `c.GetString(RequestIdKey)` | `relay/channel/api_request.go` | 本次同步 |
+| 上游 Request ID 回写 | 上游响应优先取 `X-Oneapi-Request-Id`，否则取 `X-CPA-TRACE-ID`，写入 `UpstreamRequestIdKey` 供管理日志/详情展示；`ShouldCopyUpstreamHeader` 对 `X-CPA-TRACE-ID` 同步捕获 | `relay/channel/api_request.go`、`service/http.go` | 本次同步 |
+| 上游 Request ID 契约 | 与 CPA 约定：CPA 日志 request id 优先采用上述入站头；可用 new-api request id 调 CPA `request-log-by-id` | 跨仓：`CLIProxyAPIPlus/internal/logging` | 本次同步 |
+
+## 同步上游后的检查清单（增量）
+
+除历史功能外，同步 `upstream/main` 后至少再核对：
+
+1. `applyLocalRequestIDHeaders` 是否仍挂在所有上游 HTTP/WS/任务请求路径上。
+2. 已有 `X-Client-Request-Id` / `X-Oneapi-Request-Id` 是否不会被强制覆盖。
+3. 响应路径是否仍能把 `X-CPA-TRACE-ID` 写入 `UpstreamRequestIdKey`。
+4. 管理后台使用日志是否仍能展示上游 request / CPA trace id。
+5. 对 CPA 发起真实请求后，CPA 日志文件名后缀是否等于 new-api 的 `X-Oneapi-Request-Id`。
 
 ## 验证记录
 
@@ -73,3 +99,7 @@
 - `cd web && bun run build`
 - `go test ./model ./controller -count=1`
 - `git diff --check`
+
+2026-07-31 Request ID 透传增量验证：
+- `go test ./relay/channel/... ./service/... -count=1`（若包路径测试过重，至少编译 `go build ./...` 并人工 diff `api_request.go` / `http.go`）
+- 联调：new-api 请求 → CPA 日志文件名含同一 request id → `request-log-by-id/<id>` 可下载
