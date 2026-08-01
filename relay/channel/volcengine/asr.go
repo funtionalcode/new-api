@@ -24,6 +24,7 @@ import (
 
 const (
 	volcengineASRWebSocketURL       = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream"
+	volcengineArkSoutheastBaseURL   = "https://ark.ap-southeast.bytepluses.com"
 	volcengineBigASRResourceID      = "volc.bigasr.sauc.duration"
 	volcengineSeedASRResourceID     = "volc.seedasr.sauc.duration"
 	volcengineASRDefaultChunkSize   = 8 * 1024

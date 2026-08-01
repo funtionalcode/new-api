@@ -470,9 +470,10 @@ func (a *Adaptor) GetChannelName() string {
 }
 
 func isNativeVolcengineBaseURL(baseURL string) bool {
-	if strings.TrimSpace(baseURL) == "" {
+	normalizedBaseURL := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if normalizedBaseURL == "" {
 		return true
 	}
-	return strings.TrimRight(strings.TrimSpace(baseURL), "/") ==
-		strings.TrimRight(channelconstant.ChannelBaseURLs[channelconstant.ChannelTypeVolcEngine], "/")
+	return normalizedBaseURL == strings.TrimRight(channelconstant.ChannelBaseURLs[channelconstant.ChannelTypeVolcEngine], "/") ||
+		normalizedBaseURL == volcengineArkSoutheastBaseURL
 }

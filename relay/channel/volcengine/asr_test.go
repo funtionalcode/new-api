@@ -20,17 +20,39 @@ import (
 )
 
 func TestGetRequestURLForNativeVolcengineASR(t *testing.T) {
-	info := &relaycommon.RelayInfo{
-		RelayMode: relayconstant.RelayModeAudioTranscription,
-		ChannelMeta: &relaycommon.ChannelMeta{
-			ChannelBaseUrl: channelconstant.ChannelBaseURLs[channelconstant.ChannelTypeVolcEngine],
+	cases := []struct {
+		name    string
+		baseURL string
+	}{
+		{
+			name:    "empty base url",
+			baseURL: "",
+		},
+		{
+			name:    "volcengine ark cn",
+			baseURL: channelconstant.ChannelBaseURLs[channelconstant.ChannelTypeVolcEngine],
+		},
+		{
+			name:    "byteplus ark southeast",
+			baseURL: volcengineArkSoutheastBaseURL,
 		},
 	}
 
-	requestURL, err := (&Adaptor{}).GetRequestURL(info)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			info := &relaycommon.RelayInfo{
+				RelayMode: relayconstant.RelayModeAudioTranscription,
+				ChannelMeta: &relaycommon.ChannelMeta{
+					ChannelBaseUrl: tc.baseURL,
+				},
+			}
 
-	require.NoError(t, err)
-	assert.Equal(t, volcengineASRWebSocketURL, requestURL)
+			requestURL, err := (&Adaptor{}).GetRequestURL(info)
+
+			require.NoError(t, err)
+			assert.Equal(t, volcengineASRWebSocketURL, requestURL)
+		})
+	}
 }
 
 func TestGetRequestURLForCustomVolcengineASR(t *testing.T) {

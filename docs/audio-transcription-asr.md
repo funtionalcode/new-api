@@ -157,6 +157,28 @@ curl --request POST 'https://<your-new-api-domain>/v1/audio/transcriptions' \
 
 ### 渠道配置
 
+火山控制台展示的 Ark API 基础 URL 可直接填到渠道 `API 地址 / Base URL`，也可以留空使用项目默认地址。
+
+中国区通常填写：
+
+```text
+https://ark.cn-beijing.volces.com
+```
+
+BytePlus 东南亚区通常填写：
+
+```text
+https://ark.ap-southeast.bytepluses.com
+```
+
+对于 `volc-asr` / `volc-asr-2`，无论 Base URL 留空，还是填写上述两个官方 Ark 地址之一，项目都会按火山官方 ASR 文档走内部 WebSocket 地址：
+
+```text
+wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream
+```
+
+只有在你明确接入第三方 OpenAI 兼容转录代理时，才需要把 Base URL 改成其他兼容服务地址。
+
 VolcEngine 渠道 Key 支持两种格式：
 
 | Key 格式 | 说明 |
@@ -183,6 +205,13 @@ VolcEngine 渠道 Key 支持两种格式：
 | --- | --- | --- |
 | `volc-asr` | `volc.bigasr.sauc.duration` | 豆包流式语音识别 1.0 小时版 |
 | `volc-asr-2` | `volc.seedasr.sauc.duration` | 豆包流式语音识别 2.0 小时版 |
+
+火山豆包流式语音识别模型 2.0 的资源 ID：
+
+| 资源包 | Resource ID |
+| --- | --- |
+| 小时版 | `volc.seedasr.sauc.duration` |
+| 并发版 | `volc.seedasr.sauc.concurrent` |
 
 如果使用并发版资源包，可在请求中传 `resource_id` 覆盖，例如 `volc.seedasr.sauc.concurrent`。
 
