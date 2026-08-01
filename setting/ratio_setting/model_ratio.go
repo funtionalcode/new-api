@@ -112,11 +112,18 @@ var defaultModelRatio = map[string]float64{
 	"text-curie-001":                            1,
 	"text-davinci-edit-001":                     10,
 	"code-davinci-edit-001":                     10,
-	"whisper-1":                                 15,  // $0.006 / minute -> $0.006 / 150 words -> $0.006 / 200 tokens -> $0.03 / 1k tokens
-	"tts-1":                                     7.5, // 1k characters -> $0.015
-	"tts-1-1106":                                7.5, // 1k characters -> $0.015
-	"tts-1-hd":                                  15,  // 1k characters -> $0.03
-	"tts-1-hd-1106":                             15,  // 1k characters -> $0.03
+	"whisper-1":                                 15,   // $0.006 / minute -> $0.006 / 150 words -> $0.006 / 200 tokens -> $0.03 / 1k tokens
+	"gpt-transcribe":                            2.25, // $0.0045 / minute, fallback duration billing
+	"gpt-live-transcribe":                       8.5,  // $0.017 / minute, fallback duration billing
+	"gpt-4o-transcribe":                         3,    // $0.006 / minute, fallback duration billing
+	"gpt-4o-transcribe-diarize":                 3,    // $0.006 / minute, fallback duration billing
+	"gpt-4o-mini-transcribe":                    1.5,  // $0.003 / minute, fallback duration billing
+	"gpt-4o-mini-transcribe-2025-03-20":         1.5,  // $0.003 / minute, fallback duration billing
+	"gpt-4o-mini-transcribe-2025-12-15":         1.5,  // $0.003 / minute, fallback duration billing
+	"tts-1":                                     7.5,  // 1k characters -> $0.015
+	"tts-1-1106":                                7.5,  // 1k characters -> $0.015
+	"tts-1-hd":                                  15,   // 1k characters -> $0.03
+	"tts-1-hd-1106":                             15,   // 1k characters -> $0.03
 	"davinci":                                   10,
 	"curie":                                     10,
 	"text-embedding-3-small":                    0.01,
@@ -256,6 +263,11 @@ var defaultModelRatio = map[string]float64{
 	"grok-vision-beta":      2.5,
 	"grok-3-fast-beta":      2.5,
 	"grok-3-mini-fast-beta": 0.3,
+	"grok-stt":              3,
+	"glm-asr":               0.06 * RMB,     // ￥0.06 / minute, fallback duration billing
+	"glm-asr-2512":          1.2,            // $0.0024 / minute, fallback duration billing
+	"volc-asr":              3.5 / 60 * RMB, // ￥3.5 / hour, fallback duration billing
+	"volc-asr-2":            3.5 / 60 * RMB, // ￥3.5 / hour, fallback duration billing
 	// submodel
 	"NousResearch/Hermes-4-405B-FP8":          0.8,
 	"Qwen/Qwen3-235B-A22B-Thinking-2507":      0.6,

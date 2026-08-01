@@ -1,6 +1,10 @@
 package common
 
-import "github.com/QuantumNous/new-api/constant"
+import (
+	"strings"
+
+	"github.com/QuantumNous/new-api/constant"
+)
 
 // GetEndpointTypesByChannelType 获取渠道最优先端点类型（所有的渠道都支持 OpenAI 端点）
 func GetEndpointTypesByChannelType(channelType int, modelName string) []constant.EndpointType {
@@ -41,5 +45,16 @@ func GetEndpointTypesByChannelType(channelType int, modelName string) []constant
 		// add to first
 		endpointTypes = append([]constant.EndpointType{constant.EndpointTypeImageGeneration}, endpointTypes...)
 	}
+	if IsAudioTranscriptionModel(modelName) {
+		endpointTypes = append([]constant.EndpointType{constant.EndpointTypeAudioTranscription}, endpointTypes...)
+	}
 	return endpointTypes
+}
+
+func IsAudioTranscriptionModel(modelName string) bool {
+	name := strings.ToLower(strings.TrimSpace(modelName))
+	return name == "whisper-1" ||
+		name == "grok-stt" ||
+		strings.Contains(name, "transcribe") ||
+		strings.Contains(name, "asr")
 }

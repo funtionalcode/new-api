@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	channelconstant "github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
@@ -26,6 +27,7 @@ import (
 
 const (
 	contextKeyTTSRequest     = "volcengine_tts_request"
+	contextKeyASRSession     = "volcengine_asr_session"
 	contextKeyResponseFormat = "response_format"
 )
 
@@ -47,6 +49,22 @@ func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayIn
 }
 
 func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.AudioRequest) (io.Reader, error) {
+	if info.RelayMode == constant.RelayModeAudioTranscription {
+		if !isNativeVolcengineBaseURL(info.ChannelBaseUrl) {
+			return channel.BuildAudioMultipartRequest(c, request.Model, channel.AudioMultipartOptions{
+				IncludeModel: true,
+				RequireFile:  true,
+			})
+		}
+		session, err := buildVolcengineASRSession(c, info, request)
+		if err != nil {
+			return nil, err
+		}
+		c.Set(contextKeyASRSession, session)
+		info.IsStream = false
+		return nil, nil
+	}
+
 	if info.RelayMode != constant.RelayModeAudioSpeech {
 		return nil, errors.New("unsupported audio relay mode")
 	}
@@ -86,7 +104,7 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 	}
 
 	if len(request.Metadata) > 0 {
-		if err = json.Unmarshal(request.Metadata, &volcRequest); err != nil {
+		if err = common.Unmarshal(request.Metadata, &volcRequest); err != nil {
 			return nil, fmt.Errorf("error unmarshalling metadata to volcengine request: %w", err)
 		}
 	}
@@ -97,7 +115,7 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 		info.IsStream = true
 	}
 
-	jsonData, err := json.Marshal(volcRequest)
+	jsonData, err := common.Marshal(volcRequest)
 	if err != nil {
 		return nil, fmt.Errorf("error marshalling volcengine request: %w", err)
 	}
@@ -278,6 +296,14 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 				return "wss://openspeech.bytedance.com/api/v1/tts/ws_binary", nil
 			}
 			return fmt.Sprintf("%s/v1/audio/speech", baseUrl), nil
+		case constant.RelayModeAudioTranscription:
+			if isNativeVolcengineBaseURL(info.ChannelBaseUrl) {
+				return volcengineASRWebSocketURL, nil
+			}
+			if hasSpecialPlan && specialPlan.OpenAIBaseURL != "" {
+				return fmt.Sprintf("%s/audio/transcriptions", specialPlan.OpenAIBaseURL), nil
+			}
+			return fmt.Sprintf("%s/v1/audio/transcriptions", baseUrl), nil
 		default:
 		}
 	}
@@ -330,6 +356,13 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
+	if info.RelayMode == constant.RelayModeAudioTranscription {
+		if isNativeVolcengineBaseURL(info.ChannelBaseUrl) {
+			return nil, nil
+		}
+		return channel.DoFormRequest(a, c, info, requestBody)
+	}
+
 	if info.RelayMode == constant.RelayModeAudioSpeech {
 		baseUrl := info.ChannelBaseUrl
 		if baseUrl == "" {
@@ -351,6 +384,41 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 			adaptor := claude.Adaptor{}
 			return adaptor.DoResponse(c, resp, info)
 		}
+	}
+
+	if info.RelayMode == constant.RelayModeAudioTranscription {
+		if isNativeVolcengineBaseURL(info.ChannelBaseUrl) {
+			asrSessionInterface, exists := c.Get(contextKeyASRSession)
+			if !exists {
+				return nil, types.NewErrorWithStatusCode(
+					errors.New("volcengine ASR session not found in context"),
+					types.ErrorCodeBadRequestBody,
+					http.StatusInternalServerError,
+				)
+			}
+
+			asrSession, ok := asrSessionInterface.(VolcengineASRSession)
+			if !ok {
+				return nil, types.NewErrorWithStatusCode(
+					errors.New("invalid volcengine ASR session type"),
+					types.ErrorCodeBadRequestBody,
+					http.StatusInternalServerError,
+				)
+			}
+
+			requestURL, urlErr := a.GetRequestURL(info)
+			if urlErr != nil {
+				return nil, types.NewErrorWithStatusCode(
+					urlErr,
+					types.ErrorCodeBadRequestBody,
+					http.StatusInternalServerError,
+				)
+			}
+			return handleASRWebSocketResponse(c, requestURL, asrSession, info)
+		}
+
+		adaptor := openai.Adaptor{}
+		return adaptor.DoResponse(c, resp, info)
 	}
 
 	if info.RelayMode == constant.RelayModeAudioSpeech {
@@ -399,4 +467,12 @@ func (a *Adaptor) GetModelList() []string {
 
 func (a *Adaptor) GetChannelName() string {
 	return ChannelName
+}
+
+func isNativeVolcengineBaseURL(baseURL string) bool {
+	if strings.TrimSpace(baseURL) == "" {
+		return true
+	}
+	return strings.TrimRight(strings.TrimSpace(baseURL), "/") ==
+		strings.TrimRight(channelconstant.ChannelBaseURLs[channelconstant.ChannelTypeVolcEngine], "/")
 }

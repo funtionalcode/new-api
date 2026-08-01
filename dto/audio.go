@@ -2,8 +2,10 @@ package dto
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -42,7 +44,26 @@ func (r *AudioRequest) GetTokenCountMeta() *types.TokenCountMeta {
 }
 
 func (r *AudioRequest) IsStream(c *gin.Context) bool {
-	return r.StreamFormat == "sse"
+	if r.StreamFormat == "sse" {
+		return true
+	}
+	if c == nil || c.Request == nil || c.Request.URL == nil {
+		return false
+	}
+	if !strings.HasPrefix(c.Request.URL.Path, "/v1/audio/transcriptions") {
+		return false
+	}
+	formData, err := common.ParseMultipartFormReusable(c)
+	if err != nil {
+		return false
+	}
+	for _, value := range formData.Value["stream"] {
+		stream, err := strconv.ParseBool(strings.TrimSpace(value))
+		if err == nil && stream {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *AudioRequest) SetModelName(modelName string) {

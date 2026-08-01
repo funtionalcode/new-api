@@ -14,6 +14,8 @@ var ModelList = []string{
 	"seedance-1-0-pro-250528",
 	"doubao-seed-1-6-thinking-250715",
 	"seed-1-6-thinking-250715",
+	"volc-asr",
+	"volc-asr-2",
 }
 
 var ChannelName = "volcengine"

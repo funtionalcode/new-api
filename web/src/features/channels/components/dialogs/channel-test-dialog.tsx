@@ -197,6 +197,7 @@ const endpointTypeOptions: Array<{ value: string; label: string }> = [
     label: 'Image Generation (/v1/images/generations)',
   },
   { value: 'embeddings', label: 'Embeddings (/v1/embeddings)' },
+  { value: 'audio-transcription', label: 'OpenAI Audio Transcriptions' },
 ]
 
 const endpointSelectContentClass = 'w-[460px] max-w-[calc(100vw-2rem)]'
@@ -206,6 +207,7 @@ const endpointSelectItemClass =
 const STREAM_INCOMPATIBLE_ENDPOINTS = new Set([
   'embeddings',
   'image-generation',
+  'audio-transcription',
   'jina-rerank',
   'openai-response-compact',
 ])

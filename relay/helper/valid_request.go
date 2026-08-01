@@ -67,6 +67,9 @@ func GetAndValidAudioRequest(c *gin.Context, relayMode int) (*dto.AudioRequest, 
 			return nil, errors.New("model is required")
 		}
 	default:
+		if audioRequest.Model == "" && strings.HasPrefix(c.Request.URL.Path, "/v1/stt") {
+			audioRequest.Model = "grok-stt"
+		}
 		if audioRequest.Model == "" {
 			return nil, errors.New("model is required")
 		}

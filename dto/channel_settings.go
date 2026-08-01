@@ -110,6 +110,7 @@ const (
 	advancedCustomEndpointPathJinaRerank             = "/v1/rerank"
 	advancedCustomEndpointPathImageGeneration        = "/v1/images/generations"
 	advancedCustomEndpointPathEmbeddings             = "/v1/embeddings"
+	advancedCustomEndpointPathAudioTranscription     = "/v1/audio/transcriptions"
 )
 
 // AdvancedCustomModelListPath identifies the optional OpenAI Models discovery route.
@@ -212,6 +213,8 @@ func advancedCustomEndpointTypeFromIncomingPath(incomingPath string) (constant.E
 		return constant.EndpointTypeImageGeneration, true
 	case advancedCustomEndpointPathEmbeddings:
 		return constant.EndpointTypeEmbeddings, true
+	case advancedCustomEndpointPathAudioTranscription:
+		return constant.EndpointTypeAudioTranscription, true
 	default:
 		if isAdvancedCustomGeminiIncomingPath(incomingPath) {
 			return constant.EndpointTypeGemini, true

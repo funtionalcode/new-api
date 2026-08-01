@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"bytes"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
@@ -90,4 +93,27 @@ func TestIsModelAllowedByUserSkipsLimitWhenUserLimitDisabled(t *testing.T) {
 	ctx.Set("id", 3002)
 
 	require.True(t, isModelAllowedByUser(ctx, "any-model"))
+}
+
+func TestGetModelRequestDefaultsSTTModelWithoutModelField(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	require.NoError(t, writer.WriteField("url", "https://example.com/audio.mp3"))
+	require.NoError(t, writer.Close())
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/stt", &body)
+	ctx.Request.Header.Set("Content-Type", writer.FormDataContentType())
+
+	modelRequest, shouldSelectChannel, err := getModelRequest(ctx)
+
+	require.NoError(t, err)
+	require.True(t, shouldSelectChannel)
+	require.Equal(t, "grok-stt", modelRequest.Model)
+	relayMode, exists := ctx.Get("relay_mode")
+	require.True(t, exists)
+	require.Equal(t, relayconstant.RelayModeAudioTranscription, relayMode)
 }

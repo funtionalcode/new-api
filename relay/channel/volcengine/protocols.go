@@ -36,11 +36,13 @@ const (
 )
 
 const (
+	SerializationNone SerializationBits = 0
 	SerializationJSON SerializationBits = 0b1
 )
 
 const (
 	CompressionNone CompressionBits = 0
+	CompressionGzip CompressionBits = 0b1
 )
 
 const (
@@ -324,7 +326,7 @@ func (m *Message) Unmarshal(data []byte) error {
 		return err
 	}
 
-	m.Serialization = SerializationBits(serializationCompression & 0b11110000)
+	m.Serialization = SerializationBits(serializationCompression >> 4)
 	m.Compression = CompressionBits(serializationCompression & 0b00001111)
 
 	headerSize := 4 * int(m.HeaderSize)
@@ -520,14 +522,44 @@ func ReceiveMessage(conn *websocket.Conn) (*Message, error) {
 }
 
 func FullClientRequest(conn *websocket.Conn, payload []byte) error {
-	msg, err := NewMessage(MsgTypeFullClientRequest, MsgTypeFlagNoSeq)
-	if err != nil {
-		return err
-	}
-	msg.Payload = payload
-	frame, err := msg.Marshal()
+	frame, err := FullClientRequestFrame(payload)
 	if err != nil {
 		return err
 	}
 	return conn.WriteMessage(websocket.BinaryMessage, frame)
+}
+
+func FullClientRequestFrame(payload []byte) ([]byte, error) {
+	msg, err := NewMessage(MsgTypeFullClientRequest, MsgTypeFlagNoSeq)
+	if err != nil {
+		return nil, err
+	}
+	msg.Payload = payload
+	return msg.Marshal()
+}
+
+func AudioOnlyRequest(conn *websocket.Conn, payload []byte, sequence int32, isLast bool) error {
+	frame, err := AudioOnlyRequestFrame(payload, sequence, isLast)
+	if err != nil {
+		return err
+	}
+	return conn.WriteMessage(websocket.BinaryMessage, frame)
+}
+
+func AudioOnlyRequestFrame(payload []byte, sequence int32, isLast bool) ([]byte, error) {
+	flag := MsgTypeFlagPositiveSeq
+	if isLast {
+		flag = MsgTypeFlagNegativeSeq
+		if sequence > 0 {
+			sequence = -sequence
+		}
+	}
+	msg, err := NewMessage(MsgTypeAudioOnlyClient, flag)
+	if err != nil {
+		return nil, err
+	}
+	msg.Serialization = SerializationNone
+	msg.Payload = payload
+	msg.Sequence = sequence
+	return msg.Marshal()
 }

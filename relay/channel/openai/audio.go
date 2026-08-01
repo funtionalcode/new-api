@@ -118,6 +118,20 @@ func OpenaiTTSHandler(c *gin.Context, resp *http.Response, info *relaycommon.Rel
 func OpenaiSTTHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo, responseFormat string) (*types.NewAPIError, *dto.Usage) {
 	defer service.CloseResponseBodyGracefully(resp)
 
+	if info.IsStream {
+		usage := transcriptionFallbackUsage(info)
+		helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+			if parsedUsage := transcriptionUsageFromPayload(common.StringToByteSlice(data)); parsedUsage != nil {
+				usage = parsedUsage
+			}
+			if err := helper.StringData(c, data); err != nil {
+				logger.LogError(c, fmt.Sprintf("failed to stream STT response: %v", err))
+				sr.Error(err)
+			}
+		})
+		return nil, usage
+	}
+
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError), nil
@@ -125,25 +139,109 @@ func OpenaiSTTHandler(c *gin.Context, resp *http.Response, info *relaycommon.Rel
 	// 写入新的 response body
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 
-	var responseData struct {
-		Usage *dto.Usage `json:"usage"`
-	}
-	if err := common.Unmarshal(responseBody, &responseData); err == nil && responseData.Usage != nil {
-		if responseData.Usage.TotalTokens > 0 {
-			usage := responseData.Usage
-			if usage.PromptTokens == 0 {
-				usage.PromptTokens = usage.InputTokens
-			}
-			if usage.CompletionTokens == 0 {
-				usage.CompletionTokens = usage.OutputTokens
-			}
+	var responseData transcriptionUsagePayload
+	if err := common.Unmarshal(responseBody, &responseData); err == nil {
+		if usage := responseData.normalizedUsage(); usage != nil {
 			return nil, usage
 		}
 	}
+	if responseData.Duration != nil && *responseData.Duration > 0 {
+		return nil, transcriptionUsageFromDuration(*responseData.Duration)
+	}
 
-	usage := &dto.Usage{}
-	usage.PromptTokens = info.GetEstimatePromptTokens()
-	usage.CompletionTokens = 0
-	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
-	return nil, usage
+	return nil, transcriptionFallbackUsage(info)
+}
+
+type transcriptionUsagePayload struct {
+	Duration *float64                 `json:"duration"`
+	Usage    *transcriptionUsageAlias `json:"usage"`
+}
+
+type transcriptionUsageAlias struct {
+	dto.Usage
+	InputTokenDetails *dto.InputTokenDetails `json:"input_token_details"`
+}
+
+func (p transcriptionUsagePayload) normalizedUsage() *dto.Usage {
+	if p.Usage == nil {
+		return nil
+	}
+	usage := &p.Usage.Usage
+	if usage.InputTokensDetails == nil && p.Usage.InputTokenDetails != nil {
+		usage.InputTokensDetails = p.Usage.InputTokenDetails
+	}
+	if !hasTranscriptionUsageTokens(usage) {
+		return nil
+	}
+	normalizeTranscriptionUsageDetails(usage)
+	return usage
+}
+
+func transcriptionUsageFromPayload(data []byte) *dto.Usage {
+	var payload transcriptionUsagePayload
+	if err := common.Unmarshal(data, &payload); err != nil {
+		return nil
+	}
+	return payload.normalizedUsage()
+}
+
+func hasTranscriptionUsageTokens(usage *dto.Usage) bool {
+	if usage == nil {
+		return false
+	}
+	return usage.TotalTokens > 0 ||
+		usage.PromptTokens > 0 ||
+		usage.CompletionTokens > 0 ||
+		usage.InputTokens > 0 ||
+		usage.OutputTokens > 0
+}
+
+func transcriptionUsageFromDuration(duration float64) *dto.Usage {
+	tokens := common.QuotaRound(math.Ceil(duration) / 60.0 * 1000)
+	usage := &dto.Usage{
+		PromptTokens: tokens,
+		TotalTokens:  tokens,
+	}
+	usage.PromptTokensDetails.AudioTokens = tokens
+	return usage
+}
+
+func transcriptionFallbackUsage(info *relaycommon.RelayInfo) *dto.Usage {
+	tokens := 0
+	if info != nil {
+		tokens = info.GetEstimatePromptTokens()
+	}
+	usage := &dto.Usage{
+		PromptTokens: tokens,
+		TotalTokens:  tokens,
+	}
+	usage.PromptTokensDetails.AudioTokens = tokens
+	return usage
+}
+
+func normalizeTranscriptionUsageDetails(usage *dto.Usage) {
+	if usage == nil {
+		return
+	}
+	if usage.PromptTokens == 0 {
+		usage.PromptTokens = usage.InputTokens
+	}
+	if usage.CompletionTokens == 0 {
+		usage.CompletionTokens = usage.OutputTokens
+	}
+	if usage.TotalTokens == 0 {
+		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+	}
+	if usage.InputTokensDetails != nil && usage.PromptTokensDetails.AudioTokens == 0 &&
+		usage.PromptTokensDetails.TextTokens == 0 && usage.PromptTokensDetails.ImageTokens == 0 {
+		usage.PromptTokensDetails = *usage.InputTokensDetails
+	}
+	if usage.PromptTokens > 0 && usage.PromptTokensDetails.AudioTokens == 0 &&
+		usage.PromptTokensDetails.TextTokens == 0 && usage.PromptTokensDetails.ImageTokens == 0 {
+		usage.PromptTokensDetails.AudioTokens = usage.PromptTokens
+	}
+	if usage.CompletionTokens > 0 && usage.CompletionTokenDetails.TextTokens == 0 &&
+		usage.CompletionTokenDetails.AudioTokens == 0 && usage.CompletionTokenDetails.ImageTokens == 0 {
+		usage.CompletionTokenDetails.TextTokens = usage.CompletionTokens
+	}
 }

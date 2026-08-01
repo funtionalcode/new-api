@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
@@ -33,8 +34,16 @@ func (a *Adaptor) ConvertClaudeRequest(*gin.Context, *relaycommon.RelayInfo, *dt
 }
 
 func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.AudioRequest) (io.Reader, error) {
-	//not available
-	return nil, errors.New("not available")
+	if info.RelayMode != constant.RelayModeAudioTranscription {
+		return nil, errors.New("not available")
+	}
+	if !xaiTranscriptionHasSource(c) {
+		return nil, errors.New("file or url is required")
+	}
+	return channel.BuildAudioMultipartRequest(c, "", channel.AudioMultipartOptions{
+		IncludeModel: false,
+		RequireFile:  false,
+	})
 }
 
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
@@ -57,6 +66,8 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 		requestURLPath = "/v1/images/generations"
 	case constant.RelayModeImagesEdits:
 		requestURLPath = "/v1/images/edits"
+	case constant.RelayModeAudioTranscription:
+		requestURLPath = "/v1/stt"
 	}
 	return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, requestURLPath, info.ChannelType), nil
 }
@@ -115,11 +126,16 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
+	if info.RelayMode == constant.RelayModeAudioTranscription {
+		return channel.DoFormRequest(a, c, info, requestBody)
+	}
 	return channel.DoApiRequest(a, c, info, requestBody)
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
 	switch info.RelayMode {
+	case constant.RelayModeAudioTranscription:
+		err, usage = openai.OpenaiSTTHandler(c, resp, info, "")
 	case constant.RelayModeImagesGenerations, constant.RelayModeImagesEdits:
 		usage, err = openai.OpenaiImageHandler(c, info, resp)
 	case constant.RelayModeResponses:
@@ -136,6 +152,22 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 		}
 	}
 	return
+}
+
+func xaiTranscriptionHasSource(c *gin.Context) bool {
+	formData, err := common.ParseMultipartFormReusable(c)
+	if err != nil {
+		return false
+	}
+	if len(formData.File["file"]) > 0 {
+		return true
+	}
+	for _, value := range formData.Value["url"] {
+		if strings.TrimSpace(value) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *Adaptor) GetModelList() []string {

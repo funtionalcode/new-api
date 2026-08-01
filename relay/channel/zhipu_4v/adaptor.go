@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	channelconstant "github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
@@ -32,8 +34,16 @@ func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayIn
 }
 
 func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.AudioRequest) (io.Reader, error) {
-	//TODO implement me
-	return nil, errors.New("not implemented")
+	if info.RelayMode != relayconstant.RelayModeAudioTranscription {
+		return nil, errors.New("not implemented")
+	}
+	if !zhipuTranscriptionHasSource(c) {
+		return nil, errors.New("file or file_base64 is required")
+	}
+	return channel.BuildAudioMultipartRequest(c, request.Model, channel.AudioMultipartOptions{
+		IncludeModel: true,
+		RequireFile:  false,
+	})
 }
 
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
@@ -58,6 +68,11 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 		return fmt.Sprintf("%s/api/anthropic/v1/messages", baseURL), nil
 	default:
 		switch info.RelayMode {
+		case relayconstant.RelayModeAudioTranscription:
+			if hasSpecialPlan && specialPlan.OpenAIBaseURL != "" {
+				return fmt.Sprintf("%s/audio/transcriptions", specialPlan.OpenAIBaseURL), nil
+			}
+			return fmt.Sprintf("%s/api/paas/v4/audio/transcriptions", baseURL), nil
 		case relayconstant.RelayModeEmbeddings:
 			if hasSpecialPlan && specialPlan.OpenAIBaseURL != "" {
 				return fmt.Sprintf("%s/embeddings", specialPlan.OpenAIBaseURL), nil
@@ -107,6 +122,9 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
+	if info.RelayMode == relayconstant.RelayModeAudioTranscription {
+		return channel.DoFormRequest(a, c, info, requestBody)
+	}
 	return channel.DoApiRequest(a, c, info, requestBody)
 }
 
@@ -130,4 +148,20 @@ func (a *Adaptor) GetModelList() []string {
 
 func (a *Adaptor) GetChannelName() string {
 	return ChannelName
+}
+
+func zhipuTranscriptionHasSource(c *gin.Context) bool {
+	formData, err := common.ParseMultipartFormReusable(c)
+	if err != nil {
+		return false
+	}
+	if len(formData.File["file"]) > 0 {
+		return true
+	}
+	for _, value := range formData.Value["file_base64"] {
+		if strings.TrimSpace(value) != "" {
+			return true
+		}
+	}
+	return false
 }
