@@ -17,9 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Edit, Loader2, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -99,6 +99,13 @@ import {
   type GLMQuotaUsageDetailWindow,
   type GLMQuotaUsageWindowKey,
 } from './lib/glm-usage'
+import {
+  buildVolcengineQuotaUsageSummary,
+  formatVolcengineAFP,
+  formatVolcengineAFPPercent,
+  type VolcengineQuotaWindow,
+  type VolcengineQuotaWindowKey,
+} from './lib/volcengine-usage'
 import type {
   DeepSeekQuotaBinding,
   GLMQuotaBinding,
@@ -106,6 +113,7 @@ import type {
   QuotaBinding,
   QuotaBindingSavePayload,
   QuotaProvider,
+  VolcengineQuotaBinding,
 } from './types'
 
 type ProviderConfig = {
@@ -119,20 +127,30 @@ const providerConfigs: Record<QuotaProvider, ProviderConfig> = {
   glm: {
     provider: 'glm',
     titleKey: 'GLM Quota',
-    descriptionKey: 'Track BigModel account quota usage and refresh it from saved curl requests.',
+    descriptionKey:
+      'Track BigModel account quota usage and refresh it from saved curl requests.',
     curlPlaceholderKey: 'Paste the BigModel usage curl command',
   },
   deepseek: {
     provider: 'deepseek',
     titleKey: 'DeepSeek Quota',
-    descriptionKey: 'Track DeepSeek account quota usage and refresh it from saved curl requests.',
+    descriptionKey:
+      'Track DeepSeek account quota usage and refresh it from saved curl requests.',
     curlPlaceholderKey: 'Paste the DeepSeek quota curl command',
   },
   kimi: {
     provider: 'kimi',
     titleKey: 'Kimi Quota',
-    descriptionKey: 'Track Kimi account quota usage and refresh it from saved curl requests.',
+    descriptionKey:
+      'Track Kimi account quota usage and refresh it from saved curl requests.',
     curlPlaceholderKey: 'Paste the Kimi account info curl command',
+  },
+  volcengine: {
+    provider: 'volcengine',
+    titleKey: 'VolcEngine Quota',
+    descriptionKey:
+      'Track VolcEngine Agent Plan AFP quota usage and refresh it from saved curl requests.',
+    curlPlaceholderKey: 'Paste the VolcEngine Agent Plan usage curl command',
   },
 }
 
@@ -184,6 +202,12 @@ function isDeepSeekBinding(
 
 function isKimiBinding(binding: QuotaBinding): binding is KimiQuotaBinding {
   return 'last_remaining_quota' in binding
+}
+
+function isVolcengineBinding(
+  binding: QuotaBinding
+): binding is VolcengineQuotaBinding {
+  return 'last_five_hour_used_afp' in binding
 }
 
 function buildForm(binding?: QuotaBinding): QuotaBindingFormState {
@@ -347,7 +371,7 @@ function GLMUsageCell({ binding }: { binding: GLMQuotaBinding }) {
           <TooltipContent
             side='top'
             align='start'
-            className='max-w-[min(34rem,calc(100vw-2rem))] whitespace-normal p-3'
+            className='max-w-[min(34rem,calc(100vw-2rem))] p-3 whitespace-normal'
           >
             <div className='grid gap-2'>
               {summary.detailWindows.map((window) => {
@@ -495,6 +519,114 @@ function KimiUsageCells({ binding }: { binding: KimiQuotaBinding }) {
   )
 }
 
+function VolcengineUsageWindowLabel(
+  key: VolcengineQuotaWindowKey,
+  labels: {
+    fiveHour: string
+    daily: string
+    weekly: string
+    monthly: string
+  }
+): string {
+  if (key === 'fiveHour') return labels.fiveHour
+  if (key === 'daily') return labels.daily
+  if (key === 'weekly') return labels.weekly
+  return labels.monthly
+}
+
+function VolcengineUsageBar(props: {
+  label: string
+  window: VolcengineQuotaWindow
+}) {
+  const hasQuota = props.window.quota > 0
+  return (
+    <div className='flex min-w-[130px] flex-col gap-1'>
+      <div className='flex justify-between gap-2 text-xs'>
+        <span className='text-muted-foreground truncate'>{props.label}</span>
+        <span className='font-mono font-medium'>
+          {hasQuota ? formatVolcengineAFPPercent(props.window.percent) : '-'}
+        </span>
+      </div>
+      <Progress
+        value={hasQuota ? props.window.percent : 0}
+        className={cn('h-1.5', progressColor(props.window.percent))}
+      />
+      <span className='text-muted-foreground truncate font-mono text-xs'>
+        {hasQuota
+          ? `${formatVolcengineAFP(props.window.used)} / ${formatVolcengineAFP(props.window.quota)} AFP`
+          : '-'}
+      </span>
+    </div>
+  )
+}
+
+function VolcengineUsageCells(props: { binding: VolcengineQuotaBinding }) {
+  const { t } = useTranslation()
+  const summary = buildVolcengineQuotaUsageSummary(props.binding)
+  const labels = {
+    fiveHour: t('5-Hour Window'),
+    daily: t('Daily'),
+    weekly: t('Weekly Window'),
+    monthly: t('Monthly'),
+    start: t('Start'),
+    reset: t('Reset'),
+    used: t('Used'),
+  }
+
+  return (
+    <TableCell>
+      <TooltipProvider delay={150}>
+        <Tooltip>
+          <TooltipTrigger
+            render={<div className='max-w-[560px] cursor-help' />}
+          >
+            <div className='grid min-w-[420px] gap-2 md:grid-cols-3'>
+              {summary.visibleWindows.map((window) => (
+                <VolcengineUsageBar
+                  key={window.key}
+                  label={VolcengineUsageWindowLabel(window.key, labels)}
+                  window={window}
+                />
+              ))}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent
+            side='top'
+            align='start'
+            className='max-w-[min(34rem,calc(100vw-2rem))] p-3 whitespace-normal'
+          >
+            <div className='grid gap-2'>
+              {summary.detailWindows.map((window) => (
+                <div
+                  key={window.key}
+                  className='grid grid-cols-[minmax(8rem,1fr)_auto] gap-x-4 gap-y-0.5'
+                >
+                  <span>{VolcengineUsageWindowLabel(window.key, labels)}</span>
+                  <span className='font-mono font-semibold'>
+                    {window.quota > 0
+                      ? formatVolcengineAFPPercent(window.percent)
+                      : '-'}
+                  </span>
+                  <span className='text-background/70 col-span-2'>
+                    {labels.start}: {formatTimestampToDate(window.subscribeAt)}
+                  </span>
+                  <span className='text-background/70 col-span-2'>
+                    {labels.reset}: {formatTimestampToDate(window.resetAt)}
+                  </span>
+                  <span className='text-background/70 col-span-2 font-mono'>
+                    {labels.used}: {formatVolcengineAFP(window.used)} /{' '}
+                    {formatVolcengineAFP(window.quota)} AFP
+                  </span>
+                </div>
+              ))}
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </TableCell>
+  )
+}
+
 function QuotaUsageCells({ binding }: { binding: QuotaBinding }) {
   if (isGLMBinding(binding)) {
     return <GLMUsageCells binding={binding} />
@@ -504,6 +636,9 @@ function QuotaUsageCells({ binding }: { binding: QuotaBinding }) {
   }
   if (isKimiBinding(binding)) {
     return <KimiUsageCells binding={binding} />
+  }
+  if (isVolcengineBinding(binding)) {
+    return <VolcengineUsageCells binding={binding} />
   }
   return null
 }
@@ -530,6 +665,10 @@ function QuotaUsageHeaderCells({ provider }: { provider: QuotaProvider }) {
     )
   }
 
+  if (provider === 'volcengine') {
+    return <TableHead>{t('Usage')}</TableHead>
+  }
+
   return (
     <>
       <TableHead>{t('Remaining Quota')}</TableHead>
@@ -537,6 +676,12 @@ function QuotaUsageHeaderCells({ provider }: { provider: QuotaProvider }) {
       <TableHead>{t('Total Quota')}</TableHead>
     </>
   )
+}
+
+function quotaTableColumnCount(provider: QuotaProvider): number {
+  if (provider === 'glm') return 7
+  if (provider === 'volcengine') return 6
+  return 8
 }
 
 function ErrorMessageCell({ error }: { error?: string }) {
@@ -557,7 +702,7 @@ function ErrorMessageCell({ error }: { error?: string }) {
         <TooltipContent
           side='top'
           align='start'
-          className='max-w-[min(36rem,calc(100vw-2rem))] whitespace-pre-wrap break-words [overflow-wrap:anywhere]'
+          className='max-w-[min(36rem,calc(100vw-2rem))] [overflow-wrap:anywhere] break-words whitespace-pre-wrap'
         >
           {error}
         </TooltipContent>
@@ -761,9 +906,7 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
             onClick={refreshAll}
             disabled={refreshingAll || bindingsQuery.isLoading}
           >
-            <RefreshCw
-              className={refreshingAll ? 'animate-spin' : undefined}
-            />
+            <RefreshCw className={refreshingAll ? 'animate-spin' : undefined} />
             {t('Refresh All')}
           </Button>
           {isAdmin && (
@@ -822,6 +965,15 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
                           {isGLMBinding(binding) && binding.plan_type ? (
                             <Badge variant='outline' className='w-fit'>
                               {t(getGLMPlanLabelKey(binding.plan_type))}
+                            </Badge>
+                          ) : null}
+                          {isVolcengineBinding(binding) &&
+                          binding.last_plan_type ? (
+                            <Badge
+                              variant='outline'
+                              className='w-fit capitalize'
+                            >
+                              {binding.last_plan_type}
                             </Badge>
                           ) : null}
                         </div>
@@ -888,7 +1040,7 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
                   {bindings.length === 0 && (
                     <TableRow>
                       <TableCell
-                        colSpan={provider === 'glm' ? 7 : 8}
+                        colSpan={quotaTableColumnCount(provider)}
                         className='h-24 text-center'
                       >
                         {bindingsQuery.isLoading
@@ -911,7 +1063,9 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
               {form.id ? t('Edit Quota Binding') : t('Create Quota Binding')}
             </DialogTitle>
             <DialogDescription>
-              {t('Save the curl command and optional proxy used to refresh quota usage.')}
+              {t(
+                'Save the curl command and optional proxy used to refresh quota usage.'
+              )}
             </DialogDescription>
           </DialogHeader>
           <div className='grid max-h-[70vh] gap-4 overflow-y-auto pr-1'>
@@ -949,9 +1103,7 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
                     value={form.five_hour_limit_tokens}
                     onChange={(event) =>
                       updateForm({
-                        five_hour_limit_tokens: Number(
-                          event.target.value || 0
-                        ),
+                        five_hour_limit_tokens: Number(event.target.value || 0),
                       })
                     }
                   />
@@ -998,7 +1150,9 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
                   placeholder={
                     form.id && form.has_refresh_token
                       ? t('Leave blank to keep unchanged')
-                      : t('Paste the Kimi refresh token used when access token expires')
+                      : t(
+                          'Paste the Kimi refresh token used when access token expires'
+                        )
                   }
                   onChange={(event) =>
                     updateForm({
@@ -1083,7 +1237,9 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
             <AlertDialogAction
               variant='destructive'
               disabled={deleteMutation.isPending || !deleteTarget}
-              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget)}
+              onClick={() =>
+                deleteTarget && deleteMutation.mutate(deleteTarget)
+              }
             >
               {deleteMutation.isPending ? (
                 <Loader2 className='animate-spin' />

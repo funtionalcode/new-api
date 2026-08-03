@@ -31,6 +31,7 @@ const providerBasePath: Record<QuotaProvider, string> = {
   glm: '/api/glm-quota',
   deepseek: '/api/deepseek-quota',
   kimi: '/api/kimi-quota',
+  volcengine: '/api/volcengine-quota',
 }
 
 function pathFor(provider: QuotaProvider, suffix: string): string {

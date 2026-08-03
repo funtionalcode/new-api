@@ -370,6 +370,19 @@ func SetApiRouter(router *gin.Engine) {
 			}
 		}
 
+		volcengineQuotaRoute := apiRouter.Group("/volcengine-quota")
+		{
+			volcengineQuotaRoute.GET("/bindings", middleware.UserAuth(), controller.GetVolcengineQuotaBindings)
+			volcengineQuotaRoute.POST("/bindings/:id/refresh-usage", middleware.UserAuth(), controller.RefreshVolcengineQuotaBindingUsage)
+			volcengineQuotaAdminRoute := volcengineQuotaRoute.Group("")
+			volcengineQuotaAdminRoute.Use(middleware.AdminAuth())
+			{
+				volcengineQuotaAdminRoute.POST("/bindings", controller.CreateVolcengineQuotaBinding)
+				volcengineQuotaAdminRoute.PUT("/bindings/:id", controller.UpdateVolcengineQuotaBinding)
+				volcengineQuotaAdminRoute.DELETE("/bindings/:id", controller.DeleteVolcengineQuotaBinding)
+			}
+		}
+
 		codexResetsRoute := apiRouter.Group("/codex-resets")
 		{
 			codexResetsRoute.GET("", middleware.UserAuth(), controller.GetCodexResets)

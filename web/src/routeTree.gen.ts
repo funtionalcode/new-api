@@ -58,6 +58,7 @@ import { Route as AuthenticatedUsageLogsIndexRouteImport } from './routes/_authe
 import { Route as AuthenticatedUsageLogsSectionRouteImport } from './routes/_authenticated/usage-logs/$section'
 import { Route as AuthenticatedUserConsumptionIndexRouteImport } from './routes/_authenticated/user-consumption/index'
 import { Route as AuthenticatedUsersIndexRouteImport } from './routes/_authenticated/users/index'
+import { Route as AuthenticatedVolcengineQuotaIndexRouteImport } from './routes/_authenticated/volcengine-quota/index'
 import { Route as AuthenticatedWalletIndexRouteImport } from './routes/_authenticated/wallet/index'
 import { Route as PricingModelIdIndexRouteImport } from './routes/pricing/$modelId/index'
 import { Route as AuthenticatedSystemSettingsAuthIndexRouteImport } from './routes/_authenticated/system-settings/auth/index'
@@ -339,6 +340,12 @@ const AuthenticatedUsersIndexRoute = AuthenticatedUsersIndexRouteImport.update({
   path: '/users/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedVolcengineQuotaIndexRoute =
+  AuthenticatedVolcengineQuotaIndexRouteImport.update({
+    id: '/volcengine-quota/',
+    path: '/volcengine-quota/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedWalletIndexRoute =
   AuthenticatedWalletIndexRouteImport.update({
     id: '/wallet/',
@@ -483,6 +490,7 @@ export interface FileRoutesByFullPath {
   '/usage-logs/': typeof AuthenticatedUsageLogsIndexRoute
   '/user-consumption/': typeof AuthenticatedUserConsumptionIndexRoute
   '/users/': typeof AuthenticatedUsersIndexRoute
+  '/volcengine-quota/': typeof AuthenticatedVolcengineQuotaIndexRoute
   '/wallet/': typeof AuthenticatedWalletIndexRoute
   '/pricing/$modelId/': typeof PricingModelIdIndexRoute
   '/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
@@ -547,6 +555,7 @@ export interface FileRoutesByTo {
   '/usage-logs': typeof AuthenticatedUsageLogsIndexRoute
   '/user-consumption': typeof AuthenticatedUserConsumptionIndexRoute
   '/users': typeof AuthenticatedUsersIndexRoute
+  '/volcengine-quota': typeof AuthenticatedVolcengineQuotaIndexRoute
   '/wallet': typeof AuthenticatedWalletIndexRoute
   '/pricing/$modelId': typeof PricingModelIdIndexRoute
   '/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
@@ -615,6 +624,7 @@ export interface FileRoutesById {
   '/_authenticated/usage-logs/': typeof AuthenticatedUsageLogsIndexRoute
   '/_authenticated/user-consumption/': typeof AuthenticatedUserConsumptionIndexRoute
   '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
+  '/_authenticated/volcengine-quota/': typeof AuthenticatedVolcengineQuotaIndexRoute
   '/_authenticated/wallet/': typeof AuthenticatedWalletIndexRoute
   '/pricing/$modelId/': typeof PricingModelIdIndexRoute
   '/_authenticated/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
@@ -682,6 +692,7 @@ export interface FileRouteTypes {
     | '/usage-logs/'
     | '/user-consumption/'
     | '/users/'
+    | '/volcengine-quota/'
     | '/wallet/'
     | '/pricing/$modelId/'
     | '/system-settings/auth/$section'
@@ -746,6 +757,7 @@ export interface FileRouteTypes {
     | '/usage-logs'
     | '/user-consumption'
     | '/users'
+    | '/volcengine-quota'
     | '/wallet'
     | '/pricing/$modelId'
     | '/system-settings/auth/$section'
@@ -813,6 +825,7 @@ export interface FileRouteTypes {
     | '/_authenticated/usage-logs/'
     | '/_authenticated/user-consumption/'
     | '/_authenticated/users/'
+    | '/_authenticated/volcengine-quota/'
     | '/_authenticated/wallet/'
     | '/pricing/$modelId/'
     | '/_authenticated/system-settings/auth/$section'
@@ -1196,6 +1209,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedUsersIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/volcengine-quota/': {
+      id: '/_authenticated/volcengine-quota/'
+      path: '/volcengine-quota'
+      fullPath: '/volcengine-quota/'
+      preLoaderRoute: typeof AuthenticatedVolcengineQuotaIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/wallet/': {
       id: '/_authenticated/wallet/'
       path: '/wallet'
@@ -1419,6 +1439,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedUsageLogsIndexRoute: typeof AuthenticatedUsageLogsIndexRoute
   AuthenticatedUserConsumptionIndexRoute: typeof AuthenticatedUserConsumptionIndexRoute
   AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
+  AuthenticatedVolcengineQuotaIndexRoute: typeof AuthenticatedVolcengineQuotaIndexRoute
   AuthenticatedWalletIndexRoute: typeof AuthenticatedWalletIndexRoute
 }
 
@@ -1451,6 +1472,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedUserConsumptionIndexRoute:
     AuthenticatedUserConsumptionIndexRoute,
   AuthenticatedUsersIndexRoute: AuthenticatedUsersIndexRoute,
+  AuthenticatedVolcengineQuotaIndexRoute:
+    AuthenticatedVolcengineQuotaIndexRoute,
   AuthenticatedWalletIndexRoute: AuthenticatedWalletIndexRoute,
 }
 

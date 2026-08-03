@@ -1,6 +1,6 @@
 # 二开功能记录
 
-更新时间：2026-07-31
+更新时间：2026-08-03
 
 本文记录当前项目已做的二开功能，便于后续升级、排查和继续开发时快速确认改动范围。后续新增或调整二开功能时，需要同步更新本文。
 
@@ -31,6 +31,7 @@
 | GLM / DeepSeek 额度 | DeepSeek 额度改为剩余金额进度条，显示本月 Token 和本月消费，Token 悬浮显示精确值 | `controller/deepseek_quota.go`、`model/deepseek_quota.go`、`web/src/features/quota-bindings` | 本次同步 |
 | GLM / DeepSeek 额度 | DeepSeek 保留今日 Token 字段兼容未来接口，当前页面按接口实际返回的 `monthly_token_usage` / `monthly_usage` 展示本月 Token | `controller/deepseek_quota.go`、`model/deepseek_quota.go`、`web/src/features/quota-bindings` | 本次同步 |
 | GLM / DeepSeek 额度 | 编辑额度配置时，未修改的 curl 和代理字段不提交，后端复用已保存配置，避免无回显或直接确认时清空代理 | `web/src/features/quota-bindings` | 本次同步 |
+| 火山额度 | 新增火山引擎 Agent Plan AFP 额度菜单，支持管理员保存控制台 curl/代理、普通用户查看和刷新，展示 5 小时、周、月窗口并在详情保留每日窗口；curl 解析支持 `--data-raw` 请求体和隐式 POST | `controller/volcengine_quota.go`、`controller/quota_curl.go`、`model/volcengine_quota.go`、`router/api-router.go`、`web/src/features/quota-bindings` | 本次同步 |
 | 常规菜单 | 认证文件、GLM 额度和 DeepSeek 额度移动到常规菜单，普通用户可进入查看并刷新，编辑、新建、删除仍限管理员 | `controller/cliproxy.go`、`router/api-router.go`、`web/src/hooks/use-sidebar-*`、`web/src/features/*quota*`、`web/src/features/cliproxy-auth-files` | 本次同步 |
 | 渠道管理 | 渠道支持开放用户限制；未配置时默认开放给所有用户 | `controller/channel.go`、`model/channel.go`、`middleware/distributor.go`、`service/channel_select.go`、`web/src/features/channels` | `001cd50f` |
 | 渠道管理 | 在 `web` 实现渠道开放用户限制，支持编辑抽屉搜索选择用户、列表展示开放用户范围 | `web/src/features/channels` | 本次同步 |

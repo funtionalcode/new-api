@@ -134,6 +134,10 @@ export function SidebarModulesSection({
         title: t('Kimi Quota'),
         description: t('Track Kimi account quota usage.'),
       },
+      volcengineQuota: {
+        title: t('VolcEngine Quota'),
+        description: t('Track VolcEngine Agent Plan AFP quota usage.'),
+      },
       codexResets: {
         title: t('Codex Resets'),
         description: t(

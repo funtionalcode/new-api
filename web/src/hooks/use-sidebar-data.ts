@@ -132,6 +132,11 @@ export function useSidebarData(): SidebarData {
             icon: Gauge,
           },
           {
+            title: t('VolcEngine Quota'),
+            url: '/volcengine-quota',
+            icon: Gauge,
+          },
+          {
             title: t('Codex Resets'),
             url: '/codex-resets',
             icon: RotateCcw,

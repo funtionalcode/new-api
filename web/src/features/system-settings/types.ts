@@ -55,7 +55,7 @@ export type SystemTaskStatus = 'pending' | 'running' | 'succeeded' | 'failed'
 export type SystemTask<
   TPayload = Record<string, unknown>,
   TState = Record<string, unknown>,
-  TResult = Record<string, unknown>,
+  TResult = Record<string, unknown> | string,
 > = {
   id: number
   task_id: string
@@ -118,7 +118,11 @@ export type DBBackupResult = {
   log_excerpt?: string
 }
 
-export type DBBackupTask = SystemTask<DBBackupPayload, unknown, DBBackupResult>
+export type DBBackupTask = SystemTask<
+  DBBackupPayload,
+  unknown,
+  DBBackupResult | string
+>
 
 export type DBBackupConfig = {
   backup_root: string

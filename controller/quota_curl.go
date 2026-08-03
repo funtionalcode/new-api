@@ -13,6 +13,7 @@ type quotaCurlRequest struct {
 	URL     string
 	Headers map[string]string
 	Proxy   string
+	Body    string
 }
 
 func parseQuotaCurlRequest(rawCurl string) (quotaCurlRequest, error) {
@@ -27,6 +28,7 @@ func parseQuotaCurlRequest(rawCurl string) (quotaCurlRequest, error) {
 		Method:  http.MethodGet,
 		Headers: map[string]string{},
 	}
+	explicitMethod := false
 	for index := 1; index < len(tokens); index++ {
 		token := tokens[index]
 		switch token {
@@ -48,6 +50,19 @@ func parseQuotaCurlRequest(rawCurl string) (quotaCurlRequest, error) {
 				return quotaCurlRequest{}, fmt.Errorf("curl request 参数缺少值")
 			}
 			requestConfig.Method = strings.ToUpper(strings.TrimSpace(tokens[index]))
+			explicitMethod = true
+		case "-d", "--data", "--data-raw", "--data-binary":
+			index++
+			if index >= len(tokens) {
+				return quotaCurlRequest{}, fmt.Errorf("curl data 参数缺少值")
+			}
+			if requestConfig.Body != "" {
+				requestConfig.Body += "&"
+			}
+			requestConfig.Body += tokens[index]
+			if !explicitMethod {
+				requestConfig.Method = http.MethodPost
+			}
 		case "--url":
 			index++
 			if index >= len(tokens) {
@@ -61,6 +76,23 @@ func parseQuotaCurlRequest(rawCurl string) (quotaCurlRequest, error) {
 			}
 			requestConfig.Proxy = strings.TrimSpace(tokens[index])
 		default:
+			inlineData := ""
+			for _, prefix := range []string{"--data=", "--data-raw=", "--data-binary="} {
+				if strings.HasPrefix(token, prefix) {
+					inlineData = strings.TrimPrefix(token, prefix)
+					break
+				}
+			}
+			if inlineData != "" {
+				if requestConfig.Body != "" {
+					requestConfig.Body += "&"
+				}
+				requestConfig.Body += inlineData
+				if !explicitMethod {
+					requestConfig.Method = http.MethodPost
+				}
+				continue
+			}
 			if proxyURL, ok := quotaCurlInlineProxy(token); ok {
 				requestConfig.Proxy = proxyURL
 				continue

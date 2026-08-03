@@ -228,7 +228,7 @@ export function LogSettingsSection({
     let cancelled = false
     const interval = window.setInterval(async () => {
       try {
-        const res = await getSystemTask(logCleanupTaskId)
+        const res = await getSystemTask<LogCleanupTask>(logCleanupTaskId)
         if (cancelled || !res.success || !res.data) return
 
         setLogCleanupTask(res.data)

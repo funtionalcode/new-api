@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-export type QuotaProvider = 'glm' | 'deepseek' | 'kimi'
+export type QuotaProvider = 'glm' | 'deepseek' | 'kimi' | 'volcengine'
 
 export type QuotaBindingBase = {
   id: number
@@ -79,10 +79,31 @@ export type KimiQuotaBinding = QuotaBindingBase & {
   last_remaining_percent: number
 }
 
+export type VolcengineQuotaBinding = QuotaBindingBase & {
+  last_plan_type: string
+  last_five_hour_quota: number
+  last_five_hour_used_afp: number
+  last_five_hour_subscribe_at: number
+  last_five_hour_reset_at: number
+  last_daily_quota: number
+  last_daily_used_afp: number
+  last_daily_subscribe_at: number
+  last_daily_reset_at: number
+  last_weekly_quota: number
+  last_weekly_used_afp: number
+  last_weekly_subscribe_at: number
+  last_weekly_reset_at: number
+  last_monthly_quota: number
+  last_monthly_used_afp: number
+  last_monthly_subscribe_at: number
+  last_monthly_reset_at: number
+}
+
 export type QuotaBinding =
   | GLMQuotaBinding
   | DeepSeekQuotaBinding
   | KimiQuotaBinding
+  | VolcengineQuotaBinding
 
 export type QuotaBindingFormData = {
   id?: number

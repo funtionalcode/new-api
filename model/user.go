@@ -247,17 +247,18 @@ func generateDefaultSidebarConfigForRole(userRole int) string {
 
 	// 控制台区域 - 所有用户都可以访问
 	defaultConfig["console"] = map[string]interface{}{
-		"enabled":       true,
-		"detail":        true,
-		"token":         true,
-		"log":           true,
-		"midjourney":    true,
-		"task":          true,
-		"authFiles":     true,
-		"glmQuota":      true,
-		"deepseekQuota": true,
-		"kimiQuota":     true,
-		"codexResets":   true,
+		"enabled":         true,
+		"detail":          true,
+		"token":           true,
+		"log":             true,
+		"midjourney":      true,
+		"task":            true,
+		"authFiles":       true,
+		"glmQuota":        true,
+		"deepseekQuota":   true,
+		"kimiQuota":       true,
+		"volcengineQuota": true,
+		"codexResets":     true,
 	}
 
 	// 个人中心区域 - 所有用户都可以访问
