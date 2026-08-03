@@ -10,16 +10,16 @@ import (
 
 	appcommon "github.com/QuantumNous/new-api/common"
 	appconstant "github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -365,6 +365,8 @@ func dialResponsesWebsocketUpstream(c *gin.Context, info *relaycommon.RelayInfo)
 func forwardResponsesWebsocketTurn(c *gin.Context, clientWs *websocket.Conn, targetWs *websocket.Conn, info *relaycommon.RelayInfo) (*dto.Usage, bool, error) {
 	usage := &dto.Usage{}
 	var responseTextBuilder strings.Builder
+	imageCounter := &relaycommon.ImageGenerationCallCounter{}
+	imageCommitted := false
 
 	for {
 		messageType, message, err := targetWs.ReadMessage()
@@ -376,7 +378,7 @@ func forwardResponsesWebsocketTurn(c *gin.Context, clientWs *websocket.Conn, tar
 			return usage, false, fmt.Errorf("write client websocket failed: %w", err)
 		}
 
-		eventType, terminal, completed := collectResponsesWebsocketUsage(c, info, usage, &responseTextBuilder, message)
+		eventType, terminal, completed := collectResponsesWebsocketUsage(c, info, usage, &responseTextBuilder, message, imageCounter, &imageCommitted)
 		if !terminal {
 			continue
 		}
@@ -388,9 +390,13 @@ func forwardResponsesWebsocketTurn(c *gin.Context, clientWs *websocket.Conn, tar
 	}
 }
 
-func collectResponsesWebsocketUsage(c *gin.Context, info *relaycommon.RelayInfo, usage *dto.Usage, responseTextBuilder *strings.Builder, message []byte) (string, bool, bool) {
+func collectResponsesWebsocketUsage(c *gin.Context, info *relaycommon.RelayInfo, usage *dto.Usage, responseTextBuilder *strings.Builder, message []byte, imageCounter *relaycommon.ImageGenerationCallCounter, imageCommitted *bool) (string, bool, bool) {
 	trimmed := strings.TrimSpace(string(message))
 	if trimmed == "[DONE]" {
+		if imageCommitted != nil && !*imageCommitted {
+			imageCounter.Commit(info)
+			*imageCommitted = true
+		}
 		return "done", true, true
 	}
 
@@ -402,11 +408,6 @@ func collectResponsesWebsocketUsage(c *gin.Context, info *relaycommon.RelayInfo,
 
 	if streamResponse.Response != nil {
 		applyResponsesUsage(usage, streamResponse.Response.Usage)
-		if streamResponse.Response.HasImageGenerationCall() {
-			c.Set("image_generation_call", true)
-			c.Set("image_generation_call_quality", streamResponse.Response.GetQuality())
-			c.Set("image_generation_call_size", streamResponse.Response.GetSize())
-		}
 	}
 
 	switch streamResponse.Type {
@@ -420,9 +421,29 @@ func collectResponsesWebsocketUsage(c *gin.Context, info *relaycommon.RelayInfo,
 				}
 			}
 		}
+		if streamResponse.Item != nil && streamResponse.Item.Type == dto.ResponsesOutputTypeImageGenerationCall && imageCommitted != nil && !*imageCommitted {
+			imageCounter.Observe(streamResponse.Item, streamResponse.OutputIndex)
+		}
 	case "response.completed", "response.done", "response.incomplete":
+		if imageCommitted != nil && !*imageCommitted {
+			if streamResponse.Response != nil && relaycommon.IsNonBillableResponsesStatus(streamResponse.Response.Status) {
+				imageCounter.Reset()
+			} else if streamResponse.Response != nil {
+				for i := range streamResponse.Response.Output {
+					idx := i
+					imageCounter.Observe(&streamResponse.Response.Output[i], &idx)
+				}
+			}
+			imageCounter.Commit(info)
+			*imageCommitted = true
+		}
 		return streamResponse.Type, true, true
 	case "response.failed", "response.error", "error":
+		if imageCommitted != nil && !*imageCommitted {
+			imageCounter.Reset()
+			imageCounter.Commit(info)
+			*imageCommitted = true
+		}
 		return streamResponse.Type, true, false
 	}
 	return streamResponse.Type, false, false

@@ -6,12 +6,12 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -35,6 +35,41 @@ func streamResponseXAI2OpenAI(xAIResp *dto.ChatCompletionsStreamResponse, usage 
 	return openAIResp
 }
 
+func normalizeXAIUsage(usage *dto.Usage) {
+	if usage == nil {
+		return
+	}
+	if usage.PromptTokens == 0 && usage.InputTokens > 0 {
+		usage.PromptTokens = usage.InputTokens
+	}
+	if usage.CompletionTokens == 0 && usage.OutputTokens > 0 {
+		usage.CompletionTokens = usage.OutputTokens
+	}
+	if usage.TotalTokens > 0 && usage.PromptTokens > 0 {
+		if completionTokens := usage.TotalTokens - usage.PromptTokens; completionTokens >= 0 {
+			usage.CompletionTokens = completionTokens
+		}
+	}
+	if usage.TotalTokens == 0 {
+		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+	}
+	if usage.InputTokensDetails != nil &&
+		usage.PromptTokensDetails.CachedTokens == 0 &&
+		usage.PromptTokensDetails.CachedCreationTokens == 0 &&
+		usage.PromptTokensDetails.CacheWriteTokens == 0 &&
+		usage.PromptTokensDetails.TextTokens == 0 &&
+		usage.PromptTokensDetails.AudioTokens == 0 &&
+		usage.PromptTokensDetails.ImageTokens == 0 {
+		usage.PromptTokensDetails = *usage.InputTokensDetails
+	}
+	if usage.CompletionTokens > usage.CompletionTokenDetails.ReasoningTokens &&
+		usage.CompletionTokenDetails.TextTokens == 0 &&
+		usage.CompletionTokenDetails.AudioTokens == 0 &&
+		usage.CompletionTokenDetails.ImageTokens == 0 {
+		usage.CompletionTokenDetails.TextTokens = usage.CompletionTokens - usage.CompletionTokenDetails.ReasoningTokens
+	}
+}
+
 func xAIStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
 	usage := &dto.Usage{}
 	var responseTextBuilder strings.Builder
@@ -54,9 +89,8 @@ func xAIStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		// 把 xAI 的usage转换为 OpenAI 的usage
 		if xAIResp.Usage != nil {
 			containStreamUsage = true
-			usage.PromptTokens = xAIResp.Usage.PromptTokens
-			usage.TotalTokens = xAIResp.Usage.TotalTokens
-			usage.CompletionTokens = usage.TotalTokens - usage.PromptTokens
+			usage = xAIResp.Usage
+			normalizeXAIUsage(usage)
 		}
 
 		openaiResponse := streamResponseXAI2OpenAI(xAIResp, usage)
@@ -89,10 +123,7 @@ func xAIHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
-	if xaiResponse.Usage != nil {
-		xaiResponse.Usage.CompletionTokens = xaiResponse.Usage.TotalTokens - xaiResponse.Usage.PromptTokens
-		xaiResponse.Usage.CompletionTokenDetails.TextTokens = xaiResponse.Usage.CompletionTokens - xaiResponse.Usage.CompletionTokenDetails.ReasoningTokens
-	}
+	normalizeXAIUsage(xaiResponse.Usage)
 
 	// new body
 	encodeJson, err := common.Marshal(xaiResponse)

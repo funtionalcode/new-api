@@ -8,7 +8,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/relay/channel/ai360"
@@ -17,10 +16,11 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/moonshot"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
-	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
 )
@@ -191,7 +191,7 @@ func getModelListGroups(c *gin.Context) (modelListGroups, error) {
 		return modelListGroups{
 			userGroup:   userGroup,
 			tokenGroup:  tokenGroup,
-			ownerGroups: service.GetUserAutoGroup(userGroup),
+			ownerGroups: service.GetRequestAutoGroups(c, userGroup),
 		}, nil
 	}
 
@@ -227,19 +227,6 @@ func ListModels(c *gin.Context, modelType int) {
 		return
 	}
 	ownerGroups := groups.ownerGroups
-	availableModels := make([]string, 0)
-	if groups.tokenGroup == "auto" {
-		for _, autoGroup := range ownerGroups {
-			groupModels := model.GetGroupEnabledModels(autoGroup)
-			for _, groupModel := range groupModels {
-				if !common.StringsContains(availableModels, groupModel) {
-					availableModels = append(availableModels, groupModel)
-				}
-			}
-		}
-	} else if len(ownerGroups) > 0 {
-		availableModels = model.GetGroupEnabledModels(ownerGroups[0])
-	}
 
 	appendModelName := func(modelName string) {
 		if userModelLimitEnabled && !model.IsModelAllowedByUserLimit(modelName, userModelLimitMap) {
@@ -252,28 +239,25 @@ func ListModels(c *gin.Context, modelType int) {
 	}
 
 	modelLimitEnable := common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled)
+	var tokenModelLimit map[string]bool
 	if modelLimitEnable {
 		s, ok := common.GetContextKey(c, constant.ContextKeyTokenModelLimit)
-		var tokenModelLimit map[string]bool
 		if ok {
-			tokenModelLimit, ok = s.(map[string]bool)
-			if !ok {
-				tokenModelLimit = map[string]bool{}
-			}
-		} else {
+			tokenModelLimit, _ = s.(map[string]bool)
+		}
+		if tokenModelLimit == nil {
 			tokenModelLimit = map[string]bool{}
 		}
-		for _, availableModel := range availableModels {
-			matchName := ratio_setting.FormatMatchingModelName(availableModel)
-			if tokenModelLimit[availableModel] || tokenModelLimit[matchName] {
-				appendModelName(availableModel)
+	}
+	models := service.GetGroupsEnabledModels(ownerGroups)
+	for _, modelName := range models {
+		if modelLimitEnable {
+			matchingName := ratio_setting.FormatMatchingModelName(modelName)
+			if !tokenModelLimit[modelName] && !tokenModelLimit[matchingName] {
+				continue
 			}
 		}
-	} else {
-		models := service.GetGroupsEnabledModels(ownerGroups)
-		for _, modelName := range models {
-			appendModelName(modelName)
-		}
+		appendModelName(modelName)
 	}
 
 	ownerByModel := map[string]string{}

@@ -58,6 +58,8 @@ const (
 	ChannelTypeCodexChat      = 58
 	ChannelTypeMimo           = 59
 	ChannelTypeAdvancedCustom = 60
+	ChannelTypeSub2API        = 61
+	ChannelTypeNewAPI         = 62
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
@@ -124,6 +126,8 @@ var ChannelBaseURLs = []string{
 	"https://chatgpt.com",                       //58
 	"https://api.xiaomimimo.com",                //59
 	"",                                          //60
+	"",                                          //61
+	"",                                          //62
 }
 
 var ChannelTypeNames = map[int]string{
@@ -184,6 +188,8 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeCodexChat:      "CodexChat",
 	ChannelTypeMimo:           "Mimo",
 	ChannelTypeAdvancedCustom: "Advanced Custom",
+	ChannelTypeSub2API:        "Sub2API",
+	ChannelTypeNewAPI:         "New API",
 }
 
 func GetChannelTypeName(channelType int) string {

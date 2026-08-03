@@ -1,8 +1,12 @@
 package constant
 
-import "testing"
+import (
+	"testing"
 
-func TestPath2RelayModePlaygroundImagesGenerations(t *testing.T) {
+	"github.com/stretchr/testify/assert"
+)
+
+func TestPath2RelayMode(t *testing.T) {
 	tests := []struct {
 		name string
 		path string
@@ -28,13 +32,21 @@ func TestPath2RelayModePlaygroundImagesGenerations(t *testing.T) {
 			path: "/v1/images/generations",
 			want: RelayModeImagesGenerations,
 		},
+		{
+			name: "alpha search",
+			path: "/v1/alpha/search",
+			want: RelayModeAlphaSearch,
+		},
+		{
+			name: "alpha search with query",
+			path: "/v1/alpha/search?foo=1",
+			want: RelayModeAlphaSearch,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := Path2RelayMode(tt.path); got != tt.want {
-				t.Fatalf("Path2RelayMode(%q) = %d, want %d", tt.path, got, tt.want)
-			}
+			assert.Equal(t, tt.want, Path2RelayMode(tt.path))
 		})
 	}
 }

@@ -4,21 +4,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"net/url"
-	"regexp"
-	"sort"
+	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 	"strconv"
 	"strings"
 	"unsafe"
 
 	"github.com/samber/lo"
-)
-
-var (
-	maskURLPattern = regexp.MustCompile(`https?://[^\s"'<>]+`)
-	maskIPPattern  = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
-	// maskApiKeyPattern matches patterns like 'api_key:xxx' or "api_key:xxx" to mask the API key value
-	maskApiKeyPattern = regexp.MustCompile(`(['"]?)api_key:([^\s'"]+)(['"]?)`)
 )
 
 const LocalLogContentLimit = 2048
@@ -145,70 +136,8 @@ func MaskEmail(email string) string {
 	return "***@" + email[atIndex+1:]
 }
 
-// MaskSensitiveInfo masks sensitive URL path/query values, IPs, and API keys while preserving domains.
-// Example:
-// http://example.com -> http://example.com
-// https://api.test.org/v1/users/123?key=secret -> https://api.test.org/***/***/***?key=***
-// https://sub.domain.co.uk/path/to/resource -> https://sub.domain.co.uk/***/***/***
-// 192.168.1.1 -> ***.***.***.***
-// api_key:secret -> api_key:***
+// MaskSensitiveInfo moved to the conversion kit (kitutil) because the types
+// package error formatting depends on it; host callers keep this name.
 func MaskSensitiveInfo(str string) string {
-	// Mask URLs
-	str = maskURLPattern.ReplaceAllStringFunc(str, func(urlStr string) string {
-		u, err := url.Parse(urlStr)
-		if err != nil {
-			return urlStr
-		}
-
-		host := u.Host
-		if host == "" {
-			return urlStr
-		}
-
-		result := u.Scheme + "://" + host
-
-		// Mask path
-		if u.Path != "" && u.Path != "/" {
-			pathParts := strings.Split(strings.Trim(u.Path, "/"), "/")
-			maskedPathParts := make([]string, len(pathParts))
-			for i := range pathParts {
-				if pathParts[i] != "" {
-					maskedPathParts[i] = "***"
-				}
-			}
-			if len(maskedPathParts) > 0 {
-				result += "/" + strings.Join(maskedPathParts, "/")
-			}
-		} else if u.Path == "/" {
-			result += "/"
-		}
-
-		// Mask query parameters
-		if u.RawQuery != "" {
-			values, err := url.ParseQuery(u.RawQuery)
-			if err != nil {
-				// If can't parse query, just mask the whole query string
-				result += "?***"
-			} else {
-				maskedParams := make([]string, 0, len(values))
-				for key := range values {
-					maskedParams = append(maskedParams, key+"=***")
-				}
-				sort.Strings(maskedParams)
-				if len(maskedParams) > 0 {
-					result += "?" + strings.Join(maskedParams, "&")
-				}
-			}
-		}
-
-		return result
-	})
-
-	// Mask IP addresses
-	str = maskIPPattern.ReplaceAllString(str, "***.***.***.***")
-
-	// Mask API keys (e.g., "api_key:AIzaSyAAAaUooTUni8AdaOkSRMda30n_Q4vrV70" -> "api_key:***")
-	str = maskApiKeyPattern.ReplaceAllString(str, "${1}api_key:***${3}")
-
-	return str
+	return kitutil.MaskSensitiveInfo(str)
 }
