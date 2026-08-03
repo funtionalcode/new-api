@@ -24,6 +24,7 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import {
   getVideoGeneration,
+  sendAudioTranscription,
   sendImageGeneration,
   sendSpeechGeneration,
   sendVideoGeneration,
@@ -40,8 +41,10 @@ import {
   appendUserMessagePair,
   buildImageGenerationMarkdown,
   buildSpeechGenerationMarkdown,
+  buildTranscriptionMarkdown,
   buildVideoGenerationMarkdown,
   completeAssistantMessage,
+  getPromptInputAudioAttachments,
   getMessageContent,
   getPreviousUserMessage,
   getPlaygroundGenerationMode,
@@ -52,7 +55,7 @@ import {
   updateCurrentVersionContent,
   updateLastAssistantMessage,
 } from './lib'
-import type { Message, PlaygroundMode } from './types'
+import type { Message, PlaygroundAttachment, PlaygroundMode } from './types'
 
 const VIDEO_POLL_INTERVAL_MS = 2000
 
@@ -108,7 +111,23 @@ export function Playground() {
       )
       const text = promptMessage ? getMessageContent(promptMessage).trim() : ''
       const imageUrls = promptMessage?.imageUrls ?? []
-      if (!text) return
+      const audioAttachments = getPromptInputAudioAttachments({
+        files: promptMessage?.attachments ?? [],
+      })
+      if (taskMode !== 'transcription' && !text) return
+      if (taskMode === 'transcription' && audioAttachments.length === 0) {
+        const errorMessage = t('Audio file is required')
+        toast.error(errorMessage)
+        updateMessages((previousMessages) =>
+          updateAssistantMessageWithError(
+            previousMessages,
+            errorMessage,
+            undefined,
+            t('Request error occurred')
+          )
+        )
+        return
+      }
 
       const abortController = new AbortController()
       taskAbortControllerRef.current = abortController
@@ -157,6 +176,18 @@ export function Playground() {
           })
           content = buildVideoGenerationMarkdown(
             video.metadata?.url || `/v1/videos/${videoId}/content`
+          )
+        } else if (taskMode === 'transcription') {
+          content = buildTranscriptionMarkdown(
+            await sendAudioTranscription(
+              {
+                model: config.model,
+                group: config.group,
+                file: audioAttachments[0],
+                prompt: text,
+              },
+              abortController.signal
+            )
           )
         } else {
           content = buildSpeechGenerationMarkdown(
@@ -214,6 +245,8 @@ export function Playground() {
     setIsTaskGenerating(false)
   }, [])
 
+  const effectiveMode = getPlaygroundGenerationMode(mode, config.model)
+
   const sendMessages = useCallback(
     (nextMessages: Message[], generationMode: PlaygroundMode = 'chat') => {
       const effectiveMode = getPlaygroundGenerationMode(
@@ -232,17 +265,23 @@ export function Playground() {
   )
 
   const handleSubmitMessage = useCallback(
-    (text: string, imageUrls: string[] = []) => {
+    (
+      text: string,
+      imageUrls: string[] = [],
+      attachments: PlaygroundAttachment[] = []
+    ) => {
+      const submissionMode = getPlaygroundGenerationMode(mode, config.model)
       const nextMessages = appendUserMessagePair(
         messages,
         text,
-        mode,
-        imageUrls
+        submissionMode,
+        imageUrls,
+        attachments
       )
       updateMessages(nextMessages)
-      sendMessages(nextMessages, mode)
+      sendMessages(nextMessages, submissionMode)
     },
-    [messages, mode, sendMessages, updateMessages]
+    [config.model, messages, mode, sendMessages, updateMessages]
   )
 
   const {
@@ -302,7 +341,7 @@ export function Playground() {
           groupValue={config.group}
           isGenerating={isBusy}
           isModelLoading={isLoadingModels}
-          mode={mode}
+          mode={effectiveMode}
           modelValue={config.model}
           models={models}
           onGroupChange={(value) => updateConfig('group', value)}
@@ -311,7 +350,9 @@ export function Playground() {
           onModeChange={setMode}
           onModelChange={(value) => updateConfig('model', value)}
           onParameterEnabledChange={updateParameterEnabled}
-          onStop={mode === 'chat' ? stopGeneration : stopTaskGeneration}
+          onStop={
+            effectiveMode === 'chat' ? stopGeneration : stopTaskGeneration
+          }
           onSubmit={handleSubmitMessage}
           parameterEnabled={parameterEnabled}
           hasMessages={messages.length > 0}

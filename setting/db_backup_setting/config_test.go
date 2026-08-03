@@ -37,6 +37,15 @@ func TestValidateRejects(t *testing.T) {
 	assert.Error(t, Validate(dbs))
 }
 
+func TestValidateAllowsDisablingClickHouseBackup(t *testing.T) {
+	cfg := GetDBBackupSetting()
+	cfg.CKContainer = ""
+	cfg.CKUser = ""
+	cfg.CKDatabases = ""
+
+	require.NoError(t, Validate(cfg))
+}
+
 func TestValidateCronExpression(t *testing.T) {
 	base := GetDBBackupSetting()
 

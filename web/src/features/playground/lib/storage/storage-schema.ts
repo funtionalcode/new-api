@@ -71,12 +71,21 @@ const reasoningSchema = z.object({
   durationMs: z.number().optional(),
 })
 
+const attachmentSchema = z.object({
+  url: z.string().optional(),
+  mediaType: z.string().optional(),
+  filename: z.string().optional(),
+})
+
 const messageSchema = z.object({
   key: z.string(),
   from: messageRoleSchema,
-  mode: z.enum(['chat', 'image', 'speech', 'video']).optional(),
+  mode: z
+    .enum(['chat', 'image', 'speech', 'video', 'transcription'])
+    .optional(),
   versions: z.array(messageVersionSchema).min(1),
   imageUrls: z.array(z.string()).optional(),
+  attachments: z.array(attachmentSchema).optional(),
   createdAt: z.number().optional(),
   startedAt: z.number().optional(),
   completedAt: z.number().optional(),

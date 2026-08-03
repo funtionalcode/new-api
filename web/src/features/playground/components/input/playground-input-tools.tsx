@@ -45,7 +45,11 @@ import {
   getSearchActionNotice,
   readClipboardImageFiles,
 } from '../../lib'
-import type { ParameterEnabled, PlaygroundConfig } from '../../types'
+import type {
+  ParameterEnabled,
+  PlaygroundConfig,
+  PlaygroundMode,
+} from '../../types'
 import { PlaygroundParameterPanel } from './playground-parameter-panel'
 
 type PlaygroundInputToolsProps = {
@@ -62,6 +66,7 @@ type PlaygroundInputToolsProps = {
     value: boolean
   ) => void
   parameterEnabled: ParameterEnabled
+  mode: PlaygroundMode
 }
 
 export function PlaygroundInputTools({
@@ -72,12 +77,17 @@ export function PlaygroundInputTools({
   onConfigChange,
   onParameterEnabledChange,
   parameterEnabled,
+  mode,
 }: PlaygroundInputToolsProps) {
   const { t } = useTranslation()
   const attachments = usePromptInputAttachments()
   const imageInputRef = useRef<HTMLInputElement | null>(null)
   const cameraInputRef = useRef<HTMLInputElement | null>(null)
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
+  const attachmentActions =
+    mode === 'transcription'
+      ? ATTACHMENT_ACTIONS.filter(({ action }) => action === 'upload-file')
+      : ATTACHMENT_ACTIONS
 
   const handleFileAction = async (action: string) => {
     if (action === 'upload-file') {
@@ -179,13 +189,13 @@ export function PlaygroundInputTools({
               <p>{t('Attach')}</p>
             </TooltipContent>
             <DropdownMenuContent align='start'>
-              {ATTACHMENT_ACTIONS.map(({ action, icon: Icon, label }) => (
+              {attachmentActions.map(({ action, icon: Icon, label }) => (
                 <DropdownMenuItem
                   key={action}
                   onClick={() => handleFileAction(action)}
                 >
                   <Icon className='mr-2' size={16} />
-                  {t(label)}
+                  {t(mode === 'transcription' ? 'Upload audio' : label)}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>

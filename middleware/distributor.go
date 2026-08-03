@@ -17,7 +17,6 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
-	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -112,22 +111,13 @@ func Distribute() func(c *gin.Context) {
 				}
 				var selectGroup string
 				usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
-				// check path is /pg/chat/completions
-				if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") {
-					playgroundRequest := &dto.PlayGroundRequest{}
-					err = common.UnmarshalBodyReusable(c, playgroundRequest)
-					if err != nil {
-						abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidPlayground, map[string]any{"Error": err.Error()}))
+				if strings.HasPrefix(c.Request.URL.Path, "/pg/") && modelRequest.Group != "" {
+					if !service.GroupInUserUsableGroups(usingGroup, modelRequest.Group) && modelRequest.Group != usingGroup {
+						abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorGroupAccessDenied))
 						return
 					}
-					if playgroundRequest.Group != "" {
-						if !service.GroupInUserUsableGroups(usingGroup, playgroundRequest.Group) && playgroundRequest.Group != usingGroup {
-							abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorGroupAccessDenied))
-							return
-						}
-						usingGroup = playgroundRequest.Group
-						common.SetContextKey(c, constant.ContextKeyUsingGroup, usingGroup)
-					}
+					usingGroup = modelRequest.Group
+					common.SetContextKey(c, constant.ContextKeyUsingGroup, usingGroup)
 				}
 
 				if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
@@ -422,7 +412,20 @@ func channelSupportsRequestPath(channel *model.Channel, requestPath string, requ
 		return true
 	}
 	config := channel.GetOtherSettings().AdvancedCustom
-	return config != nil && config.SupportsPathForModel(requestPath, requestModel)
+	return config != nil && config.SupportsPathForModel(normalizePlaygroundRequestPath(requestPath), requestModel)
+}
+
+func normalizePlaygroundRequestPath(requestPath string) string {
+	switch {
+	case strings.HasPrefix(requestPath, "/pg/chat/completions"):
+		return "/v1/chat/completions"
+	case strings.HasPrefix(requestPath, "/pg/images/generations"):
+		return "/v1/images/generations"
+	case strings.HasPrefix(requestPath, "/pg/audio/transcriptions"):
+		return "/v1/audio/transcriptions"
+	default:
+		return requestPath
+	}
 }
 
 // getModelFromRequest 从请求中读取模型信息
@@ -631,9 +634,9 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 			}
 		}
 	}
-	if strings.HasPrefix(c.Request.URL.Path, "/v1/audio") || strings.HasPrefix(c.Request.URL.Path, "/v1/stt") {
+	if strings.HasPrefix(c.Request.URL.Path, "/v1/audio") || strings.HasPrefix(c.Request.URL.Path, "/pg/audio") || strings.HasPrefix(c.Request.URL.Path, "/v1/stt") {
 		relayMode := relayconstant.RelayModeAudioSpeech
-		if strings.HasPrefix(c.Request.URL.Path, "/v1/audio/speech") {
+		if strings.HasPrefix(c.Request.URL.Path, "/v1/audio/speech") || strings.HasPrefix(c.Request.URL.Path, "/pg/audio/speech") {
 
 			modelRequest.Model = common.GetStringIfEmpty(modelRequest.Model, "tts-1")
 		} else if strings.HasPrefix(c.Request.URL.Path, "/v1/audio/translations") {
@@ -647,6 +650,7 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 			// 先尝试从请求读取
 			if req, err := getModelFromRequest(c); err == nil && req.Model != "" {
 				modelRequest.Model = req.Model
+				modelRequest.Group = req.Group
 			}
 			defaultModel := "whisper-1"
 			if strings.HasPrefix(c.Request.URL.Path, "/v1/stt") {
@@ -675,7 +679,7 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 }
 
 func isAudioTranscriptionPath(path string) bool {
-	return strings.HasPrefix(path, "/v1/audio/transcriptions") || strings.HasPrefix(path, "/v1/stt")
+	return strings.HasPrefix(path, "/v1/audio/transcriptions") || strings.HasPrefix(path, "/pg/audio/transcriptions") || strings.HasPrefix(path, "/v1/stt")
 }
 
 // 修复 #4834: GET /v1/video/generations/:task_id && /v1/video/:task_id 此前不解析 model，

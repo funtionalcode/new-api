@@ -16,7 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { GroupOption, ModelOption } from '../../types'
+import type {
+  GroupOption,
+  ModelOption,
+  PlaygroundAttachment,
+} from '../../types'
 
 type InputControlStateOptions = {
   allowAttachmentOnly?: boolean
@@ -38,10 +42,33 @@ type InputControlState = {
 
 type SubmittableInputMessage = {
   text?: string | null
-  files?: Array<{
-    mediaType?: string
-    url?: string
-  }>
+  files?: PlaygroundAttachment[]
+}
+
+const audioFilenamePattern =
+  /\.(aac|aiff?|flac|m4a|m4b|mp3|mp4|mpeg|mpga|oga|ogg|opus|wav|webm)$/i
+
+export function isPromptInputAudioAttachment(
+  file: PlaygroundAttachment
+): boolean {
+  const mediaType = file.mediaType?.trim().toLowerCase() ?? ''
+  const filename = file.filename?.trim() ?? ''
+
+  return mediaType.startsWith('audio/') || audioFilenamePattern.test(filename)
+}
+
+export function getPromptInputAttachments(
+  message: SubmittableInputMessage
+): PlaygroundAttachment[] {
+  return (
+    message.files
+      ?.filter((file) => file.url?.trim() || file.filename?.trim())
+      .map((file) => ({
+        url: file.url?.trim() ?? '',
+        mediaType: file.mediaType?.trim() ?? '',
+        filename: file.filename?.trim() ?? '',
+      })) ?? []
+  )
 }
 
 export function getPromptInputImageUrls(
@@ -53,6 +80,12 @@ export function getPromptInputImageUrls(
       .map((file) => file.url?.trim() ?? '')
       .filter(Boolean) ?? []
   )
+}
+
+export function getPromptInputAudioAttachments(
+  message: SubmittableInputMessage
+): PlaygroundAttachment[] {
+  return getPromptInputAttachments(message).filter(isPromptInputAudioAttachment)
 }
 
 export function getSubmittableInputText(

@@ -23,7 +23,18 @@ export type MessageStatus = 'loading' | 'streaming' | 'complete' | 'error'
 
 export type PlaygroundMessageLayoutMode = 'alternating' | 'left'
 
-export type PlaygroundMode = 'chat' | 'image' | 'speech' | 'video'
+export type PlaygroundMode =
+  | 'chat'
+  | 'image'
+  | 'speech'
+  | 'video'
+  | 'transcription'
+
+export interface PlaygroundAttachment {
+  url?: string
+  mediaType?: string
+  filename?: string
+}
 
 export interface MessageVersion {
   id: string
@@ -36,6 +47,7 @@ export interface Message {
   mode?: PlaygroundMode
   versions: MessageVersion[]
   imageUrls?: string[]
+  attachments?: PlaygroundAttachment[]
   createdAt?: number
   startedAt?: number
   completedAt?: number
@@ -141,6 +153,18 @@ export interface SpeechGenerationRequest {
   group?: string
   input: string
   voice: string
+}
+
+export interface AudioTranscriptionRequest {
+  model: string
+  group?: string
+  file: PlaygroundAttachment
+  prompt?: string
+}
+
+export interface AudioTranscriptionResponse {
+  text?: string
+  [key: string]: unknown
 }
 
 export interface VideoGenerationRequest {

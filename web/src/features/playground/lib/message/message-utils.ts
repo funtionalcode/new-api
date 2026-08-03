@@ -24,6 +24,7 @@ import type {
   MessageVersion,
   ChatCompletionMessage,
   ContentPart,
+  PlaygroundAttachment,
   PlaygroundMode,
 } from '../../types'
 
@@ -79,7 +80,8 @@ export function createUserMessage(
   content: string,
   createdAt: number = Date.now(),
   mode: PlaygroundMode = 'chat',
-  imageUrls: string[] = []
+  imageUrls: string[] = [],
+  attachments: PlaygroundAttachment[] = []
 ): Message {
   return {
     key: nanoid(),
@@ -87,6 +89,9 @@ export function createUserMessage(
     mode,
     versions: [createMessageVersion(content)],
     imageUrls: imageUrls.filter((url) => url.trim() !== ''),
+    attachments: attachments.filter(
+      (attachment) => attachment.url?.trim() || attachment.filename?.trim()
+    ),
     createdAt,
   }
 }

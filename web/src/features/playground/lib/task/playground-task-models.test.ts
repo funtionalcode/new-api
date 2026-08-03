@@ -34,4 +34,19 @@ describe('playground task model routing', () => {
       'video'
     )
   })
+
+  test('routes ASR models to transcription from chat retries', () => {
+    assert.equal(
+      getPlaygroundGenerationMode('chat', 'volc-asr-2'),
+      'transcription'
+    )
+    assert.equal(
+      getPlaygroundGenerationMode('chat', 'grok-stt'),
+      'transcription'
+    )
+    assert.equal(
+      getPlaygroundGenerationMode('chat', 'whisper-1'),
+      'transcription'
+    )
+  })
 })

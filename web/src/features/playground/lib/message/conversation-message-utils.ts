@@ -35,7 +35,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { Message, PlaygroundMode } from '../../types'
+import type { Message, PlaygroundAttachment, PlaygroundMode } from '../../types'
 import {
   createLoadingAssistantMessage,
   createUserMessage,
@@ -78,13 +78,14 @@ export function appendUserMessagePair(
   messages: Message[],
   content: string,
   mode: PlaygroundMode = 'chat',
-  imageUrls: string[] = []
+  imageUrls: string[] = [],
+  attachments: PlaygroundAttachment[] = []
 ): Message[] {
   const submittedAt = Date.now()
 
   return [
     ...messages,
-    createUserMessage(content, submittedAt, mode, imageUrls),
+    createUserMessage(content, submittedAt, mode, imageUrls, attachments),
     createLoadingAssistantMessage(submittedAt, mode),
   ]
 }

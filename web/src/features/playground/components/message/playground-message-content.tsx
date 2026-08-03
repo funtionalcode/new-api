@@ -48,6 +48,7 @@ import {
   extractGeneratedImageUrls,
   extractGeneratedSpeechUrl,
   extractGeneratedVideoUrl,
+  isPromptInputAudioAttachment,
   type MessageAlignment,
 } from '../../lib'
 import { getMessageContentStyles } from '../../lib/message/message-styles'
@@ -93,11 +94,16 @@ export function PlaygroundMessageContent({
     message.mode === 'video' ? extractGeneratedVideoUrl(displayContent) : null
   const attachedImageUrls =
     message.from === 'user' ? [...new Set(message.imageUrls ?? [])] : []
+  const attachedAudioAttachments =
+    message.from === 'user'
+      ? (message.attachments ?? []).filter(isPromptInputAudioAttachment)
+      : []
   const hasGeneratedMedia =
     generatedImageUrls.length > 0 ||
     generatedSpeechUrl !== null ||
     generatedVideoUrl !== null
   const hasAttachedImages = attachedImageUrls.length > 0
+  const hasAttachedAudio = attachedAudioAttachments.length > 0
   const isMessageFinal =
     message.status !== MESSAGE_STATUS.LOADING &&
     message.status !== MESSAGE_STATUS.STREAMING
@@ -152,76 +158,97 @@ export function PlaygroundMessageContent({
         </>
       )}
 
-      {!isError && (showMessageContent || hasAttachedImages) && (
-        <>
-          {isSourceVisible ? (
-            <CodeBlock
-              code={versionContent}
-              className='my-0 group-[.is-assistant]:w-full group-[.is-assistant]:max-w-[78ch]'
-              collapsedLines={24}
-              defaultCollapsed={false}
-              language='markdown'
-              maxExpandedLines={48}
-              showLineNumbers
-              showToolbar
-              title={t('Raw response')}
-            >
-              <CodeBlockCopyButton />
-            </CodeBlock>
-          ) : (
-            <MessageContent
-              variant='flat'
-              className={cn(getMessageContentStyles())}
-            >
-              {hasGeneratedMedia || hasAttachedImages ? (
-                <div className='flex flex-col gap-3'>
-                  {attachedImageUrls.map((url) => (
-                    <img
-                      alt={t('Image')}
-                      className='border-border/60 max-h-[360px] max-w-full rounded-lg border object-contain'
-                      key={url}
-                      loading='lazy'
-                      src={url}
-                    />
-                  ))}
-                  {generatedImageUrls.map((url, index) => (
-                    <img
-                      alt={t('Generated image {{index}}', {
-                        index: index + 1,
-                      })}
-                      className='border-border/60 max-h-[640px] max-w-full rounded-lg border object-contain'
-                      key={url}
-                      loading='lazy'
-                      src={url}
-                    />
-                  ))}
-                  {generatedSpeechUrl ? (
-                    <audio
-                      className='w-full max-w-xl'
-                      controls
-                      src={generatedSpeechUrl}
-                    />
-                  ) : null}
-                  {generatedVideoUrl ? (
-                    <video
-                      className='border-border/60 max-h-[640px] max-w-full rounded-lg border'
-                      controls
-                      src={generatedVideoUrl}
-                    />
-                  ) : null}
-                  {hasAttachedImages && displayContent ? (
-                    <Response final={isMessageFinal}>{displayContent}</Response>
-                  ) : null}
-                </div>
-              ) : (
-                <Response final={isMessageFinal}>{displayContent}</Response>
-              )}
-            </MessageContent>
-          )}
-          <MessageMetadata alignment={alignment} message={message} />
-          {actions}
-        </>
-      )}
+      {!isError &&
+        (showMessageContent || hasAttachedImages || hasAttachedAudio) && (
+          <>
+            {isSourceVisible ? (
+              <CodeBlock
+                code={versionContent}
+                className='my-0 group-[.is-assistant]:w-full group-[.is-assistant]:max-w-[78ch]'
+                collapsedLines={24}
+                defaultCollapsed={false}
+                language='markdown'
+                maxExpandedLines={48}
+                showLineNumbers
+                showToolbar
+                title={t('Raw response')}
+              >
+                <CodeBlockCopyButton />
+              </CodeBlock>
+            ) : (
+              <MessageContent
+                variant='flat'
+                className={cn(getMessageContentStyles())}
+              >
+                {hasGeneratedMedia || hasAttachedImages || hasAttachedAudio ? (
+                  <div className='flex flex-col gap-3'>
+                    {attachedImageUrls.map((url) => (
+                      <img
+                        alt={t('Image')}
+                        className='border-border/60 max-h-[360px] max-w-full rounded-lg border object-contain'
+                        key={url}
+                        loading='lazy'
+                        src={url}
+                      />
+                    ))}
+                    {attachedAudioAttachments.map((attachment, index) =>
+                      attachment.url ? (
+                        <div
+                          className='border-border/60 bg-muted/30 rounded-lg border p-3'
+                          key={`${attachment.url}-${index}`}
+                        >
+                          <div className='text-muted-foreground mb-2 text-xs'>
+                            {attachment.filename || t('Audio')}
+                          </div>
+                          <audio
+                            className='w-full max-w-xl'
+                            controls
+                            src={attachment.url}
+                          />
+                        </div>
+                      ) : null
+                    )}
+                    {generatedImageUrls.map((url, index) => (
+                      <img
+                        alt={t('Generated image {{index}}', {
+                          index: index + 1,
+                        })}
+                        className='border-border/60 max-h-[640px] max-w-full rounded-lg border object-contain'
+                        key={url}
+                        loading='lazy'
+                        src={url}
+                      />
+                    ))}
+                    {generatedSpeechUrl ? (
+                      <audio
+                        className='w-full max-w-xl'
+                        controls
+                        src={generatedSpeechUrl}
+                      />
+                    ) : null}
+                    {generatedVideoUrl ? (
+                      <video
+                        className='border-border/60 max-h-[640px] max-w-full rounded-lg border'
+                        controls
+                        src={generatedVideoUrl}
+                      />
+                    ) : null}
+                    {(hasAttachedImages || hasAttachedAudio) &&
+                    displayContent ? (
+                      <Response final={isMessageFinal}>
+                        {displayContent}
+                      </Response>
+                    ) : null}
+                  </div>
+                ) : (
+                  <Response final={isMessageFinal}>{displayContent}</Response>
+                )}
+              </MessageContent>
+            )}
+            <MessageMetadata alignment={alignment} message={message} />
+            {actions}
+          </>
+        )}
     </div>
   )
 }

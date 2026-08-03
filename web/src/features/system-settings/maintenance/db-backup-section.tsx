@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useEffect, useMemo, useState } from 'react'
-import { useForm, useWatch } from 'react-hook-form'
+import { useForm, useWatch, type Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import * as z from 'zod'
@@ -113,11 +113,11 @@ const configSchema = z
   .object({
     backup_root: z.string().min(1),
     pg_container: z.string().min(1),
-    ck_container: z.string().min(1),
+    ck_container: z.string(),
     pg_user: z.string().min(1),
     pg_db: z.string().min(1),
-    ck_user: z.string().min(1),
-    ck_databases: z.string().min(1),
+    ck_user: z.string(),
+    ck_databases: z.string(),
     keep_weekly: z.coerce.number().min(1).max(52),
     log_dir: z.string().min(1),
     script_enabled: z.boolean(),
@@ -173,7 +173,7 @@ export function DBBackupSection() {
   const [showScriptConfirm, setShowScriptConfirm] = useState(false)
 
   const form = useForm<ConfigFormValues>({
-    resolver: zodResolver(configSchema),
+    resolver: zodResolver(configSchema) as unknown as Resolver<ConfigFormValues>,
     defaultValues: emptyConfig,
   })
   const scheduleEnabled = useWatch({
@@ -288,7 +288,9 @@ export function DBBackupSection() {
       setScriptSha(res.data?.sha256 || '')
       setScriptIsDefault(false)
       setShowScriptConfirm(false)
-      toast.success(t('Backup script saved. Host agent will apply it on next poll.'))
+      toast.success(
+        t('Backup script saved. Host agent will apply it on next poll.')
+      )
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -498,7 +500,7 @@ export function DBBackupSection() {
                             {CRON_FIELD_GUIDE.map((item) => (
                               <tr
                                 key={item.field}
-                                className='border-t border-border/60'
+                                className='border-border/60 border-t'
                               >
                                 <td className='px-2 py-1.5 font-mono'>
                                   {t(item.field)}

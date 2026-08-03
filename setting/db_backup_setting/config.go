@@ -14,18 +14,18 @@ import (
 // DBBackupSetting holds non-secret host backup parameters managed from the UI.
 // Secrets (CK password, agent token) stay on the host only.
 type DBBackupSetting struct {
-	BackupRoot       string `json:"backup_root"`
-	PGContainer      string `json:"pg_container"`
-	CKContainer      string `json:"ck_container"`
-	PGUser           string `json:"pg_user"`
-	PGDB             string `json:"pg_db"`
-	CKUser           string `json:"ck_user"`
-	CKDatabases      string `json:"ck_databases"`
-	KeepWeekly       int    `json:"keep_weekly"`
-	LogDir           string `json:"log_dir"`
-	ScriptEnabled    bool   `json:"script_enabled"`
-	ScheduleEnabled  bool   `json:"schedule_enabled"`
-	CronExpression   string `json:"cron_expression"`
+	BackupRoot      string `json:"backup_root"`
+	PGContainer     string `json:"pg_container"`
+	CKContainer     string `json:"ck_container"`
+	PGUser          string `json:"pg_user"`
+	PGDB            string `json:"pg_db"`
+	CKUser          string `json:"ck_user"`
+	CKDatabases     string `json:"ck_databases"`
+	KeepWeekly      int    `json:"keep_weekly"`
+	LogDir          string `json:"log_dir"`
+	ScriptEnabled   bool   `json:"script_enabled"`
+	ScheduleEnabled bool   `json:"schedule_enabled"`
+	CronExpression  string `json:"cron_expression"`
 }
 
 var dbBackupSetting = DBBackupSetting{
@@ -74,21 +74,23 @@ func Validate(s DBBackupSetting) error {
 	if err := validateName(s.PGContainer, "pg_container"); err != nil {
 		return err
 	}
-	if err := validateName(s.CKContainer, "ck_container"); err != nil {
-		return err
-	}
 	if err := validateName(s.PGUser, "pg_user"); err != nil {
 		return err
 	}
 	if err := validateName(s.PGDB, "pg_db"); err != nil {
 		return err
 	}
-	if err := validateName(s.CKUser, "ck_user"); err != nil {
-		return err
-	}
 	ckDatabases := strings.TrimSpace(s.CKDatabases)
-	if ckDatabases == "" || !dbListPattern.MatchString(ckDatabases) {
+	if ckDatabases != "" && !dbListPattern.MatchString(ckDatabases) {
 		return fmt.Errorf("invalid ck_databases")
+	}
+	if ckDatabases != "" {
+		if err := validateName(s.CKContainer, "ck_container"); err != nil {
+			return err
+		}
+		if err := validateName(s.CKUser, "ck_user"); err != nil {
+			return err
+		}
 	}
 	if s.KeepWeekly < 1 || s.KeepWeekly > 52 {
 		return fmt.Errorf("keep_weekly must be between 1 and 52")
@@ -158,18 +160,18 @@ func validateAbsPath(value, field string) error {
 // ToOptionMap returns flattened option keys for bulk update.
 func ToOptionMap(s DBBackupSetting) map[string]string {
 	return map[string]string{
-		"db_backup_setting.backup_root":       strings.TrimSpace(s.BackupRoot),
-		"db_backup_setting.pg_container":      strings.TrimSpace(s.PGContainer),
-		"db_backup_setting.ck_container":      strings.TrimSpace(s.CKContainer),
-		"db_backup_setting.pg_user":           strings.TrimSpace(s.PGUser),
-		"db_backup_setting.pg_db":             strings.TrimSpace(s.PGDB),
-		"db_backup_setting.ck_user":           strings.TrimSpace(s.CKUser),
-		"db_backup_setting.ck_databases":      strings.TrimSpace(s.CKDatabases),
-		"db_backup_setting.keep_weekly":       fmt.Sprintf("%d", s.KeepWeekly),
-		"db_backup_setting.log_dir":           strings.TrimSpace(s.LogDir),
-		"db_backup_setting.script_enabled":    fmt.Sprintf("%t", s.ScriptEnabled),
-		"db_backup_setting.schedule_enabled":  fmt.Sprintf("%t", s.ScheduleEnabled),
-		"db_backup_setting.cron_expression":   strings.TrimSpace(s.CronExpression),
+		"db_backup_setting.backup_root":      strings.TrimSpace(s.BackupRoot),
+		"db_backup_setting.pg_container":     strings.TrimSpace(s.PGContainer),
+		"db_backup_setting.ck_container":     strings.TrimSpace(s.CKContainer),
+		"db_backup_setting.pg_user":          strings.TrimSpace(s.PGUser),
+		"db_backup_setting.pg_db":            strings.TrimSpace(s.PGDB),
+		"db_backup_setting.ck_user":          strings.TrimSpace(s.CKUser),
+		"db_backup_setting.ck_databases":     strings.TrimSpace(s.CKDatabases),
+		"db_backup_setting.keep_weekly":      fmt.Sprintf("%d", s.KeepWeekly),
+		"db_backup_setting.log_dir":          strings.TrimSpace(s.LogDir),
+		"db_backup_setting.script_enabled":   fmt.Sprintf("%t", s.ScriptEnabled),
+		"db_backup_setting.schedule_enabled": fmt.Sprintf("%t", s.ScheduleEnabled),
+		"db_backup_setting.cron_expression":  strings.TrimSpace(s.CronExpression),
 	}
 }
 

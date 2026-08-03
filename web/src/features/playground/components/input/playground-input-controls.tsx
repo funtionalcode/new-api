@@ -26,7 +26,7 @@ import {
 } from '@/components/ai-elements/prompt-input'
 import { ModelGroupSelector } from '@/components/model-group-selector'
 
-import { getInputControlState } from '../../lib'
+import { getInputControlState, isPromptInputAudioAttachment } from '../../lib'
 import type { GroupOption, ModelOption, PlaygroundMode } from '../../types'
 
 type PlaygroundInputControlsProps = {
@@ -62,12 +62,16 @@ export function PlaygroundInputControls({
 }: PlaygroundInputControlsProps) {
   const { t } = useTranslation()
   const attachments = usePromptInputAttachments()
+  const hasSubmittableAttachments =
+    mode === 'transcription'
+      ? attachments.files.some(isPromptInputAudioAttachment)
+      : attachments.files.length > 0
   const { canSubmit, isSelectorDisabled, shouldShowStop } =
     getInputControlState({
-      allowAttachmentOnly: mode === 'chat',
+      allowAttachmentOnly: mode === 'chat' || mode === 'transcription',
       disabled,
       groups,
-      hasAttachments: attachments.files.length > 0,
+      hasAttachments: hasSubmittableAttachments,
       hasStopHandler: Boolean(onStop),
       isGenerating,
       isModelLoading,

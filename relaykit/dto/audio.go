@@ -48,7 +48,8 @@ func (r *AudioRequest) IsStream(req *http.Request) bool {
 	if req == nil || req.URL == nil {
 		return false
 	}
-	if !strings.HasPrefix(req.URL.Path, "/v1/audio/transcriptions") {
+	if !strings.HasPrefix(req.URL.Path, "/v1/audio/transcriptions") &&
+		!strings.HasPrefix(req.URL.Path, "/pg/audio/transcriptions") {
 		return false
 	}
 	if stream, err := strconv.ParseBool(strings.TrimSpace(req.URL.Query().Get("stream"))); err == nil && stream {

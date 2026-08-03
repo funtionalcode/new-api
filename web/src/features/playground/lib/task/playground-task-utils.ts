@@ -16,7 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { ImageGenerationResponse } from '../../types'
+import type {
+  AudioTranscriptionResponse,
+  ImageGenerationResponse,
+} from '../../types'
 
 type ExtractGeneratedMediaOptions = {
   allowRawBase64?: boolean
@@ -93,8 +96,10 @@ export function buildImageGenerationMarkdown(
   response: ImageGenerationResponse
 ): string {
   const images = response.data
-    ?.map((item) =>
-      item.url || (item.b64_json ? `data:image/png;base64,${item.b64_json}` : '')
+    ?.map(
+      (item) =>
+        item.url ||
+        (item.b64_json ? `data:image/png;base64,${item.b64_json}` : '')
     )
     .map((url) => url.trim())
     .map(normalizeGeneratedImageUrl)
@@ -115,6 +120,16 @@ export function buildSpeechGenerationMarkdown(audioUrl: string): string {
 
 export function buildVideoGenerationMarkdown(videoUrl: string): string {
   return `[Video Preview](${videoUrl})`
+}
+
+export function buildTranscriptionMarkdown(
+  response: AudioTranscriptionResponse
+): string {
+  if (typeof response.text === 'string' && response.text.trim()) {
+    return response.text.trim()
+  }
+
+  return 'No transcription returned'
 }
 
 export function extractGeneratedImageUrls(

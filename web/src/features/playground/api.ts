@@ -20,6 +20,8 @@ import { api } from '@/lib/api'
 
 import { API_ENDPOINTS } from './constants'
 import type {
+  AudioTranscriptionRequest,
+  AudioTranscriptionResponse,
   ChatCompletionRequest,
   ChatCompletionResponse,
   ImageGenerationRequest,
@@ -30,6 +32,24 @@ import type {
   VideoGenerationRequest,
   VideoGenerationResponse,
 } from './types'
+
+async function attachmentToBlobFile(
+  request: AudioTranscriptionRequest
+): Promise<{ blob: Blob; filename: string }> {
+  if (!request.file.url) {
+    throw new Error('Audio file is required')
+  }
+
+  const response = await fetch(request.file.url)
+  const blob = await response.blob()
+  return {
+    blob:
+      request.file.mediaType && blob.type !== request.file.mediaType
+        ? blob.slice(0, blob.size, request.file.mediaType)
+        : blob,
+    filename: request.file.filename || 'audio',
+  }
+}
 
 /**
  * Send chat completion request (non-streaming)
@@ -62,6 +82,25 @@ export async function sendSpeechGeneration(
 ): Promise<Blob> {
   const res = await api.post(API_ENDPOINTS.AUDIO_SPEECH, payload, {
     responseType: 'blob',
+    signal,
+    skipErrorHandler: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+export async function sendAudioTranscription(
+  payload: AudioTranscriptionRequest,
+  signal?: AbortSignal
+): Promise<AudioTranscriptionResponse> {
+  const formData = new FormData()
+  const { blob, filename } = await attachmentToBlobFile(payload)
+
+  formData.append('model', payload.model)
+  if (payload.group) formData.append('group', payload.group)
+  if (payload.prompt?.trim()) formData.append('prompt', payload.prompt.trim())
+  formData.append('file', blob, filename)
+
+  const res = await api.post(API_ENDPOINTS.AUDIO_TRANSCRIPTIONS, formData, {
     signal,
     skipErrorHandler: true,
   } as Record<string, unknown>)

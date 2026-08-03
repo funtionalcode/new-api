@@ -11,7 +11,7 @@ CK_CONTAINER="${CK_CONTAINER:-clickhouse}"
 PG_USER="${PG_USER:-newapi}"
 PG_DB="${PG_DB:-newapi}"
 CK_USER="${CK_USER:-default}"
-CK_DATABASES="${CK_DATABASES:-new_api_logs clash_metrics}"
+CK_DATABASES="${CK_DATABASES-new_api_logs clash_metrics}"
 KEEP_WEEKLY="${KEEP_WEEKLY:-4}"
 LOG_DIR="${LOG_DIR:-/var/log/new-api-backup}"
 NEW_API_REPORT_URL="${NEW_API_REPORT_URL:-http://127.0.0.1:3001}"
@@ -19,33 +19,47 @@ DB_BACKUP_AGENT_TOKEN="${DB_BACKUP_AGENT_TOKEN:-}"
 TASK_ID="${TASK_ID:-}"
 TRIGGERED_BY="${TRIGGERED_BY:-manual}"
 
-mkdir -p "$BACKUP_ROOT" "$LOG_DIR"
-
 STAMP="$(date -u '+%Y%m%dT%H%M%SZ')"
 RUN_DIR="${BACKUP_ROOT}/${STAMP}"
 LOG_FILE="${LOG_DIR}/backup-${STAMP}.log"
-mkdir -p "$RUN_DIR"
+mkdir -p "$LOG_DIR"
 
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 log() { printf '[%s] %s\n' "$(date '+%F %T')" "$*"; }
 
+if [[ -z "$TASK_ID" && -n "$DB_BACKUP_AGENT_TOKEN" ]]; then
+  log "skip backup: direct host backup with agent token is disabled; use new-api scheduled db_backup tasks"
+  exit 0
+fi
+
+mkdir -p "$BACKUP_ROOT" "$RUN_DIR"
+
+now_ms() {
+  python3 -c 'import time; print(int(time.time()*1000))' 2>/dev/null || printf '%s000\n' "$(date +%s)"
+}
+
 HOST_NAME="$(hostname 2>/dev/null || echo unknown)"
-START_MS="$(date +%s%3N 2>/dev/null || python3 -c 'import time; print(int(time.time()*1000))')"
+START_MS="$(now_ms)"
 ARTIFACTS_JSON='[]'
 SUCCESS=1
 ERR_MSG=""
+REPORT_SENT=0
 
 cleanup_report() {
   local end_ms duration artifacts_arg
-  end_ms="$(date +%s%3N 2>/dev/null || python3 -c 'import time; print(int(time.time()*1000))')"
+  if [[ "$REPORT_SENT" == "1" ]]; then
+    return 0
+  fi
+  REPORT_SENT=1
+  end_ms="$(now_ms)"
   duration=$((end_ms - START_MS))
   if [[ -z "$DB_BACKUP_AGENT_TOKEN" ]]; then
     log "skip report: DB_BACKUP_AGENT_TOKEN not set"
     return 0
   fi
   artifacts_arg="$ARTIFACTS_JSON"
-  python3 - "$NEW_API_REPORT_URL" "$DB_BACKUP_AGENT_TOKEN" "$TASK_ID" "$SUCCESS" "$duration" "$HOST_NAME" "$ERR_MSG" "$artifacts_arg" "$LOG_FILE" "$LOG_DIR" <<'PY'
+  if ! python3 - "$NEW_API_REPORT_URL" "$DB_BACKUP_AGENT_TOKEN" "$TASK_ID" "$SUCCESS" "$duration" "$HOST_NAME" "$ERR_MSG" "$artifacts_arg" "$LOG_FILE" "$LOG_DIR" <<'PY'
 import json, os, sys, urllib.request
 
 (
@@ -106,6 +120,9 @@ except Exception as e:
     print(f"report failed: {e}", file=sys.stderr)
     raise SystemExit(1)
 PY
+  then
+    log "report failed; original backup status is preserved"
+  fi
 }
 
 trap 'SUCCESS=0; ERR_MSG="${ERR_MSG:-backup failed}"; cleanup_report' ERR
@@ -117,6 +134,10 @@ sha_file() {
   else
     shasum -a 256 "$1" | awk '{print $1}'
   fi
+}
+
+docker_container_exists() {
+  docker inspect "$1" >/dev/null 2>&1
 }
 
 append_artifact() {
@@ -157,19 +178,34 @@ append_artifact "postgres" "$PG_FILE" "$PG_DB" "$PG_CONTAINER" "sql.gz"
 log "postgres ok size=$(wc -c <"$PG_FILE" | tr -d ' ')"
 
 # ClickHouse
-for db in $CK_DATABASES; do
-  CK_FILE="${RUN_DIR}/clickhouse-${db}.sql.gz"
-  log "dump clickhouse container=$CK_CONTAINER db=$db"
-  # Prefer native dump if available; fall back to SHOW CREATE + SELECT is host-specific.
-  if docker exec "$CK_CONTAINER" clickhouse-client --user "$CK_USER" ${CK_PASSWORD:+--password "$CK_PASSWORD"} \
-      --query "BACKUP DATABASE ${db} TO Disk('backups', 'new-api/${STAMP}/${db}')" >/dev/null 2>&1; then
-    log "clickhouse BACKUP DATABASE used for $db (server-side)"
+if [[ -z "${CK_DATABASES//[[:space:]]/}" ]]; then
+  log "skip clickhouse: CK_DATABASES is empty"
+elif ! docker_container_exists "$CK_CONTAINER"; then
+  log "skip clickhouse: container=$CK_CONTAINER not found"
+else
+  ck_args=(--user "$CK_USER")
+  if [[ -n "${CK_PASSWORD:-}" ]]; then
+    ck_args+=(--password "$CK_PASSWORD")
   fi
-  docker exec "$CK_CONTAINER" clickhouse-client --user "$CK_USER" ${CK_PASSWORD:+--password "$CK_PASSWORD"} \
-    --query "SHOW CREATE DATABASE ${db}" | gzip -c >"$CK_FILE"
-  append_artifact "clickhouse" "$CK_FILE" "$db" "$CK_CONTAINER" "sql.gz"
-  log "clickhouse ok db=$db size=$(wc -c <"$CK_FILE" | tr -d ' ')"
-done
+  for db in $CK_DATABASES; do
+    CK_FILE="${RUN_DIR}/clickhouse-${db}.sql.gz"
+    log "dump clickhouse container=$CK_CONTAINER db=$db"
+    exists_output="$(docker exec "$CK_CONTAINER" clickhouse-client "${ck_args[@]}" --query "EXISTS DATABASE ${db}")"
+    if [[ "$(printf '%s' "$exists_output" | tr -d '[:space:]')" != "1" ]]; then
+      log "skip clickhouse db=$db: database not found"
+      continue
+    fi
+    # Prefer native dump if available; fall back to SHOW CREATE + SELECT is host-specific.
+    if docker exec "$CK_CONTAINER" clickhouse-client "${ck_args[@]}" \
+        --query "BACKUP DATABASE ${db} TO Disk('backups', 'new-api/${STAMP}/${db}')" >/dev/null 2>&1; then
+      log "clickhouse BACKUP DATABASE used for $db (server-side)"
+    fi
+    docker exec "$CK_CONTAINER" clickhouse-client "${ck_args[@]}" \
+      --query "SHOW CREATE DATABASE ${db}" | gzip -c >"$CK_FILE"
+    append_artifact "clickhouse" "$CK_FILE" "$db" "$CK_CONTAINER" "sql.gz"
+    log "clickhouse ok db=$db size=$(wc -c <"$CK_FILE" | tr -d ' ')"
+  done
+fi
 
 # Retention: keep last KEEP_WEEKLY directories under BACKUP_ROOT
 log "retention keep_weekly=$KEEP_WEEKLY"

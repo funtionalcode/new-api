@@ -59,12 +59,12 @@ type DBBackupScriptView struct {
 }
 
 type DBBackupAgentBundle struct {
-	Config           map[string]string `json:"config"`
-	ScriptApply      bool              `json:"script_apply"`
-	ScriptSHA256     string            `json:"script_sha256,omitempty"`
-	ScriptContent    string            `json:"script_content,omitempty"`
-	ScriptUnchanged  bool              `json:"script_unchanged,omitempty"`
-	ScriptPathHint   string            `json:"script_path_hint"`
+	Config          map[string]string `json:"config"`
+	ScriptApply     bool              `json:"script_apply"`
+	ScriptSHA256    string            `json:"script_sha256,omitempty"`
+	ScriptContent   string            `json:"script_content,omitempty"`
+	ScriptUnchanged bool              `json:"script_unchanged,omitempty"`
+	ScriptPathHint  string            `json:"script_path_hint"`
 }
 
 func TriggerDBBackup(triggeredBy string) (*model.SystemTask, bool, error) {
@@ -100,21 +100,25 @@ func ClaimPendingDBBackup() (*model.SystemTask, error) {
 }
 
 func FinishDBBackupReport(taskID string, succeeded bool, payload DBBackupPayload, result DBBackupResult, errMsg string) error {
+	taskID = strings.TrimSpace(taskID)
+	errMsg = strings.TrimSpace(errMsg)
+	if taskID == "" {
+		common.SysLog(fmt.Sprintf("ignore db backup report without task_id: host=%s triggered_by=%s", result.Host, payload.TriggeredBy))
+		return nil
+	}
+	if !succeeded && errMsg == "" {
+		errMsg = "backup failed: host agent reported failure without error detail"
+	}
+
 	status := model.SystemTaskStatusSucceeded
 	if !succeeded {
 		status = model.SystemTaskStatusFailed
 	}
 
-	if taskID != "" {
-		if err := model.FinishSystemTask(taskID, dbBackupHostRunnerID, status, result, errMsg); err != nil {
-			// Backup already finished on the host; do not fail the report just
-			// because the lease expired or the row was already closed.
-			common.SysLog(fmt.Sprintf("db backup finish task %s failed: %v", taskID, err))
-		}
-	} else {
-		if _, err := model.CreateCompletedSystemTask(model.SystemTaskTypeDBBackup, payload, status, result, errMsg, dbBackupHostRunnerID); err != nil {
-			return err
-		}
+	if err := model.FinishSystemTask(taskID, dbBackupHostRunnerID, status, result, errMsg); err != nil {
+		// Backup already finished on the host; do not fail the report just
+		// because the lease expired or the row was already closed.
+		common.SysLog(fmt.Sprintf("db backup finish task %s failed: %v", taskID, err))
 	}
 
 	model.RecordLog(0, model.LogTypeSystem, buildDBBackupLogContent(status, result, errMsg), "")

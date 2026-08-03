@@ -28,6 +28,11 @@ func TestPath2RelayMode(t *testing.T) {
 			want: RelayModeAudioSpeech,
 		},
 		{
+			name: "playground audio transcriptions",
+			path: "/pg/audio/transcriptions",
+			want: RelayModeAudioTranscription,
+		},
+		{
 			name: "v1 images generations",
 			path: "/v1/images/generations",
 			want: RelayModeImagesGenerations,

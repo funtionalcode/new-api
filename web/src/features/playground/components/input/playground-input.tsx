@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   ImageIcon,
   MessageSquareIcon,
+  MicIcon,
   VideoIcon,
   Volume2Icon,
 } from 'lucide-react'
@@ -27,18 +28,28 @@ import { useTranslation } from 'react-i18next'
 
 import {
   PromptInput,
+  PromptInputAttachment,
+  PromptInputAttachments,
   PromptInputFooter,
+  PromptInputHeader,
   PromptInputTextarea,
+  usePromptInputAttachments,
   type PromptInputMessage,
 } from '@/components/ai-elements/prompt-input'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
-import { getPromptInputImageUrls, getSubmittableInputText } from '../../lib'
+import {
+  getPromptInputAttachments,
+  getPromptInputAudioAttachments,
+  getPromptInputImageUrls,
+  getSubmittableInputText,
+} from '../../lib'
 import type {
   ModelOption,
   GroupOption,
   ParameterEnabled,
   PlaygroundConfig,
+  PlaygroundAttachment,
   PlaygroundMode,
 } from '../../types'
 import { PlaygroundInputControls } from './playground-input-controls'
@@ -46,7 +57,11 @@ import { PlaygroundInputTools } from './playground-input-tools'
 
 interface PlaygroundInputProps {
   config: PlaygroundConfig
-  onSubmit: (text: string, imageUrls?: string[]) => void
+  onSubmit: (
+    text: string,
+    imageUrls?: string[],
+    attachments?: PlaygroundAttachment[]
+  ) => void
   onStop?: () => void
   disabled?: boolean
   isGenerating?: boolean
@@ -70,6 +85,27 @@ interface PlaygroundInputProps {
     value: boolean
   ) => void
   parameterEnabled: ParameterEnabled
+}
+
+const audioAccept =
+  'audio/*,.aac,.aiff,.aif,.flac,.m4a,.m4b,.mp3,.mp4,.mpeg,.mpga,.oga,.ogg,.opus,.wav,.webm'
+
+function PlaygroundInputAttachmentPreview() {
+  const attachments = usePromptInputAttachments()
+
+  if (attachments.files.length === 0) {
+    return null
+  }
+
+  return (
+    <PromptInputHeader className='border-border/60 bg-muted/20 border-b px-3 py-2'>
+      <div className='flex flex-wrap gap-2'>
+        <PromptInputAttachments>
+          {(attachment) => <PromptInputAttachment data={attachment} />}
+        </PromptInputAttachments>
+      </div>
+    </PromptInputHeader>
+  )
 }
 
 export function PlaygroundInput({
@@ -98,14 +134,17 @@ export function PlaygroundInput({
 
   const handleSubmit = (message: PromptInputMessage) => {
     const imageUrls = getPromptInputImageUrls(message)
+    const attachments = getPromptInputAttachments(message)
+    const audioAttachments = getPromptInputAudioAttachments(message)
     const submittableText = getSubmittableInputText(
       message,
       disabled,
-      mode === 'chat' && imageUrls.length > 0
+      (mode === 'chat' && imageUrls.length > 0) ||
+        (mode === 'transcription' && audioAttachments.length > 0)
     )
 
     if (submittableText === null) return
-    onSubmit(submittableText, imageUrls)
+    onSubmit(submittableText, imageUrls, attachments)
     setText('')
   }
 
@@ -118,6 +157,9 @@ export function PlaygroundInput({
     }
     if (mode === 'speech') {
       return t('Enter text to synthesize')
+    }
+    if (mode === 'transcription') {
+      return t('Upload an audio file to transcribe')
     }
     return t('Ask anything')
   }
@@ -148,13 +190,20 @@ export function PlaygroundInput({
             <Volume2Icon />
             {t('TTS')}
           </TabsTrigger>
+          <TabsTrigger value='transcription'>
+            <MicIcon />
+            {t('ASR')}
+          </TabsTrigger>
         </TabsList>
       </Tabs>
       <PromptInput
+        accept={mode === 'transcription' ? audioAccept : undefined}
         className='relative'
         groupClassName='bg-background/95 dark:bg-background/80 border-border/70 shadow-[0_18px_60px_-32px_rgba(0,0,0,0.65)] ring-1 ring-foreground/5 rounded-xl overflow-hidden transition-all duration-200 focus-within:border-primary/45 focus-within:ring-primary/15 focus-within:shadow-[0_22px_70px_-34px_rgba(0,0,0,0.75)]'
+        multiple={mode !== 'transcription'}
         onSubmit={handleSubmit}
       >
+        <PlaygroundInputAttachmentPreview />
         <PromptInputTextarea
           autoComplete='off'
           autoCorrect='off'
@@ -190,6 +239,7 @@ export function PlaygroundInput({
                 onClearMessages={onClearMessages}
                 onParameterEnabledChange={onParameterEnabledChange}
                 parameterEnabled={parameterEnabled}
+                mode={mode}
               />
             }
           />
