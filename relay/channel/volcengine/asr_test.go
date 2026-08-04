@@ -2,6 +2,8 @@ package volcengine
 
 import (
 	"bytes"
+	"compress/gzip"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -69,6 +71,31 @@ func TestGetRequestURLForCustomVolcengineASR(t *testing.T) {
 	assert.Equal(t, "https://example.com/v1/audio/transcriptions", requestURL)
 }
 
+func TestGetRequestURLForFullVolcengineASREndpoint(t *testing.T) {
+	cases := []string{
+		"wss://openspeech.bytedance.com/api/v3/plan/sauc/bigmodel_async",
+		"wss://openspeech.bytedance.com/api/v3/plan/sauc/bigmodel_nostream",
+		"https://example.com/v1/audio/transcriptions",
+	}
+
+	for _, endpoint := range cases {
+		t.Run(endpoint, func(t *testing.T) {
+			info := &relaycommon.RelayInfo{
+				RelayMode: relayconstant.RelayModeAudioTranscription,
+				ChannelMeta: &relaycommon.ChannelMeta{
+					ChannelBaseUrl: endpoint,
+				},
+			}
+
+			requestURL, err := (&Adaptor{}).GetRequestURL(info)
+
+			require.NoError(t, err)
+			assert.Equal(t, endpoint, requestURL)
+			assert.Equal(t, strings.HasPrefix(endpoint, "wss://"), isNativeVolcengineASR(endpoint))
+		})
+	}
+}
+
 func TestBuildVolcengineASRHeadersWithNewAPIKey(t *testing.T) {
 	headers, err := buildVolcengineASRHeaders("test-api-key", volcengineBigASRResourceID, "req-1")
 
@@ -98,6 +125,13 @@ func TestBuildVolcengineASRHeadersWithLegacyConsoleCredentials(t *testing.T) {
 	assert.Equal(t, "access-token", headers.Get("X-Api-Access-Key"))
 	assert.Empty(t, headers.Get("X-Api-Key"))
 	assert.Equal(t, volcengineSeedASRResourceID, headers.Get("X-Api-Resource-Id"))
+}
+
+func TestAgentPlanASRDefaultsToDocumentedSeedResource(t *testing.T) {
+	endpoint := "wss://openspeech.bytedance.com/api/v3/plan/sauc/bigmodel_nostream"
+
+	assert.Equal(t, volcengineSeedASRResourceID, defaultVolcengineASRResourceID("volc-asr", endpoint))
+	assert.Equal(t, volcengineBigASRResourceID, defaultVolcengineASRResourceID("volc-asr", volcengineASRWebSocketURL))
 }
 
 func TestConvertAudioRequestBuildsNativeASRSession(t *testing.T) {
@@ -195,7 +229,7 @@ func TestSendVolcengineASRAudioStartsAfterFullClientRequestSequence(t *testing.T
 	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	require.NoError(t, err)
-	require.NoError(t, sendVolcengineASRAudio(conn, []byte("abcdef"), 3))
+	require.NoError(t, sendVolcengineASRAudio(conn, []byte("abcdef"), 3, false))
 	require.NoError(t, conn.Close())
 
 	select {
@@ -210,6 +244,75 @@ func TestSendVolcengineASRAudioStartsAfterFullClientRequestSequence(t *testing.T
 		assert.Equal(t, []byte("def"), result.Messages[1].Payload)
 	case <-time.After(2 * time.Second):
 		require.Fail(t, "timed out waiting for websocket audio frames")
+	}
+}
+
+func TestAgentPlanASRFramesUseDocumentedGzipSequences(t *testing.T) {
+	type receiveResult struct {
+		Messages []*Message
+		Err      error
+	}
+
+	received := make(chan receiveResult, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upgrader := websocket.Upgrader{}
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			received <- receiveResult{Err: err}
+			return
+		}
+		defer conn.Close()
+
+		messages := make([]*Message, 0, 3)
+		for range 3 {
+			msg, err := ReceiveMessage(conn)
+			if err != nil {
+				received <- receiveResult{Err: err}
+				return
+			}
+			messages = append(messages, msg)
+		}
+		received <- receiveResult{Messages: messages}
+	}))
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	require.NoError(t, err)
+	require.NoError(t, sendVolcengineASRFullClientRequest(conn, []byte(`{"request":"payload"}`), true))
+	require.NoError(t, sendVolcengineASRAudio(conn, []byte("abcdef"), 3, true))
+	require.NoError(t, conn.Close())
+
+	select {
+	case result := <-received:
+		require.NoError(t, result.Err)
+		require.Len(t, result.Messages, 3)
+
+		assert.Equal(t, MsgTypeFullClientRequest, result.Messages[0].MsgType)
+		assert.Equal(t, MsgTypeFlagPositiveSeq, result.Messages[0].MsgTypeFlag)
+		assert.Equal(t, CompressionGzip, result.Messages[0].Compression)
+		assert.Equal(t, int32(1), result.Messages[0].Sequence)
+		assert.Equal(t, MsgTypeAudioOnlyClient, result.Messages[1].MsgType)
+		assert.Equal(t, int32(2), result.Messages[1].Sequence)
+		assert.Equal(t, CompressionGzip, result.Messages[1].Compression)
+		assert.Equal(t, int32(-3), result.Messages[2].Sequence)
+		assert.Equal(t, MsgTypeFlagNegativeSeq, result.Messages[2].MsgTypeFlag)
+
+		payloads := [][]byte{
+			[]byte(`{"request":"payload"}`),
+			[]byte("abc"),
+			[]byte("def"),
+		}
+		for index, msg := range result.Messages {
+			reader, err := gzip.NewReader(bytes.NewReader(msg.Payload))
+			require.NoError(t, err)
+			decompressed, err := io.ReadAll(reader)
+			require.NoError(t, err)
+			require.NoError(t, reader.Close())
+			assert.Equal(t, payloads[index], decompressed)
+		}
+	case <-time.After(2 * time.Second):
+		require.Fail(t, "timed out waiting for Agent Plan ASR frames")
 	}
 }
 
@@ -230,6 +333,20 @@ func TestParseVolcengineASRResponsePayload(t *testing.T) {
 	assert.Equal(t, 3.696, result.Duration)
 	require.Len(t, result.Utterances, 1)
 	assert.Equal(t, 3696, result.Utterances[0].EndTime)
+}
+
+func TestDecodeVolcengineASRPayloadHandlesAgentPlanGzipResponse(t *testing.T) {
+	payload := []byte(`{"result":{"text":"Agent Plan"}}`)
+	compressed, err := compressVolcengineASRPayload(payload)
+	require.NoError(t, err)
+
+	decoded, err := decodeVolcengineASRPayload(&Message{
+		Compression: CompressionGzip,
+		Payload:     compressed,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, payload, decoded)
 }
 
 func TestVolcengineASRUsageFromDuration(t *testing.T) {

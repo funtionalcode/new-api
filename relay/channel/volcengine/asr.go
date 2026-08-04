@@ -1,6 +1,8 @@
 package volcengine
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -129,7 +131,11 @@ func buildVolcengineASRSession(c *gin.Context, info *relaycommon.RelayInfo, requ
 
 	resourceID := strings.TrimSpace(formFirstValue(formData.Value, "resource_id", "x_api_resource_id", "X-Api-Resource-Id"))
 	if resourceID == "" {
-		resourceID = defaultVolcengineASRResourceID(modelName)
+		configuredURL := ""
+		if info != nil {
+			configuredURL = info.ChannelBaseUrl
+		}
+		resourceID = defaultVolcengineASRResourceID(modelName, configuredURL)
 	}
 
 	requestID := strings.TrimSpace(formFirstValue(formData.Value, "request_id", "X-Api-Request-Id", "x_api_request_id"))
@@ -282,14 +288,15 @@ func handleASRWebSocketResponse(c *gin.Context, requestURL string, session Volce
 			http.StatusInternalServerError,
 		)
 	}
-	if sendErr := FullClientRequest(conn, payload); sendErr != nil {
+	agentPlanProtocol := isVolcengineAgentPlanASRURL(requestURL)
+	if sendErr := sendVolcengineASRFullClientRequest(conn, payload, agentPlanProtocol); sendErr != nil {
 		return nil, types.NewErrorWithStatusCode(
 			fmt.Errorf("failed to send volcengine ASR request: %w", sendErr),
 			types.ErrorCodeBadRequestBody,
 			http.StatusInternalServerError,
 		)
 	}
-	if sendErr := sendVolcengineASRAudio(conn, session.AudioData, session.ChunkSize); sendErr != nil {
+	if sendErr := sendVolcengineASRAudio(conn, session.AudioData, session.ChunkSize, agentPlanProtocol); sendErr != nil {
 		return nil, types.NewErrorWithStatusCode(
 			fmt.Errorf("failed to send volcengine ASR audio: %w", sendErr),
 			types.ErrorCodeBadRequestBody,
@@ -339,7 +346,29 @@ func buildVolcengineASRHeaders(apiKey, resourceID, requestID string) (http.Heade
 	return header, nil
 }
 
-func sendVolcengineASRAudio(conn *websocket.Conn, audioData []byte, chunkSize int) error {
+func sendVolcengineASRFullClientRequest(conn *websocket.Conn, payload []byte, agentPlanProtocol bool) error {
+	if !agentPlanProtocol {
+		return FullClientRequest(conn, payload)
+	}
+	compressedPayload, err := compressVolcengineASRPayload(payload)
+	if err != nil {
+		return err
+	}
+	msg, err := NewMessage(MsgTypeFullClientRequest, MsgTypeFlagPositiveSeq)
+	if err != nil {
+		return err
+	}
+	msg.Compression = CompressionGzip
+	msg.Sequence = 1
+	msg.Payload = compressedPayload
+	frame, err := msg.Marshal()
+	if err != nil {
+		return err
+	}
+	return conn.WriteMessage(websocket.BinaryMessage, frame)
+}
+
+func sendVolcengineASRAudio(conn *websocket.Conn, audioData []byte, chunkSize int, agentPlanProtocol bool) error {
 	if len(audioData) == 0 {
 		return errors.New("audio data is empty")
 	}
@@ -353,7 +382,11 @@ func sendVolcengineASRAudio(conn *websocket.Conn, audioData []byte, chunkSize in
 			end = len(audioData)
 		}
 		isLast := end == len(audioData)
-		if err := AudioOnlyRequest(conn, audioData[offset:end], sequence, isLast); err != nil {
+		if !agentPlanProtocol {
+			if err := AudioOnlyRequest(conn, audioData[offset:end], sequence, isLast); err != nil {
+				return err
+			}
+		} else if err := sendVolcengineAgentPlanASRAudio(conn, audioData[offset:end], sequence, isLast); err != nil {
 			return err
 		}
 		if sequence == math.MaxInt32 {
@@ -362,6 +395,51 @@ func sendVolcengineASRAudio(conn *websocket.Conn, audioData []byte, chunkSize in
 		sequence++
 	}
 	return nil
+}
+
+func sendVolcengineAgentPlanASRAudio(conn *websocket.Conn, payload []byte, sequence int32, isLast bool) error {
+	compressedPayload, err := compressVolcengineASRPayload(payload)
+	if err != nil {
+		return err
+	}
+	flag := MsgTypeFlagPositiveSeq
+	if isLast {
+		flag = MsgTypeFlagNegativeSeq
+		if sequence > 0 {
+			sequence = -sequence
+		}
+	}
+	msg, err := NewMessage(MsgTypeAudioOnlyClient, flag)
+	if err != nil {
+		return err
+	}
+	msg.Serialization = SerializationNone
+	msg.Compression = CompressionGzip
+	msg.Sequence = sequence
+	msg.Payload = compressedPayload
+	frame, err := msg.Marshal()
+	if err != nil {
+		return err
+	}
+	return conn.WriteMessage(websocket.BinaryMessage, frame)
+}
+
+func compressVolcengineASRPayload(payload []byte) ([]byte, error) {
+	var compressed bytes.Buffer
+	writer := gzip.NewWriter(&compressed)
+	if _, err := writer.Write(payload); err != nil {
+		return nil, err
+	}
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+	return compressed.Bytes(), nil
+}
+
+func isVolcengineAgentPlanASRURL(requestURL string) bool {
+	normalizedURL := strings.ToLower(strings.TrimSpace(requestURL))
+	isWebSocket := strings.HasPrefix(normalizedURL, "ws://") || strings.HasPrefix(normalizedURL, "wss://")
+	return isWebSocket && strings.Contains(normalizedURL, "/api/v3/plan/sauc/")
 }
 
 func receiveVolcengineASRResult(conn *websocket.Conn) (VolcengineASROpenAIResponse, error) {
@@ -378,12 +456,16 @@ func receiveVolcengineASRResult(conn *websocket.Conn) (VolcengineASROpenAIRespon
 			}
 			return VolcengineASROpenAIResponse{}, fmt.Errorf("failed to receive volcengine ASR message: %w", err)
 		}
+		payload, err := decodeVolcengineASRPayload(msg)
+		if err != nil {
+			return VolcengineASROpenAIResponse{}, fmt.Errorf("failed to decode volcengine ASR message: %w", err)
+		}
 
 		switch msg.MsgType {
 		case MsgTypeError:
-			return VolcengineASROpenAIResponse{}, fmt.Errorf("received error from volcengine ASR: code=%d, %s", msg.ErrorCode, string(msg.Payload))
+			return VolcengineASROpenAIResponse{}, fmt.Errorf("received error from volcengine ASR: code=%d, %s", msg.ErrorCode, string(payload))
 		case MsgTypeFullServerResponse:
-			result, ok, parseErr := parseVolcengineASRResponsePayload(msg.Payload)
+			result, ok, parseErr := parseVolcengineASRResponsePayload(payload)
 			if parseErr != nil {
 				return VolcengineASROpenAIResponse{}, parseErr
 			}
@@ -401,6 +483,28 @@ func receiveVolcengineASRResult(conn *websocket.Conn) (VolcengineASROpenAIRespon
 			continue
 		}
 	}
+}
+
+func decodeVolcengineASRPayload(msg *Message) ([]byte, error) {
+	if msg == nil {
+		return nil, errors.New("message is nil")
+	}
+	if msg.Compression != CompressionGzip {
+		return msg.Payload, nil
+	}
+	reader, err := gzip.NewReader(bytes.NewReader(msg.Payload))
+	if err != nil {
+		return nil, err
+	}
+	decompressed, err := io.ReadAll(reader)
+	if err != nil {
+		_ = reader.Close()
+		return nil, err
+	}
+	if err := reader.Close(); err != nil {
+		return nil, err
+	}
+	return decompressed, nil
 }
 
 func parseVolcengineASRResponsePayload(payload []byte) (VolcengineASROpenAIResponse, bool, error) {
@@ -521,7 +625,10 @@ func resolveVolcengineASRAudioFormat(explicitFormat, filename, explicitCodec str
 	return audioFormat, codec, nil
 }
 
-func defaultVolcengineASRResourceID(model string) string {
+func defaultVolcengineASRResourceID(model, configuredURL string) string {
+	if isVolcengineAgentPlanASRURL(configuredURL) {
+		return volcengineSeedASRResourceID
+	}
 	name := strings.ToLower(strings.TrimSpace(model))
 	if strings.Contains(name, "seed") || strings.Contains(name, "2") {
 		return volcengineSeedASRResourceID

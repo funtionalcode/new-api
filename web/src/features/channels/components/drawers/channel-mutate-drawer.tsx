@@ -2715,18 +2715,20 @@ export function ChannelMutateDrawer({
                                 name='base_url'
                                 render={({ field }) => (
                                   <FormItem>
-                                    <FormLabel>{t('API Base URL')}</FormLabel>
+                                    <FormLabel>
+                                      {t('API Base URL / Full Endpoint URL')}
+                                    </FormLabel>
                                     <FormControl>
                                       <Input
                                         placeholder={t(
-                                          'e.g., https://ark.cn-beijing.volces.com'
+                                          'e.g., https://ark.cn-beijing.volces.com or wss://openspeech.bytedance.com/api/v3/plan/sauc/bigmodel_nostream'
                                         )}
                                         {...field}
                                       />
                                     </FormControl>
                                     <FormDescription>
                                       {t(
-                                        'For VolcEngine ASR, leave empty or use https://ark.cn-beijing.volces.com. Use other OpenAI-compatible transcription endpoints only when proxying through a custom service.'
+                                        'Use a base URL for general VolcEngine APIs. For an ASR-only channel, you can enter the complete WebSocket or HTTP transcription endpoint; Agent/Coding Plan uses the dedicated API key.'
                                       )}
                                     </FormDescription>
                                     <FormMessage />

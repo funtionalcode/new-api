@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strings"
 
@@ -50,7 +51,7 @@ func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayIn
 
 func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.AudioRequest) (io.Reader, error) {
 	if info.RelayMode == constant.RelayModeAudioTranscription {
-		if !isNativeVolcengineBaseURL(info.ChannelBaseUrl) {
+		if !isNativeVolcengineASR(info.ChannelBaseUrl) {
 			return channel.BuildAudioMultipartRequest(c, request.Model, channel.AudioMultipartOptions{
 				IncludeModel: true,
 				RequireFile:  true,
@@ -297,6 +298,9 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 			}
 			return fmt.Sprintf("%s/v1/audio/speech", baseUrl), nil
 		case constant.RelayModeAudioTranscription:
+			if isFullVolcengineASREndpoint(baseUrl) {
+				return strings.TrimRight(strings.TrimSpace(baseUrl), "/"), nil
+			}
 			if isNativeVolcengineBaseURL(info.ChannelBaseUrl) {
 				return volcengineASRWebSocketURL, nil
 			}
@@ -357,7 +361,7 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
 	if info.RelayMode == constant.RelayModeAudioTranscription {
-		if isNativeVolcengineBaseURL(info.ChannelBaseUrl) {
+		if isNativeVolcengineASR(info.ChannelBaseUrl) {
 			return nil, nil
 		}
 		return channel.DoFormRequest(a, c, info, requestBody)
@@ -387,7 +391,7 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	}
 
 	if info.RelayMode == constant.RelayModeAudioTranscription {
-		if isNativeVolcengineBaseURL(info.ChannelBaseUrl) {
+		if isNativeVolcengineASR(info.ChannelBaseUrl) {
 			asrSessionInterface, exists := c.Get(contextKeyASRSession)
 			if !exists {
 				return nil, types.NewErrorWithStatusCode(
@@ -476,4 +480,33 @@ func isNativeVolcengineBaseURL(baseURL string) bool {
 	}
 	return normalizedBaseURL == strings.TrimRight(channelconstant.ChannelBaseURLs[channelconstant.ChannelTypeVolcEngine], "/") ||
 		normalizedBaseURL == volcengineArkSoutheastBaseURL
+}
+
+func isNativeVolcengineASR(configuredURL string) bool {
+	if isVolcengineASRWebSocketEndpoint(configuredURL) {
+		return true
+	}
+	return isNativeVolcengineBaseURL(configuredURL)
+}
+
+func isFullVolcengineASREndpoint(configuredURL string) bool {
+	if isVolcengineASRWebSocketEndpoint(configuredURL) {
+		return true
+	}
+	parsedURL, err := url.Parse(strings.TrimSpace(configuredURL))
+	if err != nil || parsedURL.Host == "" {
+		return false
+	}
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return false
+	}
+	return strings.HasSuffix(strings.TrimRight(parsedURL.Path, "/"), "/audio/transcriptions")
+}
+
+func isVolcengineASRWebSocketEndpoint(configuredURL string) bool {
+	parsedURL, err := url.Parse(strings.TrimSpace(configuredURL))
+	if err != nil || parsedURL.Host == "" {
+		return false
+	}
+	return parsedURL.Scheme == "ws" || parsedURL.Scheme == "wss"
 }
