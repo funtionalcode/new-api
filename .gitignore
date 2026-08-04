@@ -36,6 +36,9 @@ skills-lock.json
 .firecrawl
 .playwright-mcp
 .worktrees/
+/.ao/
+/.omc/
+/web/.omc/
 
 # Local-only live probes and scratch test workspaces.
 .local-tests/
