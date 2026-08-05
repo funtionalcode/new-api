@@ -106,7 +106,10 @@ import {
   type CliproxyXAIUsageWindow,
   type CliproxyUsageWindowKey,
 } from './lib/usage-summary'
-import { refreshCliproxyAuthFileBindingsUsageByType } from './lib/bulk-refresh'
+import {
+  getCliproxyAuthFileBulkRefreshOptions,
+  refreshCliproxyAuthFileBindingsUsageByType,
+} from './lib/bulk-refresh'
 import {
   getCliproxyAuthFileEmail,
   getCliproxyAuthFileType,
@@ -150,12 +153,6 @@ const emptyBindingForm: BindingFormState = {
   last_plan_type: '',
   enabled: true,
 }
-
-const cliproxyAuthFileTypeOrder: CliproxyAuthFileType[] = [
-  'codex',
-  'claude',
-  'xai',
-]
 
 type PlanLabelConfig = {
   label: string
@@ -1056,15 +1053,12 @@ function BindingTable({
   })
 
   const bindings = query.data?.data?.items ?? []
-  const refreshableTypes = cliproxyAuthFileTypeOrder
-    .map((type) => ({
-      type,
-      label: getCliproxyAuthFileTypeLabel(type),
-      count: bindings.filter(
-        (binding) => binding.enabled && getCliproxyAuthFileType(binding) === type
-      ).length,
-    }))
-    .filter((item) => item.count > 0)
+  const refreshableTypes = getCliproxyAuthFileBulkRefreshOptions(bindings).map(
+    (item) => ({
+      ...item,
+      label: getCliproxyAuthFileTypeLabel(item.type),
+    })
+  )
 
   const refreshMutation = useMutation({
     mutationFn: refreshCliproxyAuthFileBindingUsage,

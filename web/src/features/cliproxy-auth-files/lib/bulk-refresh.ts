@@ -43,6 +43,25 @@ export const CLIPROXY_BULK_REFRESH_CONCURRENCY_BY_TYPE: Record<
   xai: 1,
 }
 
+const cliproxyAuthFileBulkRefreshTypeOrder: CliproxyAuthFileType[] = [
+  'codex',
+  'claude',
+]
+
+export function getCliproxyAuthFileBulkRefreshOptions(
+  bindings: CliproxyAuthFileBinding[]
+): { type: CliproxyAuthFileType; count: number }[] {
+  return cliproxyAuthFileBulkRefreshTypeOrder
+    .map((type) => ({
+      type,
+      count: bindings.filter(
+        (binding) =>
+          binding.enabled && getCliproxyAuthFileType(binding) === type
+      ).length,
+    }))
+    .filter((item) => item.count > 0)
+}
+
 export async function refreshCliproxyAuthFileBindingsUsageAll(
   bindings: CliproxyAuthFileBinding[],
   refreshUsage: RefreshCliproxyAuthFileBindingUsage,

@@ -3,11 +3,30 @@ import { describe, test } from 'node:test'
 
 import type { CliproxyAuthFileBinding } from '../types'
 import {
+  getCliproxyAuthFileBulkRefreshOptions,
   refreshCliproxyAuthFileBindingsUsageAll,
   refreshCliproxyAuthFileBindingsUsageByType,
 } from './bulk-refresh'
 
 describe('cliproxy auth file bulk refresh', () => {
+  test('offers bulk refresh only for enabled Codex and Claude bindings', () => {
+    const options = getCliproxyAuthFileBulkRefreshOptions([
+      createBinding(1, true),
+      createBinding(2, false),
+      createBinding(3, true, { auth_name: 'claude-a@example.com.json' }),
+      createBinding(4, true, { auth_name: 'claude-b@example.com.json' }),
+      createBinding(5, true, {
+        auth_name: 'xai-a@example.com.json',
+        last_plan_type: 'supergrokheavy',
+      }),
+    ])
+
+    assert.deepEqual(options, [
+      { type: 'codex', count: 1 },
+      { type: 'claude', count: 2 },
+    ])
+  })
+
   test('refreshes enabled bindings and skips disabled ones', async () => {
     const refreshedIds: number[] = []
 
