@@ -181,7 +181,13 @@ func EstimateRequestToken(c *gin.Context, meta *types.TokenCountMeta, info *rela
 	if !constant.CountToken {
 		return 0, nil
 	}
+	return CountRequestToken(c, meta, info, "")
+}
 
+// CountRequestToken estimates the request input tokens regardless of whether
+// billing-time token counting is enabled. model overrides the client-facing
+// model when the request has already been mapped for an upstream channel.
+func CountRequestToken(c *gin.Context, meta *types.TokenCountMeta, info *relaycommon.RelayInfo, model string) (int, error) {
 	if meta == nil {
 		return 0, errors.New("token count meta is nil")
 	}
@@ -219,7 +225,9 @@ func EstimateRequestToken(c *gin.Context, meta *types.TokenCountMeta, info *rela
 		return totalAudioToken, nil
 	}
 
-	model := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
+	if model == "" {
+		model = common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
+	}
 	tkm := 0
 
 	if meta.TokenType == types.TokenTypeTextNumber {

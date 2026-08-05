@@ -50,6 +50,11 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *rel
 			}
 			req.Set("anthropic-version", anthropicVersion)
 		}
+		if info.RelayMode == relayconstant.RelayModeClaudeCountTokens {
+			if anthropicBeta := c.Request.Header.Get("anthropic-beta"); anthropicBeta != "" {
+				req.Set("anthropic-beta", anthropicBeta)
+			}
+		}
 	case types.RelayFormatGemini:
 		req.Set("x-goog-api-key", info.ApiKey)
 	}
