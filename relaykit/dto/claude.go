@@ -436,8 +436,22 @@ func ProcessTools(tools []any) ([]*Tool, []*ClaudeWebSearchTool) {
 		case ClaudeWebSearchTool:
 			webSearchTools = append(webSearchTools, &t)
 		default:
-			// 未知类型，跳过
-			continue
+			toolMap, ok := tool.(map[string]any)
+			if !ok {
+				continue
+			}
+			toolType, _ := toolMap["type"].(string)
+			if strings.HasPrefix(toolType, "web_search_") {
+				webSearchTool, err := kitutil.Any2Type[*ClaudeWebSearchTool](toolMap)
+				if err == nil && webSearchTool != nil {
+					webSearchTools = append(webSearchTools, webSearchTool)
+				}
+				continue
+			}
+			normalTool, err := kitutil.Any2Type[*Tool](toolMap)
+			if err == nil && normalTool != nil && normalTool.Name != "" {
+				normalTools = append(normalTools, normalTool)
+			}
 		}
 	}
 

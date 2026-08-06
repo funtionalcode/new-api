@@ -125,6 +125,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		newAPIError = types.NewError(err, types.ErrorCodeGenRelayInfoFailed)
 		return
 	}
+	if handled, handleErr := relay.HandleClaudeDesktopTokenCountProbe(c, relayInfo); handled {
+		newAPIError = handleErr
+		return
+	}
 
 	isClaudeCountTokens := relayFormat == types.RelayFormatClaude && relayInfo.RelayMode == relayconstant.RelayModeClaudeCountTokens
 	if !isClaudeCountTokens {
