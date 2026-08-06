@@ -1,12 +1,13 @@
-import type {
-  QuotaBindingFormData,
-  QuotaBindingSavePayload,
-} from '../types'
+import type { QuotaBindingFormData, QuotaBindingSavePayload } from '../types'
 
 export type QuotaBindingFormState = QuotaBindingFormData & {
   has_curl?: boolean
+  has_usage_amount_curl?: boolean
+  has_usage_cost_curl?: boolean
   has_refresh_token?: boolean
   request_curl_touched?: boolean
+  usage_amount_curl_touched?: boolean
+  usage_cost_curl_touched?: boolean
   refresh_token_touched?: boolean
   proxy_touched?: boolean
 }
@@ -29,6 +30,20 @@ export function buildQuotaBindingSavePayload(
     const curl = form.request_curl.trim()
     if (curl || !isEdit) {
       payload.request_curl = curl
+    }
+  }
+
+  if (!isEdit || form.usage_amount_curl_touched) {
+    const curl = form.usage_amount_curl.trim()
+    if (curl) {
+      payload.usage_amount_curl = curl
+    }
+  }
+
+  if (!isEdit || form.usage_cost_curl_touched) {
+    const curl = form.usage_cost_curl.trim()
+    if (curl) {
+      payload.usage_cost_curl = curl
     }
   }
 

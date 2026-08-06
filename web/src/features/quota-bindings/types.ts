@@ -52,6 +52,10 @@ export type GLMQuotaBinding = QuotaBindingBase & {
 }
 
 export type DeepSeekQuotaBinding = QuotaBindingBase & {
+  usage_amount_curl?: string
+  usage_cost_curl?: string
+  has_usage_amount_curl: boolean
+  has_usage_cost_curl: boolean
   last_monthly_limit_tokens: number
   last_monthly_used_tokens: number
   last_monthly_remaining_tokens: number
@@ -62,6 +66,8 @@ export type DeepSeekQuotaBinding = QuotaBindingBase & {
   last_bonus_wallets: string
   last_monthly_costs: string
   last_today_costs: string
+  last_total_costs: string
+  last_request_count: number
 }
 
 export type KimiQuotaBinding = QuotaBindingBase & {
@@ -110,6 +116,8 @@ export type QuotaBindingFormData = {
   name: string
   note: string
   request_curl: string
+  usage_amount_curl: string
+  usage_cost_curl: string
   refresh_token: string
   proxy: string
   enabled: boolean
@@ -120,9 +128,15 @@ export type QuotaBindingFormData = {
 
 export type QuotaBindingSavePayload = Omit<
   QuotaBindingFormData,
-  'request_curl' | 'refresh_token' | 'proxy'
+  | 'request_curl'
+  | 'usage_amount_curl'
+  | 'usage_cost_curl'
+  | 'refresh_token'
+  | 'proxy'
 > & {
   request_curl?: string
+  usage_amount_curl?: string
+  usage_cost_curl?: string
   refresh_token?: string
   proxy?: string
 }

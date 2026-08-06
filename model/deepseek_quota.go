@@ -13,6 +13,8 @@ type DeepSeekQuotaBinding struct {
 	Name                       string `json:"name" gorm:"size:128;index;not null"`
 	Note                       string `json:"note" gorm:"type:text"`
 	RequestCurl                string `json:"request_curl,omitempty" gorm:"type:text;not null"`
+	UsageAmountCurl            string `json:"usage_amount_curl,omitempty" gorm:"type:text"`
+	UsageCostCurl              string `json:"usage_cost_curl,omitempty" gorm:"type:text"`
 	Proxy                      string `json:"proxy,omitempty" gorm:"type:text"`
 	LastMonthlyLimitTokens     int64  `json:"last_monthly_limit_tokens" gorm:"bigint;default:0"`
 	LastMonthlyUsedTokens      int64  `json:"last_monthly_used_tokens" gorm:"bigint;default:0"`
@@ -24,12 +26,16 @@ type DeepSeekQuotaBinding struct {
 	LastBonusWallets           string `json:"last_bonus_wallets" gorm:"type:text"`
 	LastMonthlyCosts           string `json:"last_monthly_costs" gorm:"type:text"`
 	LastTodayCosts             string `json:"last_today_costs" gorm:"type:text"`
+	LastTotalCosts             string `json:"last_total_costs" gorm:"type:text"`
+	LastRequestCount           int64  `json:"last_request_count" gorm:"bigint;default:0"`
 	LastRefreshedAt            int64  `json:"last_refreshed_at" gorm:"bigint;default:0"`
 	LastError                  string `json:"last_error" gorm:"type:text"`
 	Enabled                    bool   `json:"enabled" gorm:"default:true"`
 	CreatedAt                  int64  `json:"created_at" gorm:"bigint;index"`
 	UpdatedAt                  int64  `json:"updated_at" gorm:"bigint"`
 	HasCurl                    bool   `json:"has_curl" gorm:"-"`
+	HasUsageAmountCurl         bool   `json:"has_usage_amount_curl" gorm:"-"`
+	HasUsageCostCurl           bool   `json:"has_usage_cost_curl" gorm:"-"`
 }
 
 type DeepSeekQuotaBindingQuery struct {
@@ -38,13 +44,17 @@ type DeepSeekQuotaBindingQuery struct {
 }
 
 type DeepSeekQuotaBindingUpdate struct {
-	Name        string
-	Note        string
-	RequestCurl string
-	UpdateCurl  bool
-	Proxy       string
-	UpdateProxy bool
-	Enabled     bool
+	Name                  string
+	Note                  string
+	RequestCurl           string
+	UpdateCurl            bool
+	UsageAmountCurl       string
+	UpdateUsageAmountCurl bool
+	UsageCostCurl         string
+	UpdateUsageCostCurl   bool
+	Proxy                 string
+	UpdateProxy           bool
+	Enabled               bool
 }
 
 type DeepSeekQuotaUsageRefreshUpdate struct {
@@ -58,6 +68,8 @@ type DeepSeekQuotaUsageRefreshUpdate struct {
 	LastBonusWallets           string
 	LastMonthlyCosts           string
 	LastTodayCosts             string
+	LastTotalCosts             string
+	LastRequestCount           int64
 	LastError                  string
 }
 
@@ -79,6 +91,8 @@ func (binding *DeepSeekQuotaBinding) BeforeUpdate() error {
 
 func (binding *DeepSeekQuotaBinding) AfterFind(tx *gorm.DB) error {
 	binding.HasCurl = strings.TrimSpace(binding.RequestCurl) != ""
+	binding.HasUsageAmountCurl = strings.TrimSpace(binding.UsageAmountCurl) != ""
+	binding.HasUsageCostCurl = strings.TrimSpace(binding.UsageCostCurl) != ""
 	return nil
 }
 
@@ -116,6 +130,24 @@ func buildDeepSeekQuotaBindingQuery(query DeepSeekQuotaBindingQuery) *gorm.DB {
 }
 
 func UpdateDeepSeekQuotaBinding(id int, update DeepSeekQuotaBindingUpdate) (*DeepSeekQuotaBinding, error) {
+	if update.UpdateUsageAmountCurl || update.UpdateUsageCostCurl {
+		binding, err := GetDeepSeekQuotaBindingById(id)
+		if err != nil {
+			return nil, err
+		}
+		usageAmountCurl := binding.UsageAmountCurl
+		if update.UpdateUsageAmountCurl {
+			usageAmountCurl = update.UsageAmountCurl
+		}
+		usageCostCurl := binding.UsageCostCurl
+		if update.UpdateUsageCostCurl {
+			usageCostCurl = update.UsageCostCurl
+		}
+		if (strings.TrimSpace(usageAmountCurl) == "") != (strings.TrimSpace(usageCostCurl) == "") {
+			return nil, errors.New("DeepSeek 用量统计和消费统计 curl 必须同时配置")
+		}
+	}
+
 	updates := map[string]any{
 		"name":       strings.TrimSpace(update.Name),
 		"note":       strings.TrimSpace(update.Note),
@@ -124,6 +156,12 @@ func UpdateDeepSeekQuotaBinding(id int, update DeepSeekQuotaBindingUpdate) (*Dee
 	}
 	if update.UpdateCurl {
 		updates["request_curl"] = strings.TrimSpace(update.RequestCurl)
+	}
+	if update.UpdateUsageAmountCurl {
+		updates["usage_amount_curl"] = strings.TrimSpace(update.UsageAmountCurl)
+	}
+	if update.UpdateUsageCostCurl {
+		updates["usage_cost_curl"] = strings.TrimSpace(update.UsageCostCurl)
 	}
 	if update.UpdateProxy {
 		updates["proxy"] = strings.TrimSpace(update.Proxy)
@@ -151,6 +189,8 @@ func UpdateDeepSeekQuotaBindingUsage(id int, update DeepSeekQuotaUsageRefreshUpd
 		updates["last_bonus_wallets"] = update.LastBonusWallets
 		updates["last_monthly_costs"] = update.LastMonthlyCosts
 		updates["last_today_costs"] = update.LastTodayCosts
+		updates["last_total_costs"] = update.LastTotalCosts
+		updates["last_request_count"] = update.LastRequestCount
 	}
 	if err := DB.Model(&DeepSeekQuotaBinding{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 		return nil, err
@@ -167,7 +207,13 @@ func ValidateDeepSeekQuotaBindingUpdate(update DeepSeekQuotaBindingUpdate, requi
 		return errors.New("名称不能为空")
 	}
 	if requireCurl && strings.TrimSpace(update.RequestCurl) == "" {
-		return errors.New("DeepSeek 额度 curl 不能为空")
+		return errors.New("DeepSeek 账户汇总 curl 不能为空")
+	}
+	if requireCurl && strings.TrimSpace(update.UsageAmountCurl) == "" {
+		return errors.New("DeepSeek 用量统计 curl 不能为空")
+	}
+	if requireCurl && strings.TrimSpace(update.UsageCostCurl) == "" {
+		return errors.New("DeepSeek 消费统计 curl 不能为空")
 	}
 	return nil
 }

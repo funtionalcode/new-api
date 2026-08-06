@@ -6,33 +6,38 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 )
 
 type deepSeekQuotaBindingRequest struct {
-	Name        string  `json:"name"`
-	Note        string  `json:"note"`
-	RequestCurl string  `json:"request_curl"`
-	Proxy       *string `json:"proxy"`
-	Enabled     bool    `json:"enabled"`
+	Name            string  `json:"name"`
+	Note            string  `json:"note"`
+	RequestCurl     string  `json:"request_curl"`
+	UsageAmountCurl string  `json:"usage_amount_curl"`
+	UsageCostCurl   string  `json:"usage_cost_curl"`
+	Proxy           *string `json:"proxy"`
+	Enabled         bool    `json:"enabled"`
 }
 
-type deepSeekQuotaSummaryResponse struct {
-	Code int                      `json:"code"`
-	Msg  string                   `json:"msg"`
-	Data deepSeekQuotaSummaryData `json:"data"`
+type deepSeekQuotaResponse[T any] struct {
+	Code int                          `json:"code"`
+	Msg  string                       `json:"msg"`
+	Data deepSeekQuotaResponseData[T] `json:"data"`
 }
 
-type deepSeekQuotaSummaryData struct {
-	BizCode int                         `json:"biz_code"`
-	BizMsg  string                      `json:"biz_msg"`
-	BizData deepSeekQuotaSummaryBizData `json:"biz_data"`
+type deepSeekQuotaResponseData[T any] struct {
+	BizCode int    `json:"biz_code"`
+	BizMsg  string `json:"biz_msg"`
+	BizData T      `json:"biz_data"`
 }
 
 type deepSeekQuotaSummaryBizData struct {
@@ -45,6 +50,7 @@ type deepSeekQuotaSummaryBizData struct {
 	MonthlyCosts                  []deepSeekQuotaCurrencyCost `json:"monthly_costs"`
 	TodayCosts                    []deepSeekQuotaCurrencyCost `json:"today_costs"`
 	DailyCosts                    []deepSeekQuotaCurrencyCost `json:"daily_costs"`
+	TotalCosts                    []deepSeekQuotaCurrencyCost `json:"total_costs"`
 	MonthlyTokenUsage             string                      `json:"monthly_token_usage"`
 	TodayTokenUsage               any                         `json:"today_token_usage"`
 	DailyTokenUsage               any                         `json:"daily_token_usage"`
@@ -61,6 +67,46 @@ type deepSeekQuotaCurrencyCost struct {
 	Amount   string `json:"amount"`
 }
 
+type deepSeekQuotaUsageAmountBizData struct {
+	Start  int64                            `json:"start"`
+	End    int64                            `json:"end"`
+	Series []deepSeekQuotaUsageAmountSeries `json:"series"`
+}
+
+type deepSeekQuotaUsageAmountSeries struct {
+	Buckets []deepSeekQuotaUsageAmountBucket `json:"buckets"`
+}
+
+type deepSeekQuotaUsageAmountBucket struct {
+	Usage deepSeekQuotaUsageAmount `json:"usage"`
+}
+
+type deepSeekQuotaUsageAmount struct {
+	ResponseToken        int64 `json:"RESPONSE_TOKEN"`
+	Request              int64 `json:"REQUEST"`
+	PromptCacheHitToken  int64 `json:"PROMPT_CACHE_HIT_TOKEN"`
+	PromptCacheMissToken int64 `json:"PROMPT_CACHE_MISS_TOKEN"`
+}
+
+type deepSeekQuotaUsageCostBizData struct {
+	Start int64                            `json:"start"`
+	End   int64                            `json:"end"`
+	Data  []deepSeekQuotaUsageCostCurrency `json:"data"`
+}
+
+type deepSeekQuotaUsageCostCurrency struct {
+	Currency string                         `json:"currency"`
+	Series   []deepSeekQuotaUsageCostSeries `json:"series"`
+}
+
+type deepSeekQuotaUsageCostSeries struct {
+	Buckets []deepSeekQuotaUsageCostBucket `json:"buckets"`
+}
+
+type deepSeekQuotaUsageCostBucket struct {
+	Cost string `json:"cost"`
+}
+
 type deepSeekQuotaUsageRefreshBody struct {
 	MonthlyLimitTokens     int64
 	MonthlyUsedTokens      int64
@@ -72,7 +118,11 @@ type deepSeekQuotaUsageRefreshBody struct {
 	BonusWallets           []deepSeekQuotaWallet
 	MonthlyCosts           []deepSeekQuotaCurrencyCost
 	TodayCosts             []deepSeekQuotaCurrencyCost
+	TotalCosts             []deepSeekQuotaCurrencyCost
+	RequestCount           int64
 }
+
+const deepSeekQuotaUsageRangeDays = 30
 
 func GetDeepSeekQuotaBindings(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
@@ -98,17 +148,21 @@ func CreateDeepSeekQuotaBinding(c *gin.Context) {
 		return
 	}
 	binding := &model.DeepSeekQuotaBinding{
-		Name:        update.Name,
-		Note:        update.Note,
-		RequestCurl: update.RequestCurl,
-		Proxy:       update.Proxy,
-		Enabled:     update.Enabled,
+		Name:            update.Name,
+		Note:            update.Note,
+		RequestCurl:     update.RequestCurl,
+		UsageAmountCurl: update.UsageAmountCurl,
+		UsageCostCurl:   update.UsageCostCurl,
+		Proxy:           update.Proxy,
+		Enabled:         update.Enabled,
 	}
 	if err := model.CreateDeepSeekQuotaBinding(binding); err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	binding.HasCurl = strings.TrimSpace(binding.RequestCurl) != ""
+	binding.HasUsageAmountCurl = strings.TrimSpace(binding.UsageAmountCurl) != ""
+	binding.HasUsageCostCurl = strings.TrimSpace(binding.UsageCostCurl) != ""
 	common.ApiSuccess(c, binding)
 }
 
@@ -190,6 +244,11 @@ func RefreshDeepSeekQuotaBindingUsage(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	totalCosts, err := common.Marshal(usage.TotalCosts)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	updatedBinding, err := model.UpdateDeepSeekQuotaBindingUsage(id, model.DeepSeekQuotaUsageRefreshUpdate{
 		LastMonthlyLimitTokens:     usage.MonthlyLimitTokens,
 		LastMonthlyUsedTokens:      usage.MonthlyUsedTokens,
@@ -201,6 +260,8 @@ func RefreshDeepSeekQuotaBindingUsage(c *gin.Context) {
 		LastBonusWallets:           string(bonusWallets),
 		LastMonthlyCosts:           string(monthlyCosts),
 		LastTodayCosts:             string(todayCosts),
+		LastTotalCosts:             string(totalCosts),
+		LastRequestCount:           usage.RequestCount,
 		LastError:                  "",
 	})
 	if err != nil {
@@ -222,6 +283,8 @@ func sanitizeDeepSeekQuotaBindingForRole(binding *model.DeepSeekQuotaBinding, ro
 		return
 	}
 	binding.RequestCurl = ""
+	binding.UsageAmountCurl = ""
+	binding.UsageCostCurl = ""
 	binding.Proxy = ""
 }
 
@@ -231,12 +294,16 @@ func decodeDeepSeekQuotaBindingRequest(c *gin.Context, requireCurl bool) (model.
 		return model.DeepSeekQuotaBindingUpdate{}, fmt.Errorf("无效的参数")
 	}
 	update := model.DeepSeekQuotaBindingUpdate{
-		Name:        strings.TrimSpace(request.Name),
-		Note:        strings.TrimSpace(request.Note),
-		RequestCurl: strings.TrimSpace(request.RequestCurl),
-		UpdateCurl:  strings.TrimSpace(request.RequestCurl) != "",
-		UpdateProxy: request.Proxy != nil,
-		Enabled:     request.Enabled,
+		Name:                  strings.TrimSpace(request.Name),
+		Note:                  strings.TrimSpace(request.Note),
+		RequestCurl:           strings.TrimSpace(request.RequestCurl),
+		UpdateCurl:            strings.TrimSpace(request.RequestCurl) != "",
+		UsageAmountCurl:       strings.TrimSpace(request.UsageAmountCurl),
+		UpdateUsageAmountCurl: strings.TrimSpace(request.UsageAmountCurl) != "",
+		UsageCostCurl:         strings.TrimSpace(request.UsageCostCurl),
+		UpdateUsageCostCurl:   strings.TrimSpace(request.UsageCostCurl) != "",
+		UpdateProxy:           request.Proxy != nil,
+		Enabled:               request.Enabled,
 	}
 	if request.Proxy != nil {
 		update.Proxy = strings.TrimSpace(*request.Proxy)
@@ -248,13 +315,55 @@ func decodeDeepSeekQuotaBindingRequest(c *gin.Context, requireCurl bool) (model.
 }
 
 func refreshDeepSeekQuotaUsage(ctx context.Context, binding *model.DeepSeekQuotaBinding) (deepSeekQuotaUsageRefreshBody, error) {
-	requestConfig, err := buildDeepSeekQuotaCurlRequest(binding.RequestCurl)
+	summaryRequest, err := buildDeepSeekQuotaCurlRequest(binding.RequestCurl)
 	if err != nil {
-		return deepSeekQuotaUsageRefreshBody{}, err
+		return deepSeekQuotaUsageRefreshBody{}, fmt.Errorf("解析 DeepSeek 账户汇总 curl 失败: %w", err)
 	}
-	request, err := http.NewRequestWithContext(ctx, requestConfig.Method, requestConfig.URL, nil)
+	summaryBody, err := requestDeepSeekQuota(ctx, binding, summaryRequest)
 	if err != nil {
-		return deepSeekQuotaUsageRefreshBody{}, err
+		return deepSeekQuotaUsageRefreshBody{}, fmt.Errorf("获取 DeepSeek 账户汇总失败: %w", err)
+	}
+
+	usageAmountCurl := strings.TrimSpace(binding.UsageAmountCurl)
+	usageCostCurl := strings.TrimSpace(binding.UsageCostCurl)
+	if usageAmountCurl == "" && usageCostCurl == "" {
+		return extractDeepSeekQuotaUsage(summaryBody, nil, nil)
+	}
+	if usageAmountCurl == "" {
+		return deepSeekQuotaUsageRefreshBody{}, fmt.Errorf("DeepSeek 用量统计 curl 未配置")
+	}
+	if usageCostCurl == "" {
+		return deepSeekQuotaUsageRefreshBody{}, fmt.Errorf("DeepSeek 消费统计 curl 未配置")
+	}
+
+	now := time.Now()
+	amountRequest, err := buildDeepSeekQuotaUsageCurlRequest(usageAmountCurl, now)
+	if err != nil {
+		return deepSeekQuotaUsageRefreshBody{}, fmt.Errorf("解析 DeepSeek 用量统计 curl 失败: %w", err)
+	}
+	costRequest, err := buildDeepSeekQuotaUsageCurlRequest(usageCostCurl, now)
+	if err != nil {
+		return deepSeekQuotaUsageRefreshBody{}, fmt.Errorf("解析 DeepSeek 消费统计 curl 失败: %w", err)
+	}
+	amountBody, err := requestDeepSeekQuota(ctx, binding, amountRequest)
+	if err != nil {
+		return deepSeekQuotaUsageRefreshBody{}, fmt.Errorf("获取 DeepSeek 用量统计失败: %w", err)
+	}
+	costBody, err := requestDeepSeekQuota(ctx, binding, costRequest)
+	if err != nil {
+		return deepSeekQuotaUsageRefreshBody{}, fmt.Errorf("获取 DeepSeek 消费统计失败: %w", err)
+	}
+	return extractDeepSeekQuotaUsage(summaryBody, amountBody, costBody)
+}
+
+func requestDeepSeekQuota(ctx context.Context, binding *model.DeepSeekQuotaBinding, requestConfig quotaCurlRequest) ([]byte, error) {
+	var requestBody io.Reader
+	if requestConfig.Body != "" {
+		requestBody = strings.NewReader(requestConfig.Body)
+	}
+	request, err := http.NewRequestWithContext(ctx, requestConfig.Method, requestConfig.URL, requestBody)
+	if err != nil {
+		return nil, err
 	}
 	for key, value := range requestConfig.Headers {
 		if strings.EqualFold(key, "host") {
@@ -273,58 +382,164 @@ func refreshDeepSeekQuotaUsage(ctx context.Context, binding *model.DeepSeekQuota
 	client, err := quotaHTTPClient(proxyURL)
 	if err != nil {
 		if strings.TrimSpace(proxyURL) != "" {
-			return deepSeekQuotaUsageRefreshBody{}, fmt.Errorf("创建代理客户端 %s 失败: %w", quotaProxyLabel(proxyURL), err)
+			return nil, fmt.Errorf("创建代理客户端 %s 失败: %w", quotaProxyLabel(proxyURL), err)
 		}
-		return deepSeekQuotaUsageRefreshBody{}, err
+		return nil, err
 	}
 	response, err := client.Do(request)
 	if err != nil {
-		return deepSeekQuotaUsageRefreshBody{}, quotaHTTPRequestError(proxyURL, err)
+		return nil, quotaHTTPRequestError(proxyURL, err)
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		return deepSeekQuotaUsageRefreshBody{}, err
+		return nil, err
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return deepSeekQuotaUsageRefreshBody{}, fmt.Errorf("DeepSeek 返回 HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("DeepSeek 返回 HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(body)))
 	}
-	return extractDeepSeekQuotaUsage(body)
+	return body, nil
 }
 
 func buildDeepSeekQuotaCurlRequest(rawCurl string) (quotaCurlRequest, error) {
 	return parseQuotaCurlRequest(rawCurl)
 }
 
-func extractDeepSeekQuotaUsage(body []byte) (deepSeekQuotaUsageRefreshBody, error) {
-	var response deepSeekQuotaSummaryResponse
-	if err := common.Unmarshal(body, &response); err != nil {
+func buildDeepSeekQuotaUsageCurlRequest(rawCurl string, now time.Time) (quotaCurlRequest, error) {
+	requestConfig, err := buildDeepSeekQuotaCurlRequest(rawCurl)
+	if err != nil {
+		return quotaCurlRequest{}, err
+	}
+	parsedURL, err := url.Parse(requestConfig.URL)
+	if err != nil {
+		return quotaCurlRequest{}, err
+	}
+	end := now.UTC().Truncate(24 * time.Hour).Add(24 * time.Hour)
+	start := end.Add(-deepSeekQuotaUsageRangeDays * 24 * time.Hour)
+	query := parsedURL.Query()
+	query.Set("start", strconv.FormatInt(start.Unix(), 10))
+	query.Set("end", strconv.FormatInt(end.Unix(), 10))
+	query.Set("tz", "0")
+	parsedURL.RawQuery = query.Encode()
+	requestConfig.URL = parsedURL.String()
+	return requestConfig, nil
+}
+
+func extractDeepSeekQuotaUsage(summaryBody []byte, amountBody []byte, costBody []byte) (deepSeekQuotaUsageRefreshBody, error) {
+	summary, err := decodeDeepSeekQuotaResponse[deepSeekQuotaSummaryBizData](summaryBody)
+	if err != nil {
 		return deepSeekQuotaUsageRefreshBody{}, err
 	}
-	if response.Code != 0 {
-		return deepSeekQuotaUsageRefreshBody{}, fmt.Errorf("DeepSeek 返回错误: %s", firstNonEmpty(response.Msg, strconv.Itoa(response.Code)))
+	monthlyUsedTokens := int64FromNumericString(firstNonEmpty(summary.MonthlyTokenUsage, summary.MonthlyUsage))
+	remainingTokens := int64(0)
+	if summary.CurrentToken > monthlyUsedTokens {
+		remainingTokens = summary.CurrentToken - monthlyUsedTokens
 	}
-	if response.Data.BizCode != 0 {
-		return deepSeekQuotaUsageRefreshBody{}, fmt.Errorf("DeepSeek 返回业务错误: %s", firstNonEmpty(response.Data.BizMsg, strconv.Itoa(response.Data.BizCode)))
-	}
-	data := response.Data.BizData
-	monthlyUsedTokens := int64FromNumericString(firstNonEmpty(data.MonthlyTokenUsage, data.MonthlyUsage))
-	remainingTokens := data.CurrentToken - monthlyUsedTokens
-	if remainingTokens < 0 {
-		remainingTokens = 0
-	}
-	return deepSeekQuotaUsageRefreshBody{
-		MonthlyLimitTokens:     data.CurrentToken,
+	usage := deepSeekQuotaUsageRefreshBody{
+		MonthlyLimitTokens:     summary.CurrentToken,
 		MonthlyUsedTokens:      monthlyUsedTokens,
 		MonthlyRemainingTokens: remainingTokens,
-		MonthlyPercent:         deepSeekQuotaUsagePercent(monthlyUsedTokens, data.CurrentToken),
-		TotalAvailableTokens:   int64FromNumericString(data.TotalAvailableTokenEstimation),
-		TodayUsedTokens:        firstPositiveInt64FromNumericValues(data.TodayTokenUsage, data.DailyTokenUsage),
-		NormalWallets:          data.NormalWallets,
-		BonusWallets:           data.BonusWallets,
-		MonthlyCosts:           data.MonthlyCosts,
-		TodayCosts:             firstDeepSeekQuotaCostList(data.TodayCosts, data.DailyCosts),
-	}, nil
+		MonthlyPercent:         deepSeekQuotaUsagePercent(monthlyUsedTokens, summary.CurrentToken),
+		TotalAvailableTokens:   int64FromNumericString(summary.TotalAvailableTokenEstimation),
+		TodayUsedTokens:        firstPositiveInt64FromNumericValues(summary.TodayTokenUsage, summary.DailyTokenUsage),
+		NormalWallets:          summary.NormalWallets,
+		BonusWallets:           summary.BonusWallets,
+		MonthlyCosts:           summary.MonthlyCosts,
+		TodayCosts:             firstDeepSeekQuotaCostList(summary.TodayCosts, summary.DailyCosts),
+		TotalCosts:             summary.TotalCosts,
+	}
+	if len(amountBody) == 0 && len(costBody) == 0 {
+		return usage, nil
+	}
+	if len(amountBody) == 0 || len(costBody) == 0 {
+		return deepSeekQuotaUsageRefreshBody{}, fmt.Errorf("DeepSeek 用量与消费响应必须同时提供")
+	}
+
+	amountData, err := decodeDeepSeekQuotaResponse[deepSeekQuotaUsageAmountBizData](amountBody)
+	if err != nil {
+		return deepSeekQuotaUsageRefreshBody{}, err
+	}
+	usage.MonthlyUsedTokens = 0
+	for _, series := range amountData.Series {
+		for _, bucket := range series.Buckets {
+			usage.RequestCount = addDeepSeekUsageCount(usage.RequestCount, bucket.Usage.Request)
+			usage.MonthlyUsedTokens = addDeepSeekUsageCount(usage.MonthlyUsedTokens, bucket.Usage.ResponseToken)
+			usage.MonthlyUsedTokens = addDeepSeekUsageCount(usage.MonthlyUsedTokens, bucket.Usage.PromptCacheHitToken)
+			usage.MonthlyUsedTokens = addDeepSeekUsageCount(usage.MonthlyUsedTokens, bucket.Usage.PromptCacheMissToken)
+		}
+	}
+	usage.MonthlyRemainingTokens = 0
+	if usage.MonthlyLimitTokens > usage.MonthlyUsedTokens {
+		usage.MonthlyRemainingTokens = usage.MonthlyLimitTokens - usage.MonthlyUsedTokens
+	}
+	usage.MonthlyPercent = deepSeekQuotaUsagePercent(usage.MonthlyUsedTokens, usage.MonthlyLimitTokens)
+	costData, err := decodeDeepSeekQuotaResponse[deepSeekQuotaUsageCostBizData](costBody)
+	if err != nil {
+		return deepSeekQuotaUsageRefreshBody{}, err
+	}
+	usage.MonthlyCosts, err = aggregateDeepSeekQuotaCosts(costData.Data)
+	if err != nil {
+		return deepSeekQuotaUsageRefreshBody{}, err
+	}
+	return usage, nil
+}
+
+func decodeDeepSeekQuotaResponse[T any](body []byte) (T, error) {
+	var zero T
+	var response deepSeekQuotaResponse[T]
+	if err := common.Unmarshal(body, &response); err != nil {
+		return zero, err
+	}
+	if response.Code != 0 {
+		return zero, fmt.Errorf("DeepSeek 返回错误: %s", firstNonEmpty(response.Msg, strconv.Itoa(response.Code)))
+	}
+	if response.Data.BizCode != 0 {
+		return zero, fmt.Errorf("DeepSeek 返回业务错误: %s", firstNonEmpty(response.Data.BizMsg, strconv.Itoa(response.Data.BizCode)))
+	}
+	return response.Data.BizData, nil
+}
+
+func aggregateDeepSeekQuotaCosts(values []deepSeekQuotaUsageCostCurrency) ([]deepSeekQuotaCurrencyCost, error) {
+	amounts := make(map[string]decimal.Decimal, len(values))
+	currencies := make([]string, 0, len(values))
+	for _, value := range values {
+		currency := strings.TrimSpace(value.Currency)
+		if _, exists := amounts[currency]; !exists {
+			amounts[currency] = decimal.Zero
+			currencies = append(currencies, currency)
+		}
+		for _, series := range value.Series {
+			for _, bucket := range series.Buckets {
+				cost := strings.TrimSpace(bucket.Cost)
+				if cost == "" {
+					continue
+				}
+				parsedCost, err := decimal.NewFromString(cost)
+				if err != nil {
+					return nil, fmt.Errorf("DeepSeek 消费金额无效: %w", err)
+				}
+				amounts[currency] = amounts[currency].Add(parsedCost)
+			}
+		}
+	}
+	result := make([]deepSeekQuotaCurrencyCost, 0, len(currencies))
+	for _, currency := range currencies {
+		result = append(result, deepSeekQuotaCurrencyCost{
+			Currency: currency,
+			Amount:   amounts[currency].String(),
+		})
+	}
+	return result, nil
+}
+
+func addDeepSeekUsageCount(total int64, value int64) int64 {
+	if value <= 0 {
+		return total
+	}
+	if total > (1<<63-1)-value {
+		return 1<<63 - 1
+	}
+	return total + value
 }
 
 func firstDeepSeekQuotaCostList(values ...[]deepSeekQuotaCurrencyCost) []deepSeekQuotaCurrencyCost {

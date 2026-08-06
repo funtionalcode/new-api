@@ -88,6 +88,7 @@ import {
   refreshQuotaBindingUsage,
   updateQuotaBinding,
 } from './api'
+import { DeepSeekCurlFields } from './components/deepseek-curl-fields'
 import { buildDeepSeekMoneyUsage } from './lib/deepseek-usage'
 import {
   buildQuotaBindingSavePayload,
@@ -136,7 +137,7 @@ const providerConfigs: Record<QuotaProvider, ProviderConfig> = {
     titleKey: 'DeepSeek Quota',
     descriptionKey:
       'Track DeepSeek account quota usage and refresh it from saved curl requests.',
-    curlPlaceholderKey: 'Paste the DeepSeek quota curl command',
+    curlPlaceholderKey: 'Paste the DeepSeek account summary curl command',
   },
   kimi: {
     provider: 'kimi',
@@ -179,9 +180,13 @@ const emptyForm: QuotaBindingFormState = {
   name: '',
   note: '',
   request_curl: '',
+  usage_amount_curl: '',
+  usage_cost_curl: '',
   refresh_token: '',
   proxy: '',
   request_curl_touched: false,
+  usage_amount_curl_touched: false,
+  usage_cost_curl_touched: false,
   refresh_token_touched: false,
   proxy_touched: false,
   enabled: true,
@@ -217,13 +222,27 @@ function buildForm(binding?: QuotaBinding): QuotaBindingFormState {
     name: binding.name || '',
     note: binding.note || '',
     request_curl: binding.request_curl || '',
+    usage_amount_curl: isDeepSeekBinding(binding)
+      ? binding.usage_amount_curl || ''
+      : '',
+    usage_cost_curl: isDeepSeekBinding(binding)
+      ? binding.usage_cost_curl || ''
+      : '',
     refresh_token: isKimiBinding(binding) ? binding.refresh_token || '' : '',
     proxy: binding.proxy || '',
     has_curl: binding.has_curl,
+    has_usage_amount_curl: isDeepSeekBinding(binding)
+      ? binding.has_usage_amount_curl
+      : false,
+    has_usage_cost_curl: isDeepSeekBinding(binding)
+      ? binding.has_usage_cost_curl
+      : false,
     has_refresh_token: isKimiBinding(binding)
       ? Boolean(binding.has_refresh_token)
       : false,
     request_curl_touched: false,
+    usage_amount_curl_touched: false,
+    usage_cost_curl_touched: false,
     refresh_token_touched: false,
     proxy_touched: false,
     enabled: binding.enabled !== false,
@@ -432,7 +451,9 @@ function DeepSeekUsageCells({ binding }: { binding: DeepSeekQuotaBinding }) {
     bonusWallets: binding.last_bonus_wallets,
     monthlyCosts: binding.last_monthly_costs,
     todayCosts: binding.last_today_costs,
+    totalCosts: binding.last_total_costs,
     monthlyUsedTokens: binding.last_monthly_used_tokens,
+    requestCount: binding.last_request_count,
   })
   const remainingPercent = normalizePercent(usage.remainingPercent)
   const remainingColor = remainingBalanceColor(remainingPercent)
@@ -458,6 +479,11 @@ function DeepSeekUsageCells({ binding }: { binding: DeepSeekQuotaBinding }) {
           </div>
         </div>
       </TableCell>
+      <TableCell className='font-mono'>{usage.totalCostLabel}</TableCell>
+      <TableCell className='font-mono'>{usage.monthlyCostLabel}</TableCell>
+      <TableCell className='font-mono'>
+        {usage.requestCount > 0 ? formatNumber(usage.requestCount) : '-'}
+      </TableCell>
       <TableCell>
         {usage.monthlyUsedTokens > 0 ? (
           <TooltipProvider delay={100}>
@@ -474,7 +500,6 @@ function DeepSeekUsageCells({ binding }: { binding: DeepSeekQuotaBinding }) {
           <span className='text-muted-foreground'>-</span>
         )}
       </TableCell>
-      <TableCell className='font-mono'>{usage.monthlyCostLabel}</TableCell>
     </>
   )
 }
@@ -659,8 +684,10 @@ function QuotaUsageHeaderCells({ provider }: { provider: QuotaProvider }) {
     return (
       <>
         <TableHead>{t('Remaining Balance')}</TableHead>
-        <TableHead>{t('Monthly Tokens')}</TableHead>
-        <TableHead>{t('Monthly Cost')}</TableHead>
+        <TableHead>{t('Total Cost')}</TableHead>
+        <TableHead>{t('30-Day Cost')}</TableHead>
+        <TableHead>{t('API Requests')}</TableHead>
+        <TableHead>{t('30-Day Tokens')}</TableHead>
       </>
     )
   }
@@ -681,6 +708,7 @@ function QuotaUsageHeaderCells({ provider }: { provider: QuotaProvider }) {
 function quotaTableColumnCount(provider: QuotaProvider): number {
   if (provider === 'glm') return 7
   if (provider === 'volcengine') return 6
+  if (provider === 'deepseek') return 10
   return 8
 }
 
@@ -868,6 +896,23 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
     if (!form.name.trim()) {
       toast.error(t('Name is required'))
       return
+    }
+    if (provider === 'deepseek') {
+      const hasSummaryCurl = Boolean(form.request_curl.trim() || form.has_curl)
+      const hasUsageAmountCurl = Boolean(
+        form.usage_amount_curl.trim() || form.has_usage_amount_curl
+      )
+      const hasUsageCostCurl = Boolean(
+        form.usage_cost_curl.trim() || form.has_usage_cost_curl
+      )
+      if (
+        (!form.id &&
+          (!hasSummaryCurl || !hasUsageAmountCurl || !hasUsageCostCurl)) ||
+        (form.id && hasUsageAmountCurl !== hasUsageCostCurl)
+      ) {
+        toast.error(t('All three DeepSeek curl commands are required'))
+        return
+      }
     }
     if (!form.id && !form.request_curl.trim()) {
       toast.error(t('Curl command is required'))
@@ -1063,9 +1108,13 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
               {form.id ? t('Edit Quota Binding') : t('Create Quota Binding')}
             </DialogTitle>
             <DialogDescription>
-              {t(
-                'Save the curl command and optional proxy used to refresh quota usage.'
-              )}
+              {provider === 'deepseek'
+                ? t(
+                    'Save the three DeepSeek curl commands and optional proxy used to refresh usage.'
+                  )
+                : t(
+                    'Save the curl command and optional proxy used to refresh quota usage.'
+                  )}
             </DialogDescription>
           </DialogHeader>
           <div className='grid max-h-[70vh] gap-4 overflow-y-auto pr-1'>
@@ -1124,23 +1173,27 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
               </div>
             )}
 
-            <div className='space-y-2'>
-              <Label>{t('Curl Command')}</Label>
-              <Textarea
-                value={form.request_curl}
-                placeholder={
-                  form.id && form.has_curl
-                    ? t('Leave blank to keep unchanged')
-                    : t(config.curlPlaceholderKey)
-                }
-                onChange={(event) =>
-                  updateForm({
-                    request_curl: event.target.value,
-                    request_curl_touched: true,
-                  })
-                }
-              />
-            </div>
+            {provider === 'deepseek' ? (
+              <DeepSeekCurlFields form={form} onChange={updateForm} />
+            ) : (
+              <div className='space-y-2'>
+                <Label>{t('Curl Command')}</Label>
+                <Textarea
+                  value={form.request_curl}
+                  placeholder={
+                    form.id && form.has_curl
+                      ? t('Leave blank to keep unchanged')
+                      : t(config.curlPlaceholderKey)
+                  }
+                  onChange={(event) =>
+                    updateForm({
+                      request_curl: event.target.value,
+                      request_curl_touched: true,
+                    })
+                  }
+                />
+              </div>
+            )}
 
             {provider === 'kimi' && (
               <div className='space-y-2'>

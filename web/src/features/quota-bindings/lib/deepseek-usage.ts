@@ -25,7 +25,9 @@ type DeepSeekMoneyUsageInput = {
   bonusWallets?: string
   monthlyCosts?: string
   todayCosts?: string
+  totalCosts?: string
   monthlyUsedTokens?: number
+  requestCount?: number
 }
 
 export type DeepSeekMoneyUsage = {
@@ -33,12 +35,15 @@ export type DeepSeekMoneyUsage = {
   remainingAmount: number
   monthlyCostAmount: number
   todayCostAmount: number
+  totalCostAmount: number
   monthlyUsedTokens: number
+  requestCount: number
   totalAmount: number
   remainingPercent: number
   remainingLabel: string
   monthlyCostLabel: string
   todayCostLabel: string
+  totalCostLabel: string
   monthlyTokenLabel: string
   monthlyTokenDetail: string
 }
@@ -91,16 +96,27 @@ export function buildDeepSeekMoneyUsage(
   ]
   const monthlyCosts = parseJsonList(input.monthlyCosts)
   const todayCosts = parseJsonList(input.todayCosts)
+  const totalCosts = parseJsonList(input.totalCosts)
   const currency =
-    firstCurrency(wallets) || firstCurrency(monthlyCosts) || firstCurrency(todayCosts)
+    firstCurrency(wallets) ||
+    firstCurrency(totalCosts) ||
+    firstCurrency(monthlyCosts) ||
+    firstCurrency(todayCosts)
   const remainingAmount = sumField(wallets, 'balance')
   const monthlyCostAmount = sumField(monthlyCosts, 'amount')
   const todayCostAmount = sumField(todayCosts, 'amount')
+  const totalCostAmount = sumField(totalCosts, 'amount')
   const monthlyUsedTokens = Math.max(0, Number(input.monthlyUsedTokens || 0))
-  const totalAmount = remainingAmount + monthlyCostAmount
+  const requestCount = Math.max(0, Number(input.requestCount || 0))
+  const totalAmount =
+    remainingAmount +
+    (totalCostAmount > 0 ? totalCostAmount : monthlyCostAmount)
   const remainingPercent =
     totalAmount > 0
-      ? Math.min(100, Math.max(0, Math.round((remainingAmount / totalAmount) * 100)))
+      ? Math.min(
+          100,
+          Math.max(0, Math.round((remainingAmount / totalAmount) * 100))
+        )
       : 0
 
   return {
@@ -108,12 +124,15 @@ export function buildDeepSeekMoneyUsage(
     remainingAmount,
     monthlyCostAmount,
     todayCostAmount,
+    totalCostAmount,
     monthlyUsedTokens,
+    requestCount,
     totalAmount,
     remainingPercent,
     remainingLabel: formatCurrencyAmount(currency, remainingAmount),
     monthlyCostLabel: formatCurrencyAmount(currency, monthlyCostAmount),
     todayCostLabel: formatCurrencyAmount(currency, todayCostAmount),
+    totalCostLabel: formatCurrencyAmount(currency, totalCostAmount),
     monthlyTokenLabel:
       monthlyUsedTokens > 0 ? formatTokens(monthlyUsedTokens) : '-',
     monthlyTokenDetail:

@@ -10,6 +10,8 @@ describe('quota binding form payload', () => {
       name: 'glm1',
       note: 'note',
       request_curl: '',
+      usage_amount_curl: '',
+      usage_cost_curl: '',
       refresh_token: '',
       proxy: '',
       enabled: true,
@@ -19,6 +21,8 @@ describe('quota binding form payload', () => {
     })
 
     assert.equal('request_curl' in payload, false)
+    assert.equal('usage_amount_curl' in payload, false)
+    assert.equal('usage_cost_curl' in payload, false)
     assert.equal('refresh_token' in payload, false)
     assert.equal('proxy' in payload, false)
   })
@@ -29,6 +33,8 @@ describe('quota binding form payload', () => {
       name: 'glm1',
       note: '',
       request_curl: '',
+      usage_amount_curl: '',
+      usage_cost_curl: '',
       refresh_token: '',
       proxy: '',
       proxy_touched: true,
@@ -43,11 +49,13 @@ describe('quota binding form payload', () => {
     assert.equal('refresh_token' in payload, false)
   })
 
-  test('includes curl and proxy when creating a binding', () => {
+  test('includes all DeepSeek curls and proxy when creating a binding', () => {
     const payload = buildQuotaBindingSavePayload({
       name: 'deepseek1',
       note: '',
-      request_curl: '  curl https://platform.deepseek.com  ',
+      request_curl: '  curl https://platform.deepseek.com/summary  ',
+      usage_amount_curl: '  curl https://platform.deepseek.com/amount  ',
+      usage_cost_curl: '  curl https://platform.deepseek.com/cost  ',
       refresh_token: '',
       proxy: '  http://127.0.0.1:7990  ',
       enabled: true,
@@ -56,7 +64,18 @@ describe('quota binding form payload', () => {
       weekly_limit_tokens: 0,
     })
 
-    assert.equal(payload.request_curl, 'curl https://platform.deepseek.com')
+    assert.equal(
+      payload.request_curl,
+      'curl https://platform.deepseek.com/summary'
+    )
+    assert.equal(
+      payload.usage_amount_curl,
+      'curl https://platform.deepseek.com/amount'
+    )
+    assert.equal(
+      payload.usage_cost_curl,
+      'curl https://platform.deepseek.com/cost'
+    )
     assert.equal(payload.refresh_token, '')
     assert.equal(payload.proxy, 'http://127.0.0.1:7990')
   })
@@ -67,6 +86,8 @@ describe('quota binding form payload', () => {
       name: 'kimi1',
       note: '',
       request_curl: '',
+      usage_amount_curl: '',
+      usage_cost_curl: '',
       refresh_token: '  refresh-token-value  ',
       refresh_token_touched: true,
       proxy: '',
