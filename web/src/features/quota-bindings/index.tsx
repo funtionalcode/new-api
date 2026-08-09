@@ -576,16 +576,13 @@ function VolcengineUsageBar(props: {
         value={hasQuota ? props.window.percent : 0}
         className={cn('h-1.5', progressColor(props.window.percent))}
       />
-      <span className='text-muted-foreground truncate font-mono text-xs'>
-        {hasQuota
-          ? `${formatVolcengineAFP(props.window.used)} / ${formatVolcengineAFP(props.window.quota)} AFP`
-          : '-'}
-      </span>
     </div>
   )
 }
 
-function VolcengineUsageCells(props: { binding: VolcengineQuotaBinding }) {
+export function VolcengineUsageCells(props: {
+  binding: VolcengineQuotaBinding
+}) {
   const { t } = useTranslation()
   const summary = buildVolcengineQuotaUsageSummary(props.binding)
   const labels = {
@@ -603,7 +600,7 @@ function VolcengineUsageCells(props: { binding: VolcengineQuotaBinding }) {
       <TooltipProvider delay={150}>
         <Tooltip>
           <TooltipTrigger
-            render={<div className='max-w-[560px] cursor-help' />}
+            render={<div className='max-w-[560px] cursor-help' tabIndex={0} />}
           >
             <div className='grid min-w-[420px] gap-2 md:grid-cols-3'>
               {summary.visibleWindows.map((window) => (
