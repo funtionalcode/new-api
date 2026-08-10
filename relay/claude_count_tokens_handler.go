@@ -62,12 +62,11 @@ func ClaudeCountTokensHelper(c *gin.Context, info *relaycommon.RelayInfo) *types
 		return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 	}
 
-	requestBody, size, closer, err := relaycommon.NewOutboundJSONBody(mappedBody)
+	requestBody, closer, err := relaycommon.NewOutboundJSONBody(mappedBody)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 	}
 	defer closer.Close()
-	info.UpstreamRequestBodySize = size
 
 	response, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {

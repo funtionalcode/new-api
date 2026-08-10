@@ -389,7 +389,7 @@ func TestOpenAIChatRequestToClaudeMessages_ClaudeFableOmitsDeprecatedSamplingPar
 		},
 	}
 
-	claudeRequest, err := relayconvert.OpenAIChatRequestToClaudeMessages(nil, request)
+	claudeRequest, err := relayconvert.OpenAIChatRequestToClaudeMessages(nil, &relaycommon.RelayInfo{}, request)
 
 	require.NoError(t, err)
 	require.Equal(t, "claude-fable", claudeRequest.Model)

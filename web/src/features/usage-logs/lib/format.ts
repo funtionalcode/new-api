@@ -167,8 +167,29 @@ export function parseLogOther(other: string): LogOtherData | null {
   }
 }
 
-export function isWebsocketLog(other: LogOtherData | null | undefined): boolean {
+export function isWebsocketLog(
+  other: LogOtherData | null | undefined
+): boolean {
   return other?.ws === true || other?.transport === 'websocket'
+}
+
+export function getReasoningEffortVariant(
+  effort: string | undefined
+): StatusBadgeProps['variant'] {
+  switch (effort?.trim().toLowerCase()) {
+    case 'max':
+    case 'xhigh':
+    case 'high':
+      return 'orange'
+    case 'medium':
+      return 'yellow'
+    case 'low':
+    case 'minimal':
+      return 'green'
+    case 'none':
+    default:
+      return 'grey'
+  }
 }
 
 /**
