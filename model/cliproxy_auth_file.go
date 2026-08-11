@@ -33,6 +33,8 @@ type CliproxyAuthFileBinding struct {
 	LastCodexFiveHourResetAt     int64  `json:"last_codex_five_hour_reset_at" gorm:"bigint;default:0"`
 	LastCodexWeeklyPercent       int    `json:"last_codex_weekly_percent" gorm:"default:0"`
 	LastCodexWeeklyResetAt       int64  `json:"last_codex_weekly_reset_at" gorm:"bigint;default:0"`
+	LastClaudeFablePercent       int    `json:"last_claude_fable_percent" gorm:"default:0"`
+	LastClaudeFableResetAt       int64  `json:"last_claude_fable_reset_at" gorm:"bigint;default:0"`
 	LastXAIWeeklyPercent         int    `json:"last_xai_weekly_percent" gorm:"default:0"`
 	LastXAIWeeklyPeriodStartAt   int64  `json:"last_xai_weekly_period_start_at" gorm:"bigint;default:0"`
 	LastXAIWeeklyPeriodEndAt     int64  `json:"last_xai_weekly_period_end_at" gorm:"bigint;default:0"`
@@ -77,6 +79,8 @@ type CliproxyUsageRefreshUpdate struct {
 	LastCodexFiveHourResetAt     int64
 	LastCodexWeeklyPercent       int
 	LastCodexWeeklyResetAt       int64
+	LastClaudeFablePercent       int
+	LastClaudeFableResetAt       int64
 	LastXAIWeeklyPercent         int
 	LastXAIWeeklyPeriodStartAt   int64
 	LastXAIWeeklyPeriodEndAt     int64
@@ -271,6 +275,8 @@ func UpdateCliproxyAuthFileBinding(id int, update CliproxyAuthFileBindingUpdate)
 		LastCodexFiveHourResetAt:     binding.LastCodexFiveHourResetAt,
 		LastCodexWeeklyPercent:       binding.LastCodexWeeklyPercent,
 		LastCodexWeeklyResetAt:       binding.LastCodexWeeklyResetAt,
+		LastClaudeFablePercent:       binding.LastClaudeFablePercent,
+		LastClaudeFableResetAt:       binding.LastClaudeFableResetAt,
 		LastXAIWeeklyPercent:         binding.LastXAIWeeklyPercent,
 		LastXAIWeeklyPeriodStartAt:   binding.LastXAIWeeklyPeriodStartAt,
 		LastXAIWeeklyPeriodEndAt:     binding.LastXAIWeeklyPeriodEndAt,
@@ -303,6 +309,8 @@ func UpdateCliproxyAuthFileBindingUsage(id int, update CliproxyUsageRefreshUpdat
 		update.LastCodexFiveHourResetAt = binding.LastCodexFiveHourResetAt
 		update.LastCodexWeeklyPercent = binding.LastCodexWeeklyPercent
 		update.LastCodexWeeklyResetAt = binding.LastCodexWeeklyResetAt
+		update.LastClaudeFablePercent = binding.LastClaudeFablePercent
+		update.LastClaudeFableResetAt = binding.LastClaudeFableResetAt
 		update.LastXAIWeeklyPercent = binding.LastXAIWeeklyPercent
 		update.LastXAIWeeklyPeriodStartAt = binding.LastXAIWeeklyPeriodStartAt
 		update.LastXAIWeeklyPeriodEndAt = binding.LastXAIWeeklyPeriodEndAt
@@ -340,6 +348,8 @@ func UpdateCliproxyAuthFileBindingUsage(id int, update CliproxyUsageRefreshUpdat
 		LastCodexFiveHourResetAt:     update.LastCodexFiveHourResetAt,
 		LastCodexWeeklyPercent:       update.LastCodexWeeklyPercent,
 		LastCodexWeeklyResetAt:       update.LastCodexWeeklyResetAt,
+		LastClaudeFablePercent:       update.LastClaudeFablePercent,
+		LastClaudeFableResetAt:       update.LastClaudeFableResetAt,
 		LastXAIWeeklyPercent:         update.LastXAIWeeklyPercent,
 		LastXAIWeeklyPeriodStartAt:   update.LastXAIWeeklyPeriodStartAt,
 		LastXAIWeeklyPeriodEndAt:     update.LastXAIWeeklyPeriodEndAt,

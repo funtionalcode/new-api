@@ -173,6 +173,8 @@ function createBinding(
     last_codex_five_hour_reset_at: 0,
     last_codex_weekly_percent: 0,
     last_codex_weekly_reset_at: 0,
+    last_claude_fable_percent: 0,
+    last_claude_fable_reset_at: 0,
     last_xai_weekly_percent: 0,
     last_xai_weekly_period_start_at: 0,
     last_xai_weekly_period_end_at: 0,

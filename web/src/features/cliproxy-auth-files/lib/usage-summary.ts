@@ -3,6 +3,7 @@ import type { CliproxyAuthFileBinding } from '../types'
 export type CliproxyUsageWindowKey =
   | 'fiveHour'
   | 'weekly'
+  | 'fable'
   | 'codexFiveHour'
   | 'codexWeekly'
 
@@ -26,6 +27,8 @@ export type CliproxyUsageSummaryInput = Pick<
   | 'last_codex_five_hour_reset_at'
   | 'last_codex_weekly_percent'
   | 'last_codex_weekly_reset_at'
+  | 'last_claude_fable_percent'
+  | 'last_claude_fable_reset_at'
   | 'last_xai_on_demand_cap'
   | 'last_xai_billing_period_end_at'
   | 'last_error'
@@ -124,9 +127,7 @@ export function buildCliproxyXAIUsageSummary(
   const includedUsedCents = Math.min(usedCents, quotaCents)
   const monthlyRemainingCents = Math.max(0, quotaCents - includedUsedCents)
   const monthlyUsedPercent =
-    quotaCents > 0
-      ? Math.round((includedUsedCents / quotaCents) * 100)
-      : 0
+    quotaCents > 0 ? Math.round((includedUsedCents / quotaCents) * 100) : 0
   const explicitOnDemandUsedCents = normalizeCents(
     binding.last_xai_on_demand_used
   )
@@ -179,12 +180,14 @@ export function buildCliproxyXAIUsageSummary(
 }
 
 export function buildCliproxyUsageSummary(
-  binding: CliproxyUsageSummaryInput
+  binding: CliproxyUsageSummaryInput,
+  provider: 'claude' | 'codex'
 ): CliproxyUsageSummary {
   const hasUsageWindow =
     binding.last_refreshed_at > 0 ||
     binding.last_five_hour_reset_at > 0 ||
     binding.last_weekly_reset_at > 0 ||
+    binding.last_claude_fable_reset_at > 0 ||
     binding.last_codex_five_hour_reset_at > 0 ||
     binding.last_codex_weekly_reset_at > 0
 
@@ -208,6 +211,24 @@ export function buildCliproxyUsageSummary(
       resetAt: binding.last_weekly_reset_at,
     },
   ]
+
+  if (provider === 'claude') {
+    if (
+      binding.last_claude_fable_percent > 0 ||
+      binding.last_claude_fable_reset_at > 0
+    ) {
+      primaryWindows.push({
+        key: 'fable',
+        percent: binding.last_claude_fable_percent,
+        resetAt: binding.last_claude_fable_reset_at,
+      })
+    }
+    return {
+      hasUsageWindow: true,
+      primaryWindows,
+      detailWindows: primaryWindows,
+    }
+  }
 
   return {
     hasUsageWindow: true,

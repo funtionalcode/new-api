@@ -119,6 +119,15 @@ func TestCliproxyAuthFileBindingUsesStableXAIProductUsageColumn(t *testing.T) {
 	require.False(t, db.Migrator().HasColumn(&CliproxyAuthFileBinding{}, "last_xa_iproduct_usage"))
 }
 
+func TestCliproxyAuthFileBindingMigratesClaudeFableUsageColumns(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&CliproxyAuthFileBinding{}))
+
+	require.True(t, db.Migrator().HasColumn(&CliproxyAuthFileBinding{}, "last_claude_fable_percent"))
+	require.True(t, db.Migrator().HasColumn(&CliproxyAuthFileBinding{}, "last_claude_fable_reset_at"))
+}
+
 func TestMigrateCliproxyAuthFileBindingNoteRenamesLegacyDescription(t *testing.T) {
 	originalDB := DB
 	originalMainDatabaseType := common.MainDatabaseType()
@@ -188,6 +197,8 @@ func TestUpdateCliproxyAuthFileBindingUsagePreservesLastUsageOnError(t *testing.
 		LastCodexFiveHourResetAt:     1783340000,
 		LastCodexWeeklyPercent:       67,
 		LastCodexWeeklyResetAt:       1783940000,
+		LastClaudeFablePercent:       72,
+		LastClaudeFableResetAt:       1784026400,
 		LastXAIWeeklyPercent:         45,
 		LastXAIWeeklyPeriodStartAt:   1783599360,
 		LastXAIWeeklyPeriodEndAt:     1784204160,
@@ -216,6 +227,8 @@ func TestUpdateCliproxyAuthFileBindingUsagePreservesLastUsageOnError(t *testing.
 	require.Equal(t, int64(1783340000), binding.LastCodexFiveHourResetAt)
 	require.Equal(t, 67, binding.LastCodexWeeklyPercent)
 	require.Equal(t, int64(1783940000), binding.LastCodexWeeklyResetAt)
+	require.Equal(t, 72, binding.LastClaudeFablePercent)
+	require.Equal(t, int64(1784026400), binding.LastClaudeFableResetAt)
 	require.Equal(t, 45, binding.LastXAIWeeklyPercent)
 	require.Equal(t, int64(1783599360), binding.LastXAIWeeklyPeriodStartAt)
 	require.Equal(t, int64(1784204160), binding.LastXAIWeeklyPeriodEndAt)

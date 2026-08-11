@@ -68,6 +68,8 @@ type cliproxyUsageRefreshBody struct {
 	CodexFiveHourResetAt     int64
 	CodexWeeklyPercent       int
 	CodexWeeklyResetAt       int64
+	ClaudeFablePercent       int
+	ClaudeFableResetAt       int64
 	OnDemandCap              int
 	BillingPeriodEndAt       int64
 	XAIWeeklyPercent         int
@@ -270,6 +272,8 @@ func RefreshCliproxyAuthFileBindingUsage(c *gin.Context) {
 		LastCodexFiveHourResetAt:  usage.CodexFiveHourResetAt,
 		LastCodexWeeklyPercent:    usage.CodexWeeklyPercent,
 		LastCodexWeeklyResetAt:    usage.CodexWeeklyResetAt,
+		LastClaudeFablePercent:    usage.ClaudeFablePercent,
+		LastClaudeFableResetAt:    usage.ClaudeFableResetAt,
 		LastXAIOnDemandCap:        usage.OnDemandCap,
 		LastXAIBillingPeriodEndAt: usage.BillingPeriodEndAt,
 		LastError:                 "",
@@ -527,19 +531,21 @@ func extractCliproxyUsage(result *service.CliproxyAPICallResponse) (cliproxyUsag
 		return xaiUsage, nil
 	}
 	fiveHourWindow, weeklyWindow := resolveCliproxyUsageWindows(body)
-	claudeFiveHourWindow, claudeWeeklyWindow := resolveCliproxyClaudeUsageWindows(body)
-	if len(fiveHourWindow) == 0 && len(weeklyWindow) == 0 && len(claudeFiveHourWindow) == 0 && len(claudeWeeklyWindow) == 0 && stringFromMap(body, "plan_type") == "" {
+	claudeFiveHourWindow, claudeWeeklyWindow, claudeFableWindow := resolveCliproxyClaudeUsageWindows(body)
+	if len(fiveHourWindow) == 0 && len(weeklyWindow) == 0 && len(claudeFiveHourWindow) == 0 && len(claudeWeeklyWindow) == 0 && len(claudeFableWindow) == 0 && stringFromMap(body, "plan_type") == "" {
 		return cliproxyUsageRefreshBody{}, fmt.Errorf("刷新结果格式无效")
 	}
-	if len(claudeFiveHourWindow) > 0 || len(claudeWeeklyWindow) > 0 {
+	if len(claudeFiveHourWindow) > 0 || len(claudeWeeklyWindow) > 0 || len(claudeFableWindow) > 0 {
 		return cliproxyUsageRefreshBody{
-			UsedTokens:      intFromMap(body, "used_tokens"),
-			Quota:           intFromMap(body, "quota"),
-			PlanType:        firstNonEmpty(stringFromMap(body, "plan_type"), "claude"),
-			FiveHourPercent: percentFromWindow(claudeFiveHourWindow),
-			FiveHourResetAt: resetAtFromWindow(claudeFiveHourWindow),
-			WeeklyPercent:   percentFromWindow(claudeWeeklyWindow),
-			WeeklyResetAt:   resetAtFromWindow(claudeWeeklyWindow),
+			UsedTokens:         intFromMap(body, "used_tokens"),
+			Quota:              intFromMap(body, "quota"),
+			PlanType:           firstNonEmpty(stringFromMap(body, "plan_type"), "claude"),
+			FiveHourPercent:    percentFromWindow(claudeFiveHourWindow),
+			FiveHourResetAt:    resetAtFromWindow(claudeFiveHourWindow),
+			WeeklyPercent:      percentFromWindow(claudeWeeklyWindow),
+			WeeklyResetAt:      resetAtFromWindow(claudeWeeklyWindow),
+			ClaudeFablePercent: percentFromWindow(claudeFableWindow),
+			ClaudeFableResetAt: resetAtFromWindow(claudeFableWindow),
 		}, nil
 	}
 	codexFiveHourWindow, codexWeeklyWindow := resolveCliproxyCodexUsageWindows(body)
@@ -579,8 +585,69 @@ func resolveCliproxyCodexUsageWindows(body map[string]any) (map[string]any, map[
 	return nil, nil
 }
 
-func resolveCliproxyClaudeUsageWindows(body map[string]any) (map[string]any, map[string]any) {
-	return mapFromMap(body, "five_hour"), mapFromMap(body, "seven_day")
+func resolveCliproxyClaudeUsageWindows(body map[string]any) (map[string]any, map[string]any, map[string]any) {
+	fiveHourWindow := mapFromMap(body, "five_hour")
+	weeklyWindow := mapFromMap(body, "seven_day")
+	var fableWindow map[string]any
+
+	for _, item := range sliceFromMap(body, "limits") {
+		limit, ok := item.(map[string]any)
+		if !ok || !hasCliproxyUsageWindowData(limit) {
+			continue
+		}
+
+		kind := normalizeCliproxyPlan(stringFromMap(limit, "kind"))
+		group := normalizeCliproxyPlan(stringFromMap(limit, "group"))
+		scope := mapFromMap(limit, "scope")
+		if len(scope) == 0 {
+			if active, activeSet := boolFromMap(limit, "is_active"); activeSet && !active {
+				continue
+			}
+			if active, activeSet := boolFromMap(limit, "isActive"); activeSet && !active {
+				continue
+			}
+			if len(fiveHourWindow) == 0 && kind == "session" && (group == "" || group == "session") {
+				fiveHourWindow = limit
+			}
+			if len(weeklyWindow) == 0 && (kind == "weekly" || kind == "weeklyall") && (group == "" || group == "weekly" || group == "weeklyall") {
+				weeklyWindow = limit
+			}
+			continue
+		}
+
+		isWeeklyScoped := kind == "weeklyscoped" || kind == "weeklymodelscoped" || (kind == "modelscoped" && group == "weekly")
+		if !isWeeklyScoped || (group != "" && group != "weekly") {
+			continue
+		}
+		modelData := mapFromMap(scope, "model")
+		displayName := firstStringFromMap(modelData, "display_name", "displayName", "name")
+		if displayName == "" {
+			displayName = firstStringFromMap(mapFromMap(modelData, "details"), "display_name", "displayName", "name")
+		}
+		if !strings.Contains(strings.ToLower(displayName), "fable") {
+			continue
+		}
+
+		if len(fableWindow) == 0 {
+			fableWindow = limit
+			continue
+		}
+		candidateResetAt := resetAtFromWindow(limit)
+		currentResetAt := resetAtFromWindow(fableWindow)
+		candidateActive, candidateActiveSet := boolFromMap(limit, "is_active")
+		if !candidateActiveSet {
+			candidateActive, candidateActiveSet = boolFromMap(limit, "isActive")
+		}
+		currentActive, currentActiveSet := boolFromMap(fableWindow, "is_active")
+		if !currentActiveSet {
+			currentActive, currentActiveSet = boolFromMap(fableWindow, "isActive")
+		}
+		if candidateResetAt > currentResetAt || (candidateResetAt == currentResetAt && candidateActiveSet && candidateActive && (!currentActiveSet || !currentActive)) {
+			fableWindow = limit
+		}
+	}
+
+	return fiveHourWindow, weeklyWindow, fableWindow
 }
 
 func resolveCliproxyXAIUsage(body map[string]any) (cliproxyUsageRefreshBody, bool) {
@@ -725,27 +792,42 @@ func percentFromWindow(data map[string]any) int {
 	if percent == 0 {
 		percent = float64FromMap(data, "utilization")
 	}
+	if percent == 0 {
+		percent = float64FromMap(data, "percent")
+	}
 	return int(math.Round(percent))
 }
 
 func resetAtFromWindow(data map[string]any) int64 {
-	if data == nil {
-		return 0
+	for _, key := range []string{"reset_at", "resets_at", "resetAt", "resetsAt"} {
+		rawValue, ok := data[key]
+		if !ok {
+			continue
+		}
+		if value := int64(numberFromValue(rawValue)); value > 0 {
+			if value >= 1_000_000_000_000 {
+				return value / 1000
+			}
+			return value
+		}
+		raw := strings.TrimSpace(fmt.Sprintf("%v", rawValue))
+		if parsed := unixFromRFC3339(raw); parsed > 0 {
+			return parsed
+		}
 	}
-	if value := int64FromMap(data, "reset_at"); value > 0 {
-		return value
+	return 0
+}
+
+func hasCliproxyUsageWindowData(data map[string]any) bool {
+	if resetAtFromWindow(data) > 0 {
+		return true
 	}
-	raw := stringFromMap(data, "resets_at")
-	if raw == "" {
-		return 0
+	for _, key := range []string{"used_percent", "utilization", "percent"} {
+		if _, ok := data[key]; ok {
+			return true
+		}
 	}
-	if parsed, err := time.Parse(time.RFC3339, raw); err == nil {
-		return parsed.Unix()
-	}
-	if parsed, err := time.Parse(time.RFC3339Nano, raw); err == nil {
-		return parsed.Unix()
-	}
-	return int64FromMap(data, "resets_at")
+	return false
 }
 
 func isCliproxyClaudeAuthFile(binding *model.CliproxyAuthFileBinding) bool {

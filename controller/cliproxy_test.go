@@ -38,6 +38,18 @@ func TestExtractCliproxyUsageSupportsClaudeUsagePayload(t *testing.T) {
 				"utilization": "10",
 				"resets_at":   "2026-06-18T10:00:00Z",
 			},
+			"limits": []any{
+				map[string]any{
+					"kind":      "weekly_scoped",
+					"group":     "weekly",
+					"percent":   float64(72),
+					"resets_at": "2026-06-19T10:00:00Z",
+					"scope": map[string]any{
+						"model": map[string]any{"display_name": "Fable 5 Max"},
+					},
+					"is_active": true,
+				},
+			},
 		},
 	}
 
@@ -48,6 +60,49 @@ func TestExtractCliproxyUsageSupportsClaudeUsagePayload(t *testing.T) {
 	require.Equal(t, time.Date(2026, 6, 11, 10, 0, 0, 0, time.UTC).Unix(), usage.FiveHourResetAt)
 	require.Equal(t, 10, usage.WeeklyPercent)
 	require.Equal(t, time.Date(2026, 6, 18, 10, 0, 0, 0, time.UTC).Unix(), usage.WeeklyResetAt)
+	require.Equal(t, 72, usage.ClaudeFablePercent)
+	require.Equal(t, time.Date(2026, 6, 19, 10, 0, 0, 0, time.UTC).Unix(), usage.ClaudeFableResetAt)
+}
+
+func TestExtractCliproxyUsageSupportsClaudeLimitsOnlyPayload(t *testing.T) {
+	result := &service.CliproxyAPICallResponse{
+		Body: map[string]any{
+			"limits": []any{
+				map[string]any{
+					"kind":      "session",
+					"group":     "session",
+					"percent":   "18",
+					"resets_at": "2026-07-01T10:00:00Z",
+					"is_active": true,
+				},
+				map[string]any{
+					"kind":     "weekly_all",
+					"group":    "weekly",
+					"percent":  float64(34),
+					"resetsAt": float64(1783418400000),
+					"isActive": true,
+				},
+				map[string]any{
+					"kind":     "weekly_scoped",
+					"group":    "weekly",
+					"percent":  float64(56),
+					"reset_at": "2026-07-08T10:00:00Z",
+					"scope": map[string]any{
+						"model": map[string]any{"displayName": "Fable 5 Max"},
+					},
+				},
+			},
+		},
+	}
+
+	usage, err := extractCliproxyUsage(result)
+	require.NoError(t, err)
+	require.Equal(t, 18, usage.FiveHourPercent)
+	require.Equal(t, time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC).Unix(), usage.FiveHourResetAt)
+	require.Equal(t, 34, usage.WeeklyPercent)
+	require.Equal(t, int64(1783418400), usage.WeeklyResetAt)
+	require.Equal(t, 56, usage.ClaudeFablePercent)
+	require.Equal(t, time.Date(2026, 7, 8, 10, 0, 0, 0, time.UTC).Unix(), usage.ClaudeFableResetAt)
 }
 
 func TestBuildCliproxyUsageRefreshRequestUsesClaudeOAuthUsage(t *testing.T) {

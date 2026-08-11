@@ -62,6 +62,8 @@ export interface CliproxyAuthFileBinding {
   last_codex_five_hour_reset_at: number
   last_codex_weekly_percent: number
   last_codex_weekly_reset_at: number
+  last_claude_fable_percent: number
+  last_claude_fable_reset_at: number
   last_xai_weekly_percent: number
   last_xai_weekly_period_start_at: number
   last_xai_weekly_period_end_at: number

@@ -287,12 +287,14 @@ function usageWindowLabel(
   labels: {
     fiveHour: string
     weekly: string
+    fable: string
     codexFiveHour: string
     codexWeekly: string
   }
 ): string {
   if (key === 'fiveHour') return labels.fiveHour
   if (key === 'weekly') return labels.weekly
+  if (key === 'fable') return labels.fable
   if (key === 'codexFiveHour') return labels.codexFiveHour
   return labels.codexWeekly
 }
@@ -318,6 +320,7 @@ function BindingUsageCell({
   labels: {
     fiveHour: string
     weekly: string
+    fable: string
     codexFiveHour: string
     codexWeekly: string
     reset: string
@@ -417,7 +420,7 @@ function BindingUsageCell({
     )
   }
 
-  const summary = buildCliproxyUsageSummary(binding)
+  const summary = buildCliproxyUsageSummary(binding, type)
 
   if (!summary.hasUsageWindow) {
     return (
@@ -1199,6 +1202,7 @@ function BindingTable({
                       labels={{
                         fiveHour: t('5-Hour Window'),
                         weekly: t('Weekly Window'),
+                        fable: 'Fable',
                         codexFiveHour: `Codex ${t('5-Hour Window')}`,
                         codexWeekly: `Codex ${t('Weekly Window')}`,
                         reset: t('Reset'),
