@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { BrainCircuitIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { useTranslation } from 'react-i18next'
 
 import { StatusBadge } from '@/components/status-badge'
@@ -34,39 +36,47 @@ export function UsageLogModelCell(props: { log: UsageLog }) {
   const other = parseLogOther(props.log.other)
   const modelInfo = formatModelName(props.log)
   const reasoningEffort = other?.reasoning_effort?.trim()
+  const reasoningEffortLabel = reasoningEffort
+    ? `${t('Reasoning Effort')}: ${reasoningEffort}`
+    : undefined
   const showWebsocketBadge = isWebsocketLog(other)
 
   return (
-    <div className='flex w-fit max-w-full flex-col gap-0.5'>
+    <div className='flex w-fit max-w-full items-center gap-1'>
       <ModelBadge
         modelName={modelInfo.name}
         actualModel={modelInfo.actualModel}
       />
-      {reasoningEffort || showWebsocketBadge ? (
-        <div className='flex max-w-full flex-wrap items-center gap-1'>
-          {reasoningEffort ? (
-            <StatusBadge
-              label={`${t('Reasoning Effort')}: ${reasoningEffort}`}
-              variant={getReasoningEffortVariant(reasoningEffort)}
-              size='sm'
-              copyable={false}
-              showDot={false}
-              className='border-border/60 bg-muted/30 h-5 max-w-full border px-1.5 font-mono text-[11px]'
-            />
-          ) : null}
-          {showWebsocketBadge ? (
-            <StatusBadge
-              label='WS'
-              variant='blue'
-              size='sm'
-              copyable={false}
-              showDot={false}
-              title='WebSocket'
-              aria-label='WebSocket'
-              className='border-border/60 bg-muted/30 h-5 w-fit border px-1.5 font-mono text-[11px]'
-            />
-          ) : null}
-        </div>
+      {reasoningEffort ? (
+        <StatusBadge
+          variant={getReasoningEffortVariant(reasoningEffort)}
+          size='sm'
+          copyable={false}
+          showDot={false}
+          title={reasoningEffortLabel}
+          aria-label={reasoningEffortLabel}
+          role='img'
+          data-reasoning-effort={reasoningEffort}
+          className='border-border/60 bg-muted/30 size-5 shrink-0 cursor-help justify-center border p-0 [&>svg]:size-3.5'
+        >
+          <HugeiconsIcon
+            icon={BrainCircuitIcon}
+            strokeWidth={2}
+            aria-hidden='true'
+          />
+        </StatusBadge>
+      ) : null}
+      {showWebsocketBadge ? (
+        <StatusBadge
+          label='WS'
+          variant='blue'
+          size='sm'
+          copyable={false}
+          showDot={false}
+          title='WebSocket'
+          aria-label='WebSocket'
+          className='border-border/60 bg-muted/30 h-5 w-fit border px-1.5 font-mono text-[11px]'
+        />
       ) : null}
     </div>
   )

@@ -109,7 +109,7 @@ describe('usage log model reasoning effort', () => {
     domWindow.close()
   })
 
-  test('shows the reasoning effort next to the model metadata', async () => {
+  test('shows the reasoning effort as an accessible icon next to the model', async () => {
     const container = document.createElement('div')
     document.body.append(container)
     const root = createRoot(container)
@@ -124,10 +124,24 @@ describe('usage log model reasoning effort', () => {
       )
     })
 
+    const reasoningIndicator = container.querySelector(
+      '[data-reasoning-effort="high"]'
+    )
+
     assert.equal(container.textContent?.includes('gpt-5.4'), true)
+    assert.ok(reasoningIndicator)
+    assert.equal(
+      reasoningIndicator.getAttribute('title'),
+      'Reasoning Effort: high'
+    )
+    assert.equal(
+      reasoningIndicator.getAttribute('aria-label'),
+      'Reasoning Effort: high'
+    )
+    assert.ok(reasoningIndicator.querySelector('svg'))
     assert.equal(
       container.textContent?.includes('Reasoning Effort: high'),
-      true
+      false
     )
 
     await act(async () => root.unmount())
@@ -148,7 +162,7 @@ describe('usage log model reasoning effort', () => {
     })
 
     assert.equal(container.textContent?.includes('gpt-5.4'), true)
-    assert.equal(container.textContent?.includes('Reasoning Effort:'), false)
+    assert.equal(container.querySelector('[data-reasoning-effort]'), null)
 
     await act(async () => root.unmount())
     container.remove()
