@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -91,7 +92,7 @@ func markAuditLogged(c *gin.Context) {
 // recordManageAudit 记录一条由操作者本人归属的管理/高危审计日志（资源类操作：
 // 渠道 / 系统设置 / 兑换码等）。content 由 action+params 自动渲染。
 func recordManageAudit(c *gin.Context, action string, params map[string]interface{}) {
-	recordManageAuditFor(c, c.GetInt("id"), action, params)
+	recordManageAuditFor(c, 0, action, params)
 }
 
 // recordManageAuditFor 记录一条管理审计日志，日志归属于操作者；targetUserId
@@ -101,8 +102,17 @@ func recordManageAuditFor(c *gin.Context, targetUserId int, action string, param
 		params = map[string]interface{}{}
 	}
 	operatorUserId := c.GetInt("id")
-	if _, ok := params["target_user_id"]; !ok && targetUserId > 0 && targetUserId != operatorUserId {
-		params["target_user_id"] = targetUserId
+	if targetUserId > 0 {
+		if _, ok := params["target_user_id"]; !ok {
+			params["target_user_id"] = targetUserId
+		}
+		if _, ok := params["target_username"]; !ok {
+			if username, err := model.GetUsernameById(targetUserId, false); err == nil && username != "" {
+				params["target_username"] = username
+			} else if username, ok := params["username"].(string); ok && strings.TrimSpace(username) != "" {
+				params["target_username"] = username
+			}
+		}
 	}
 	model.RecordOperationAuditLog(operatorUserId, auditContentEN(action, params), common.GetClientIP(c), action, params, auditOperatorInfo(c), nil)
 	markAuditLogged(c)

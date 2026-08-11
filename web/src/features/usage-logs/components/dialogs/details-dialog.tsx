@@ -47,6 +47,7 @@ import {
   Globe,
   ShieldCheck,
   UserCog,
+  User,
   Info,
   LogIn,
 } from 'lucide-react'
@@ -69,6 +70,10 @@ import {
 import { cn } from '@/lib/utils'
 
 import type { UsageLog } from '../../data/schema'
+import {
+  formatAuditIdentity,
+  getManageTargetUserLabel,
+} from '../../lib/audit-identity'
 import {
   parseLogOther,
   getParamOverrideActionLabel,
@@ -625,17 +630,15 @@ export function DetailsDialog(props: DetailsDialogProps) {
     isTopup &&
     props.isAdmin &&
     (topupAuditFields.length > 0 || showLegacyTopupWarning)
-  const manageOperator = (() => {
-    if (!isManage || !props.isAdmin || !adminInfo) return null
-    const username = adminInfo.admin_username
-    const id = adminInfo.admin_id
-    const hasUsername = username != null && String(username).trim() !== ''
-    const hasId = id != null && String(id).trim() !== ''
-    if (!hasUsername && !hasId) return null
-    if (hasUsername && hasId) return `${username} (ID: ${id})`
-    if (hasUsername) return String(username)
-    return `ID: ${id}`
-  })()
+  const manageOperator =
+    isManage && props.isAdmin && adminInfo
+      ? formatAuditIdentity(adminInfo.admin_username, adminInfo.admin_id)
+      : null
+  // Target user of a manage operation (e.g. quota adjust / user update). Prefer
+  // the dedicated target_* fields; fall back to user.* action params that already
+  // carry username/id for historical records.
+  const manageTargetUser =
+    isManage && props.isAdmin ? getManageTargetUserLabel(other) : null
   const authMethodLabel = (() => {
     if (!isManage || !props.isAdmin || !adminInfo?.auth_method) return ''
     if (adminInfo.auth_method === 'access_token') return t('Access Token')
@@ -1108,7 +1111,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
           </DetailSection>
         )}
 
-        {/* Manage operator (type=3, admin only) */}
+        {/* Manage operator / target user (type=3, admin only) */}
         {manageOperator && (
           <DetailRow
             label={
@@ -1121,6 +1124,21 @@ export function DetailsDialog(props: DetailsDialogProps) {
               </span>
             }
             value={manageOperator}
+            mono
+          />
+        )}
+        {manageTargetUser && (
+          <DetailRow
+            label={
+              <span className='flex items-center gap-1.5'>
+                <User
+                  className='text-muted-foreground size-3.5'
+                  aria-hidden='true'
+                />
+                {t('Target User')}
+              </span>
+            }
+            value={manageTargetUser}
             mono
           />
         )}

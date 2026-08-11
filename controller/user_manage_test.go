@@ -160,6 +160,36 @@ func TestManageUserDeleteReturnsImmediatelyAndUnknownActionFails(t *testing.T) {
 	assert.Equal(t, common.UserStatusEnabled, unchanged.Status)
 }
 
+func TestManageUserQuotaAuditIncludesTargetUserWhenOperatorUpdatesSelf(t *testing.T) {
+	db := setupManageUserTestDB(t)
+	operator := model.User{
+		Id:       9999,
+		Username: "root-operator",
+		Password: "password",
+		Role:     common.RoleRootUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+	}
+	require.NoError(t, db.Create(&operator).Error)
+
+	recorder := performManageUserRequest(t, `{"id":9999,"action":"add_quota","mode":"add","value":500000}`)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), `"success":true`)
+	var auditLog model.Log
+	require.NoError(t, db.Where("type = ?", model.LogTypeManage).Order("id desc").First(&auditLog).Error)
+	var auditData struct {
+		Operation struct {
+			Action string         `json:"action"`
+			Params map[string]any `json:"params"`
+		} `json:"op"`
+	}
+	require.NoError(t, common.UnmarshalJsonStr(auditLog.Other, &auditData))
+	assert.Equal(t, "user.quota_add", auditData.Operation.Action)
+	assert.Equal(t, float64(operator.Id), auditData.Operation.Params["target_user_id"])
+	assert.Equal(t, operator.Username, auditData.Operation.Params["target_username"])
+}
+
 func TestManageUserRestoreClearsSoftDelete(t *testing.T) {
 	db := setupManageUserTestDB(t)
 	user := model.User{
