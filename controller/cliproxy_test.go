@@ -206,19 +206,71 @@ func TestBuildCliproxyXAIBillingRequestsUseGrokCLIHeaders(t *testing.T) {
 }
 
 func TestResolveCliproxyClaudeProfilePlan(t *testing.T) {
-	require.Equal(t, "plan_max", resolveCliproxyClaudeProfilePlan(map[string]any{
-		"account": map[string]any{"has_claude_max": true},
-	}))
-	require.Equal(t, "plus", resolveCliproxyClaudeProfilePlan(map[string]any{
-		"account": map[string]any{"has_claude_pro": true},
-	}))
-	require.Equal(t, "plan_team", resolveCliproxyClaudeProfilePlan(map[string]any{
-		"account":      map[string]any{"has_claude_max": false, "has_claude_pro": false},
-		"organization": map[string]any{"organization_type": "claude_team", "subscription_status": "active"},
-	}))
-	require.Equal(t, "plan_free", resolveCliproxyClaudeProfilePlan(map[string]any{
-		"account": map[string]any{"has_claude_max": false, "has_claude_pro": false},
-	}))
+	tests := []struct {
+		name     string
+		profile  map[string]any
+		expected string
+	}{
+		{
+			name: "pro organization",
+			profile: map[string]any{
+				"organization": map[string]any{"organization_type": "claude_pro"},
+			},
+			expected: "claude_pro",
+		},
+		{
+			name: "max 5x rate limit tier",
+			profile: map[string]any{
+				"organization": map[string]any{
+					"organization_type": "claude_max",
+					"rate_limit_tier":   "default_claude_max_5x",
+				},
+			},
+			expected: "claude_max_5x",
+		},
+		{
+			name: "max 20x rate limit tier",
+			profile: map[string]any{
+				"organization": map[string]any{
+					"organization_type": "claude_max",
+					"rate_limit_tier":   "default_claude_max_20x",
+				},
+			},
+			expected: "claude_max_20x",
+		},
+		{
+			name: "max without rate limit tier",
+			profile: map[string]any{
+				"account":      map[string]any{"has_claude_max": true},
+				"organization": map[string]any{"organization_type": "claude_max"},
+			},
+			expected: "claude_max",
+		},
+		{
+			name:     "legacy pro boolean",
+			profile:  map[string]any{"account": map[string]any{"has_claude_pro": true}},
+			expected: "claude_pro",
+		},
+		{
+			name: "team organization",
+			profile: map[string]any{
+				"account":      map[string]any{"has_claude_max": false, "has_claude_pro": false},
+				"organization": map[string]any{"organization_type": "claude_team", "subscription_status": "active"},
+			},
+			expected: "claude_team",
+		},
+		{
+			name:     "free account",
+			profile:  map[string]any{"account": map[string]any{"has_claude_max": false, "has_claude_pro": false}},
+			expected: "claude_free",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			require.Equal(t, test.expected, resolveCliproxyClaudeProfilePlan(test.profile))
+		})
+	}
 }
 
 func TestRefreshCliproxyXAIUsageMergesWeeklyAndMonthlySnapshots(t *testing.T) {

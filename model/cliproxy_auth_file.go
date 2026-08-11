@@ -215,7 +215,7 @@ func enrichCliproxyAuthFileBindingRemarks(bindings []*CliproxyAuthFileBinding) e
 }
 
 func cliproxyAuthFileBindingOrderClause() string {
-	return "CASE lower(replace(replace(replace(last_plan_type, '-', ''), '_', ''), ' ', '')) WHEN 'pro' THEN 0 WHEN 'pro20x' THEN 0 WHEN 'planmax' THEN 0 WHEN 'claudemax' THEN 0 WHEN 'prolite' THEN 1 WHEN 'pro5x' THEN 1 WHEN 'team' THEN 2 WHEN 'planteam' THEN 2 WHEN 'claudeteam' THEN 2 WHEN 'plus' THEN 3 WHEN 'planpro' THEN 3 WHEN 'claudepro' THEN 3 WHEN 'free' THEN 4 WHEN 'planfree' THEN 4 WHEN 'claudefree' THEN 4 WHEN '' THEN 6 ELSE 5 END ASC, lower(last_plan_type) ASC, id DESC"
+	return "CASE lower(replace(replace(replace(last_plan_type, '-', ''), '_', ''), ' ', '')) WHEN 'pro' THEN 0 WHEN 'pro20x' THEN 0 WHEN 'planmax' THEN 0 WHEN 'claudemax' THEN 0 WHEN 'claudemax20x' THEN 0 WHEN 'defaultclaudemax20x' THEN 0 WHEN 'prolite' THEN 1 WHEN 'pro5x' THEN 1 WHEN 'claudemax5x' THEN 1 WHEN 'defaultclaudemax5x' THEN 1 WHEN 'team' THEN 2 WHEN 'planteam' THEN 2 WHEN 'claudeteam' THEN 2 WHEN 'claudeenterprise' THEN 2 WHEN 'plus' THEN 3 WHEN 'planpro' THEN 3 WHEN 'claudepro' THEN 3 WHEN 'free' THEN 4 WHEN 'planfree' THEN 4 WHEN 'claudefree' THEN 4 WHEN '' THEN 6 ELSE 5 END ASC, lower(last_plan_type) ASC, id DESC"
 }
 
 func firstNonEmpty(values ...string) string {

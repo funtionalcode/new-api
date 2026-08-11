@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Check,
@@ -27,16 +26,11 @@ import {
   Search,
   Trash2,
 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import {
-  formatTimestampToDate,
-  formatTokenDetails,
-  formatTokens,
-} from '@/lib/format'
-import { ROLE } from '@/lib/roles'
-import { cn } from '@/lib/utils'
-import { useAuthStore } from '@/stores/auth-store'
+
+import { SectionPageLayout } from '@/components/layout'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
@@ -85,12 +79,20 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { SectionPageLayout } from '@/components/layout'
 import { useSystemOptions } from '@/features/system-settings/hooks/use-system-options'
 import { useUpdateOption } from '@/features/system-settings/hooks/use-update-option'
 import { searchUsers } from '@/features/users/api'
 import type { User } from '@/features/users/types'
 import { useIsAdmin } from '@/hooks/use-admin'
+import {
+  formatTimestampToDate,
+  formatTokenDetails,
+  formatTokens,
+} from '@/lib/format'
+import { ROLE } from '@/lib/roles'
+import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/auth-store'
+
 import {
   createCliproxyAuthFileBinding,
   deleteCliproxyAuthFileBinding,
@@ -101,22 +103,25 @@ import {
   updateCliproxyAuthFileBinding,
 } from './api'
 import {
-  buildCliproxyUsageSummary,
-  buildCliproxyXAIUsageSummary,
-  type CliproxyXAIUsageWindow,
-  type CliproxyUsageWindowKey,
-} from './lib/usage-summary'
+  getCliproxyAuthFileEmail,
+  getCliproxyAuthFileType,
+  getCliproxyAuthFileTypeLabel,
+  type CliproxyAuthFileType,
+} from './lib/auth-file-type'
 import {
   getCliproxyAuthFileBulkRefreshOptions,
   refreshCliproxyAuthFileBindingsUsageByType,
 } from './lib/bulk-refresh'
 import {
-  getCliproxyAuthFileEmail,
-  getCliproxyAuthFileType,
-  getCliproxyAuthFileTypeLabel,
-  getCliproxyPlanLabel,
-  type CliproxyAuthFileType,
-} from './lib/auth-file-type'
+  getCliproxyPlanLabelConfig,
+  normalizeCliproxyPlanKey,
+} from './lib/plan-label'
+import {
+  buildCliproxyUsageSummary,
+  buildCliproxyXAIUsageSummary,
+  type CliproxyXAIUsageWindow,
+  type CliproxyUsageWindowKey,
+} from './lib/usage-summary'
 import type {
   CliproxyAuthFile,
   CliproxyAuthFileBinding,
@@ -154,81 +159,11 @@ const emptyBindingForm: BindingFormState = {
   enabled: true,
 }
 
-type PlanLabelConfig = {
-  label: string
-  multiplier?: string
-  className: string
-}
-
-const normalizePlanKey = (value: unknown): string => {
-  if (typeof value !== 'string') return ''
-  return value
-    .trim()
-    .toLowerCase()
-    .replaceAll(/[-_\s]/g, '')
-}
-
-const getPlanLabelConfig = (value: unknown): PlanLabelConfig | null => {
-  const key = normalizePlanKey(value)
-  if (!key) return null
-
-  if (key === 'pro' || key === 'pro20x' || key === 'planmax' || key === 'claudemax') {
-    return {
-      label: 'Pro',
-      multiplier: '20x',
-      className:
-        'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-950/35 dark:text-amber-200',
-    }
-  }
-
-  if (key === 'prolite' || key === 'pro5x') {
-    return {
-      label: 'Pro',
-      multiplier: '5x',
-      className:
-        'border-sky-300 bg-sky-50 text-sky-800 dark:border-sky-700 dark:bg-sky-950/35 dark:text-sky-200',
-    }
-  }
-
-  if (key === 'team' || key === 'planteam' || key === 'claudeteam') {
-    return {
-      label: 'Team',
-      className:
-        'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-200',
-    }
-  }
-
-  if (key === 'plus' || key === 'planpro' || key === 'claudepro') {
-    return {
-      label: 'Plus',
-      className:
-        'border-indigo-300 bg-indigo-50 text-indigo-800 dark:border-indigo-700 dark:bg-indigo-950/35 dark:text-indigo-200',
-    }
-  }
-
-  if (key === 'free' || key === 'planfree' || key === 'claudefree') {
-    return {
-      label: 'Free',
-      className: 'border-border bg-muted text-muted-foreground',
-    }
-  }
-
-  if (key === 'supergrok' || key === 'supergrokheavy') {
-    return {
-      label: getCliproxyPlanLabel(String(value)),
-      className:
-        'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-200',
-    }
-  }
-
-  return {
-    label: String(value),
-    className: 'border-border bg-background text-muted-foreground',
-  }
-}
-
-function PlanLabel(props: { value?: string | null }) {
-  const config = getPlanLabelConfig(props.value)
+function PlanLabel(props: {
+  type: CliproxyAuthFileType
+  value?: string | null
+}) {
+  const config = getCliproxyPlanLabelConfig(props.type, props.value)
   if (!config) {
     return <span className='text-muted-foreground'>-</span>
   }
@@ -293,12 +228,13 @@ function RemoteAuthFilePlanCell(props: { authFile: CliproxyAuthFile }) {
     auth_file: props.authFile.authFile,
     last_plan_type: props.authFile.planType,
   }
+  const type = getCliproxyAuthFileType(source)
 
   return (
     <div className='flex flex-wrap items-center gap-2'>
       <AuthFileTypeLabel source={source} />
-      {normalizePlanKey(props.authFile.planType) === 'claude' ? null : (
-        <PlanLabel value={props.authFile.planType} />
+      {normalizeCliproxyPlanKey(props.authFile.planType) === 'claude' ? null : (
+        <PlanLabel type={type} value={props.authFile.planType} />
       )}
     </div>
   )
@@ -329,13 +265,7 @@ function usageProgressColor(percent: number): string {
   return '[&_[data-slot=progress-indicator]]:bg-emerald-500'
 }
 
-function UsageLimitBar({
-  label,
-  percent,
-}: {
-  label: string
-  percent: number
-}) {
+function UsageLimitBar({ label, percent }: { label: string; percent: number }) {
   const normalizedPercent = normalizeUsagePercent(percent)
 
   return (
@@ -420,7 +350,10 @@ function BindingUsageCell({
               ))}
             </div>
             <div className='flex flex-wrap items-center gap-x-3 gap-y-1'>
-              <PlanLabel value={binding.last_plan_type || 'SuperGrok'} />
+              <PlanLabel
+                type={type}
+                value={binding.last_plan_type || 'SuperGrok'}
+              />
               {binding.last_error ? (
                 <Badge variant='destructive' className='h-5 px-1.5 text-[11px]'>
                   {t('Error')}
@@ -504,7 +437,7 @@ function BindingUsageCell({
         </div>
         {binding.last_plan_type ? (
           <div className='mt-1'>
-            <PlanLabel value={binding.last_plan_type} />
+            <PlanLabel type={type} value={binding.last_plan_type} />
           </div>
         ) : null}
       </div>
@@ -529,13 +462,10 @@ function BindingUsageCell({
           {binding.last_plan_type || binding.last_error ? (
             <div className='flex items-center gap-2'>
               {binding.last_plan_type ? (
-                <PlanLabel value={binding.last_plan_type} />
+                <PlanLabel type={type} value={binding.last_plan_type} />
               ) : null}
               {binding.last_error ? (
-                <Badge
-                  variant='destructive'
-                  className='h-5 px-1.5 text-[11px]'
-                >
+                <Badge variant='destructive' className='h-5 px-1.5 text-[11px]'>
                   {t('Error')}
                 </Badge>
               ) : null}
@@ -545,7 +475,7 @@ function BindingUsageCell({
         <TooltipContent
           side='top'
           align='start'
-          className='max-w-[min(34rem,calc(100vw-2rem))] whitespace-normal p-3'
+          className='max-w-[min(34rem,calc(100vw-2rem))] p-3 whitespace-normal'
         >
           <div className='grid gap-2'>
             {summary.detailWindows.map((window) => (
@@ -567,7 +497,7 @@ function BindingUsageCell({
             ))}
             {binding.last_error ? (
               <div className='border-background/15 border-t pt-2'>
-                <div className='text-background/80 whitespace-pre-wrap break-words'>
+                <div className='text-background/80 break-words whitespace-pre-wrap'>
                   {binding.last_error}
                 </div>
               </div>
@@ -1240,7 +1170,7 @@ function BindingTable({
                         <TooltipContent
                           side='top'
                           align='start'
-                          className='max-w-xs whitespace-pre-wrap break-words'
+                          className='max-w-xs break-words whitespace-pre-wrap'
                         >
                           <div className='space-y-1'>
                             <div>{binding.username || '-'}</div>

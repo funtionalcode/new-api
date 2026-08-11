@@ -20,6 +20,15 @@ const (
 	cliproxyAPITimeout        = 20 * time.Second
 	cliproxyAPIMaxAttempts    = 3
 	cliproxyAPIRetryBaseDelay = 300 * time.Millisecond
+
+	CliproxyClaudePlan           = "claude"
+	CliproxyClaudePlanPro        = "claude_pro"
+	CliproxyClaudePlanMax        = "claude_max"
+	CliproxyClaudePlanMax5x      = "claude_max_5x"
+	CliproxyClaudePlanMax20x     = "claude_max_20x"
+	CliproxyClaudePlanTeam       = "claude_team"
+	CliproxyClaudePlanFree       = "claude_free"
+	CliproxyClaudePlanEnterprise = "claude_enterprise"
 )
 
 type CliproxyAPIClient struct {
@@ -213,7 +222,7 @@ func cliproxyAuthFileNameType(value string) string {
 
 func cliproxyProviderPlanType(provider string, fileType string) string {
 	if normalizeCliproxyPlan(provider) == "claude" || normalizeCliproxyPlan(fileType) == "claude" {
-		return "claude"
+		return CliproxyClaudePlan
 	}
 	if normalizeCliproxyPlan(provider) == "xai" || normalizeCliproxyPlan(fileType) == "xai" {
 		return "xai"
@@ -227,11 +236,11 @@ func normalizeCliproxyPlan(value string) string {
 
 func cliproxyPlanRank(value string) int {
 	switch normalizeCliproxyPlan(value) {
-	case "pro", "pro20x", "planmax", "claudemax":
+	case "pro", "pro20x", "planmax", "claudemax", "claudemax20x", "defaultclaudemax20x":
 		return 0
-	case "prolite", "pro5x":
+	case "prolite", "pro5x", "claudemax5x", "defaultclaudemax5x":
 		return 1
-	case "team", "planteam", "claudeteam":
+	case "team", "planteam", "claudeteam", "claudeenterprise":
 		return 2
 	case "plus", "planpro", "claudepro":
 		return 3

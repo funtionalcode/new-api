@@ -1,15 +1,38 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 export type CliproxyAuthFileType = 'codex' | 'claude' | 'xai'
 
 const claudePlanTypes = new Set([
   'claude',
   'planmax',
   'claudemax',
+  'claudemax5x',
+  'claudemax20x',
+  'defaultclaudemax5x',
+  'defaultclaudemax20x',
   'planpro',
   'claudepro',
   'planteam',
   'claudeteam',
   'planfree',
   'claudefree',
+  'claudeenterprise',
 ])
 
 const xaiPlanTypes = new Set(['xai', 'supergrok', 'supergrokheavy'])
@@ -52,7 +75,10 @@ function isXAIPlanType(value?: string): boolean {
   return xaiPlanTypes.has(normalizeCliproxyPlan(value))
 }
 
-function hasAuthFileNamePrefix(value: string | undefined, prefix: string): boolean {
+function hasAuthFileNamePrefix(
+  value: string | undefined,
+  prefix: string
+): boolean {
   const normalized = String(value || '')
     .trim()
     .toLowerCase()
@@ -93,7 +119,9 @@ export function getCliproxyAuthFileTypeLabel(
 }
 
 function getAuthFileBaseName(value?: string): string {
-  const normalized = String(value || '').trim().replaceAll('\\', '/')
+  const normalized = String(value || '')
+    .trim()
+    .replaceAll('\\', '/')
   if (!normalized) {
     return ''
   }

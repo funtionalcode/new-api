@@ -119,10 +119,11 @@ func TestNormalizeCliproxyAuthFilesDetectsXAIFromName(t *testing.T) {
 	require.Equal(t, "xai", files[0].Type)
 }
 
-func TestCliproxyPlanRankTreatsClaudeProAsPlusTier(t *testing.T) {
-	require.Equal(t, cliproxyPlanRank("plus"), cliproxyPlanRank("plan_pro"))
+func TestCliproxyPlanRankSupportsClaudePlans(t *testing.T) {
 	require.Equal(t, cliproxyPlanRank("plus"), cliproxyPlanRank("claude_pro"))
-	require.Less(t, cliproxyPlanRank("plan_max"), cliproxyPlanRank("plan_pro"))
+	require.Equal(t, cliproxyPlanRank("prolite"), cliproxyPlanRank("claude_max_5x"))
+	require.Equal(t, cliproxyPlanRank("pro"), cliproxyPlanRank("claude_max_20x"))
+	require.Less(t, cliproxyPlanRank("claude_max_5x"), cliproxyPlanRank("claude_pro"))
 }
 
 func TestCliproxyAPIClientListAuthFilesSupportsDataField(t *testing.T) {

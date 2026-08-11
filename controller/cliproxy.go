@@ -256,7 +256,7 @@ func RefreshCliproxyAuthFileBindingUsage(c *gin.Context) {
 		return
 	}
 	if isCliproxyClaudeAuthFile(binding) {
-		usage.PlanType = firstNonEmpty(fetchCliproxyClaudeProfilePlan(c.Request.Context(), client, binding.AuthIndex), usage.PlanType, binding.LastPlanType)
+		usage.PlanType = firstNonEmpty(fetchCliproxyClaudeProfilePlan(c.Request.Context(), client, binding.AuthIndex), binding.LastPlanType, usage.PlanType)
 	}
 	updatedBinding, err := model.UpdateCliproxyAuthFileBindingUsage(id, model.CliproxyUsageRefreshUpdate{
 		LastUsageTokens:           usage.UsedTokens,
@@ -771,7 +771,7 @@ func isCliproxyXAIAuthFile(binding *model.CliproxyAuthFileBinding) bool {
 
 func isCliproxyClaudePlanType(value string) bool {
 	switch normalizeCliproxyPlan(value) {
-	case "claude", "planmax", "claudemax", "planpro", "claudepro", "planteam", "claudeteam", "planfree", "claudefree":
+	case "claude", "planmax", "claudemax", "claudemax5x", "claudemax20x", "defaultclaudemax5x", "defaultclaudemax20x", "planpro", "claudepro", "planteam", "claudeteam", "planfree", "claudefree", "claudeenterprise":
 		return true
 	default:
 		return false
@@ -800,23 +800,50 @@ func resolveCliproxyClaudeProfilePlan(profile map[string]any) string {
 	if len(profile) == 0 {
 		return ""
 	}
+	organization := mapFromMap(profile, "organization")
+	organizationType := normalizeCliproxyPlan(stringFromMap(organization, "organization_type"))
+	rateLimitTier := normalizeCliproxyPlan(stringFromMap(organization, "rate_limit_tier"))
+	subscriptionStatus := strings.ToLower(stringFromMap(organization, "subscription_status"))
+	switch organizationType {
+	case "claudemax":
+		switch rateLimitTier {
+		case "defaultclaudemax5x", "claudemax5x", "max5x":
+			return service.CliproxyClaudePlanMax5x
+		case "defaultclaudemax20x", "claudemax20x", "max20x":
+			return service.CliproxyClaudePlanMax20x
+		default:
+			return service.CliproxyClaudePlanMax
+		}
+	case "claudepro":
+		return service.CliproxyClaudePlanPro
+	case "claudeteam":
+		if subscriptionStatus == "" || subscriptionStatus == "active" {
+			return service.CliproxyClaudePlanTeam
+		}
+	case "claudeenterprise":
+		return service.CliproxyClaudePlanEnterprise
+	case "claudefree":
+		return service.CliproxyClaudePlanFree
+	}
+
+	switch rateLimitTier {
+	case "defaultclaudemax5x", "claudemax5x", "max5x":
+		return service.CliproxyClaudePlanMax5x
+	case "defaultclaudemax20x", "claudemax20x", "max20x":
+		return service.CliproxyClaudePlanMax20x
+	}
+
 	account := mapFromMap(profile, "account")
 	if value, ok := boolFromMap(account, "has_claude_max"); ok && value {
-		return "plan_max"
+		return service.CliproxyClaudePlanMax
 	}
 	if value, ok := boolFromMap(account, "has_claude_pro"); ok && value {
-		return "plus"
-	}
-	organization := mapFromMap(profile, "organization")
-	organizationType := strings.ToLower(stringFromMap(organization, "organization_type"))
-	subscriptionStatus := strings.ToLower(stringFromMap(organization, "subscription_status"))
-	if organizationType == "claude_team" && subscriptionStatus == "active" {
-		return "plan_team"
+		return service.CliproxyClaudePlanPro
 	}
 	hasMax, hasMaxOK := boolFromMap(account, "has_claude_max")
 	hasPro, hasProOK := boolFromMap(account, "has_claude_pro")
 	if hasMaxOK && hasProOK && !hasMax && !hasPro {
-		return "plan_free"
+		return service.CliproxyClaudePlanFree
 	}
 	return ""
 }

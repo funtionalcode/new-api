@@ -44,7 +44,10 @@ func TestGetCliproxyAuthFileBindingsSortsByPlanRank(t *testing.T) {
 		{UserId: 1, Username: "u", AuthIndex: "prolite", AuthName: "prolite.json", LastPlanType: "prolite", Enabled: true},
 		{UserId: 1, Username: "u", AuthIndex: "pro", AuthName: "pro.json", LastPlanType: "pro", Enabled: true},
 		{UserId: 1, Username: "u", AuthIndex: "claude-max", AuthName: "claude-max.json", LastPlanType: "plan_max", Enabled: true},
-		{UserId: 1, Username: "u", AuthIndex: "claude-pro", AuthName: "claude-pro.json", LastPlanType: "plan_pro", Enabled: true},
+		{UserId: 1, Username: "u", AuthIndex: "claude-max-20x", AuthName: "claude-max-20x.json", LastPlanType: "claude_max_20x", Enabled: true},
+		{UserId: 1, Username: "u", AuthIndex: "claude-max-5x", AuthName: "claude-max-5x.json", LastPlanType: "claude_max_5x", Enabled: true},
+		{UserId: 1, Username: "u", AuthIndex: "claude-pro", AuthName: "claude-pro.json", LastPlanType: "claude_pro", Enabled: true},
+		{UserId: 1, Username: "u", AuthIndex: "claude-pro-legacy", AuthName: "claude-pro-legacy.json", LastPlanType: "plan_pro", Enabled: true},
 		{UserId: 1, Username: "u", AuthIndex: "team", AuthName: "team.json", LastPlanType: "team", Enabled: true},
 		{UserId: 1, Username: "u", AuthIndex: "unknown", AuthName: "unknown.json", LastPlanType: "enterprise", Enabled: true},
 		{UserId: 1, Username: "u", AuthIndex: "empty", AuthName: "empty.json", Enabled: true},
@@ -54,7 +57,7 @@ func TestGetCliproxyAuthFileBindingsSortsByPlanRank(t *testing.T) {
 
 	bindings, total, err := GetCliproxyAuthFileBindings(CliproxyAuthFileBindingQuery{}, 0, 20)
 	require.NoError(t, err)
-	require.Equal(t, int64(9), total)
+	require.Equal(t, int64(12), total)
 
 	names := make([]string, 0, len(bindings))
 	for _, binding := range bindings {
@@ -62,11 +65,14 @@ func TestGetCliproxyAuthFileBindingsSortsByPlanRank(t *testing.T) {
 	}
 
 	require.Equal(t, []string{
+		"claude-max-20x.json",
 		"claude-max.json",
 		"pro.json",
+		"claude-max-5x.json",
 		"prolite.json",
 		"team.json",
 		"claude-pro.json",
+		"claude-pro-legacy.json",
 		"plus.json",
 		"free.json",
 		"unknown.json",
