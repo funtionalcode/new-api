@@ -17,7 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { formatLogQuota } from '@/lib/format'
+
 import type { UserConsumptionSummary } from '../types'
+import { horizontalRankBandAxis, horizontalRankChartPadding } from './rank-axis'
 
 type TFunction = (key: string, options?: Record<string, unknown>) => string
 
@@ -86,7 +88,8 @@ export function processUserQuotaRankChartData(
     if (!baseLabel) continue
 
     const remark = item.remark?.trim()
-    const label = remark ? `${baseLabel} (${remark})` : baseLabel
+    // Put remark on a second line so the Y-axis stays readable without clipping.
+    const label = remark ? `${baseLabel}\n${remark}` : baseLabel
 
     const existing = userTotals.get(key) || {
       label,
@@ -96,7 +99,7 @@ export function processUserQuotaRankChartData(
       tokenIds: new Set<number>(),
     }
     // Prefer the first non-empty remark-enhanced label, keep stable key aggregation.
-    if (!existing.label.includes('(') && remark) {
+    if (!existing.label.includes('\n') && remark) {
       existing.label = label
     }
     existing.quota += Number(item.quota) || 0
@@ -122,7 +125,8 @@ export function processUserQuotaRankChartData(
   }))
   const colorMap = rankValues.reduce<Record<string, string>>(
     (acc, item, index) => {
-      acc[item.User] = USER_QUOTA_RANK_COLORS[index % USER_QUOTA_RANK_COLORS.length]
+      acc[item.User] =
+        USER_QUOTA_RANK_COLORS[index % USER_QUOTA_RANK_COLORS.length]
       return acc
     },
     {}
@@ -151,7 +155,7 @@ export function processUserQuotaRankChartData(
       style: { fontSize: 11 },
     },
     axes: [
-      { orient: 'left', type: 'band' },
+      horizontalRankBandAxis(),
       {
         orient: 'bottom',
         type: 'linear',
@@ -185,6 +189,9 @@ export function processUserQuotaRankChartData(
         ],
       },
     },
+    padding: horizontalRankChartPadding(
+      rankValues.map((item) => String(item.User))
+    ),
     color: { specified: colorMap },
     background: { fill: 'transparent' },
     animation: true,

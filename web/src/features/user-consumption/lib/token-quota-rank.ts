@@ -17,7 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { formatLogQuota } from '@/lib/format'
+
 import type { UserConsumptionSummary } from '../types'
+import { horizontalRankBandAxis, horizontalRankChartPadding } from './rank-axis'
 
 type TFunction = (key: string, options?: Record<string, unknown>) => string
 
@@ -37,7 +39,12 @@ const QUOTA_RANK_COLORS = [
 function emptyQuotaRankSpec(t: TFunction) {
   return {
     type: 'bar',
-    data: [{ id: 'tokenQuotaRankData', values: [] as Array<Record<string, unknown>> }],
+    data: [
+      {
+        id: 'tokenQuotaRankData',
+        values: [] as Array<Record<string, unknown>>,
+      },
+    ],
     xField: 'rawValue',
     yField: 'Token',
     seriesField: 'Token',
@@ -144,7 +151,7 @@ export function processTokenQuotaRankChartData(
       style: { fontSize: 11 },
     },
     axes: [
-      { orient: 'left', type: 'band' },
+      horizontalRankBandAxis(),
       {
         orient: 'bottom',
         type: 'linear',
@@ -178,6 +185,9 @@ export function processTokenQuotaRankChartData(
         ],
       },
     },
+    padding: horizontalRankChartPadding(
+      rankValues.map((item) => String(item.Token))
+    ),
     color: { specified: colorMap },
     background: { fill: 'transparent' },
     animation: true,

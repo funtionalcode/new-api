@@ -17,7 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { formatTokenDetails, formatTokens } from '@/lib/format'
+
 import type { UserConsumptionSummary } from '../types'
+import { horizontalRankBandAxis, horizontalRankChartPadding } from './rank-axis'
 
 type TFunction = (key: string, options?: Record<string, unknown>) => string
 
@@ -148,7 +150,7 @@ export function processTokenConsumptionRankChartData(
       style: { fontSize: 11 },
     },
     axes: [
-      { orient: 'left', type: 'band' },
+      horizontalRankBandAxis(),
       {
         orient: 'bottom',
         type: 'linear',
@@ -177,6 +179,9 @@ export function processTokenConsumptionRankChartData(
         ],
       },
     },
+    padding: horizontalRankChartPadding(
+      rankValues.map((item) => String(item.Token))
+    ),
     color: { specified: tokenColorMap },
     background: { fill: 'transparent' },
     animation: true,

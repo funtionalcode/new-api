@@ -16,14 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useState } from 'react'
 import { VChart } from '@visactor/react-vchart'
 import { Coins } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useTheme } from '@/context/theme-provider'
 import { VCHART_OPTION } from '@/lib/vchart'
 
+import { rankChartHeight } from '../lib/rank-axis'
 import { processTokenQuotaRankChartData } from '../lib/token-quota-rank'
 import type { UserConsumptionSummary } from '../types'
 
@@ -53,12 +54,14 @@ export function TokenQuotaCharts({
     return processTokenQuotaRankChartData(data, t, limit)
   }, [data, limit, t])
 
-  const hasData = spec.data[0].values.length > 0
+  const itemCount = spec.data[0].values.length
+  const hasData = itemCount > 0
+  const chartHeight = rankChartHeight(itemCount)
 
   if (loading) {
     return (
       <div className='overflow-hidden rounded-lg border'>
-        <div className='h-[300px] animate-pulse bg-muted' />
+        <div className='bg-muted h-[300px] animate-pulse sm:h-96' />
       </div>
     )
   }
@@ -74,7 +77,7 @@ export function TokenQuotaCharts({
         </div>
       </div>
 
-      <div className='h-[300px] p-1.5 sm:h-96 sm:p-2'>
+      <div className='p-1.5 sm:p-2' style={{ height: chartHeight }}>
         {themeReady && hasData && (
           <VChart
             key={`token-quota-rank-${renderKey}-${limit}-${resolvedTheme}`}
@@ -87,7 +90,7 @@ export function TokenQuotaCharts({
           />
         )}
         {!hasData && (
-          <div className='flex h-full items-center justify-center text-muted-foreground text-sm'>
+          <div className='text-muted-foreground flex h-full items-center justify-center text-sm'>
             {t('No consumption data found')}
           </div>
         )}
