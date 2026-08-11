@@ -43,10 +43,8 @@ import { cn } from '@/lib/utils'
 import { LOG_TYPE_ALL_VALUE } from '../../constants'
 import type { UsageLog } from '../../data/schema'
 import {
-  formatModelName,
   getTieredBillingSummary,
   hasAnyCacheTokens,
-  isWebsocketLog,
   parseLogOther,
   isViolationFeeLog,
   renderAuditContent,
@@ -60,8 +58,8 @@ import {
 import type { LogOtherData } from '../../types'
 import { DetailsDialog } from '../dialogs/details-dialog'
 import { LogCostDisplay } from '../log-cost-display'
-import { ModelBadge } from '../model-badge'
 import { TimingMetricsCell, StreamTpsCell } from '../timing-metrics-cell'
+import { UsageLogModelCell } from '../usage-log-model-cell'
 import { useUsageLogsContext } from '../usage-logs-provider'
 
 interface DetailSegment {
@@ -658,30 +656,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         const log = row.original
         if (!isDisplayableLogType(log.type)) return null
 
-        const other = parseLogOther(log.other)
-        const modelInfo = formatModelName(log)
-        const showWebsocketBadge = isWebsocketLog(other)
-
-        return (
-          <div className='flex w-fit max-w-full flex-col gap-0.5'>
-            <ModelBadge
-              modelName={modelInfo.name}
-              actualModel={modelInfo.actualModel}
-            />
-            {showWebsocketBadge && (
-              <StatusBadge
-                label='WS'
-                variant='blue'
-                size='sm'
-                copyable={false}
-                showDot={false}
-                title='WebSocket'
-                aria-label='WebSocket'
-                className='h-5 w-fit border border-blue-500/20 bg-blue-500/10 px-1.5 font-mono text-[11px] text-blue-600 dark:text-blue-300'
-              />
-            )}
-          </div>
-        )
+        return <UsageLogModelCell log={log} />
       },
       meta: { mobileTitle: true },
     },
