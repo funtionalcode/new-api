@@ -16,11 +16,26 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { BrainCircuitIcon } from '@hugeicons/core-free-icons'
+import {
+  AiBrain01Icon,
+  AiBrain02Icon,
+  AiBrain03Icon,
+  AiBrain04Icon,
+  AiBrain05Icon,
+  BrainCircuitIcon,
+  BrainCogIcon,
+  CancelCircleIcon,
+} from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { useTranslation } from 'react-i18next'
 
 import { StatusBadge } from '@/components/status-badge'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 import type { UsageLog } from '../data/schema'
 import {
@@ -31,6 +46,16 @@ import {
 } from '../lib/format'
 import { ModelBadge } from './model-badge'
 
+const REASONING_EFFORT_ICONS = {
+  none: CancelCircleIcon,
+  minimal: AiBrain01Icon,
+  low: AiBrain02Icon,
+  medium: AiBrain03Icon,
+  high: AiBrain04Icon,
+  xhigh: AiBrain05Icon,
+  max: BrainCircuitIcon,
+} as const
+
 export function UsageLogModelCell(props: { log: UsageLog }) {
   const { t } = useTranslation()
   const other = parseLogOther(props.log.other)
@@ -39,6 +64,12 @@ export function UsageLogModelCell(props: { log: UsageLog }) {
   const reasoningEffortLabel = reasoningEffort
     ? `${t('Reasoning Effort')}: ${reasoningEffort}`
     : undefined
+  const normalizedReasoningEffort = reasoningEffort?.toLowerCase()
+  const reasoningEffortIcon = normalizedReasoningEffort
+    ? (REASONING_EFFORT_ICONS[
+        normalizedReasoningEffort as keyof typeof REASONING_EFFORT_ICONS
+      ] ?? BrainCogIcon)
+    : BrainCogIcon
   const showWebsocketBadge = isWebsocketLog(other)
 
   return (
@@ -48,23 +79,32 @@ export function UsageLogModelCell(props: { log: UsageLog }) {
         actualModel={modelInfo.actualModel}
       />
       {reasoningEffort ? (
-        <StatusBadge
-          variant={getReasoningEffortVariant(reasoningEffort)}
-          size='sm'
-          copyable={false}
-          showDot={false}
-          title={reasoningEffortLabel}
-          aria-label={reasoningEffortLabel}
-          role='img'
-          data-reasoning-effort={reasoningEffort}
-          className='border-border/60 bg-muted/30 size-5 shrink-0 cursor-help justify-center border p-0 [&>svg]:size-3.5'
-        >
-          <HugeiconsIcon
-            icon={BrainCircuitIcon}
-            strokeWidth={2}
-            aria-hidden='true'
-          />
-        </StatusBadge>
+        <TooltipProvider delay={0}>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <StatusBadge
+                  variant={getReasoningEffortVariant(reasoningEffort)}
+                  size='sm'
+                  copyable={false}
+                  showDot={false}
+                  aria-label={reasoningEffortLabel}
+                  role='img'
+                  tabIndex={0}
+                  data-reasoning-effort={reasoningEffort}
+                  className='border-border/60 bg-muted/30 size-5 shrink-0 cursor-help justify-center border p-0 [&>svg]:size-3.5'
+                >
+                  <HugeiconsIcon
+                    icon={reasoningEffortIcon}
+                    strokeWidth={2}
+                    aria-hidden='true'
+                  />
+                </StatusBadge>
+              }
+            />
+            <TooltipContent>{reasoningEffortLabel}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       ) : null}
       {showWebsocketBadge ? (
         <StatusBadge

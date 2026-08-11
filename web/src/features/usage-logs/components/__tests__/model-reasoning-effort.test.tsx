@@ -38,6 +38,8 @@ const domGlobals = [
   'Node',
   'Element',
   'Event',
+  'MouseEvent',
+  'PointerEvent',
   'CustomEvent',
   'MutationObserver',
   'requestAnimationFrame',
@@ -109,7 +111,7 @@ describe('usage log model reasoning effort', () => {
     domWindow.close()
   })
 
-  test('shows the reasoning effort as an accessible icon next to the model', async () => {
+  test('shows the reasoning effort immediately in a tooltip', async () => {
     const container = document.createElement('div')
     document.body.append(container)
     const root = createRoot(container)
@@ -130,19 +132,58 @@ describe('usage log model reasoning effort', () => {
 
     assert.equal(container.textContent?.includes('gpt-5.4'), true)
     assert.ok(reasoningIndicator)
-    assert.equal(
-      reasoningIndicator.getAttribute('title'),
-      'Reasoning Effort: high'
-    )
+    const reasoningElement = reasoningIndicator as HTMLElement
+    assert.equal(reasoningIndicator.getAttribute('title'), null)
     assert.equal(
       reasoningIndicator.getAttribute('aria-label'),
       'Reasoning Effort: high'
     )
     assert.ok(reasoningIndicator.querySelector('svg'))
+
+    await act(async () => {
+      reasoningElement.focus()
+      await Promise.resolve()
+    })
+
     assert.equal(
-      container.textContent?.includes('Reasoning Effort: high'),
-      false
+      document.body.textContent?.includes('Reasoning Effort: high'),
+      true
     )
+
+    await act(async () => root.unmount())
+    container.remove()
+  })
+
+  test('uses a distinct icon for every supported reasoning effort', async () => {
+    const efforts = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+
+    await act(async () => {
+      root.render(
+        <I18nextProvider i18n={i18n}>
+          {efforts.map((effort) => (
+            <UsageLogModelCell
+              key={effort}
+              log={createUsageLog({ reasoning_effort: effort })}
+            />
+          ))}
+        </I18nextProvider>
+      )
+    })
+
+    const renderedIcons = efforts.map((effort) => {
+      const indicator = container.querySelector(
+        `[data-reasoning-effort="${effort}"]`
+      )
+      assert.ok(indicator)
+      const icon = indicator.querySelector('svg')
+      assert.ok(icon)
+      return icon.innerHTML
+    })
+
+    assert.equal(new Set(renderedIcons).size, efforts.length)
 
     await act(async () => root.unmount())
     container.remove()
