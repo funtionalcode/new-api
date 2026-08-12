@@ -208,4 +208,35 @@ describe('usage log model reasoning effort', () => {
     await act(async () => root.unmount())
     container.remove()
   })
+
+  test('shows the WebSocket transport immediately in a tooltip', async () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+
+    await act(async () => {
+      root.render(
+        <I18nextProvider i18n={i18n}>
+          <UsageLogModelCell log={createUsageLog({ ws: true })} />
+        </I18nextProvider>
+      )
+    })
+
+    const websocketIndicator = container.querySelector(
+      '[aria-label="WebSocket"]'
+    )
+
+    assert.ok(websocketIndicator)
+    assert.equal(websocketIndicator.getAttribute('title'), null)
+
+    await act(async () => {
+      ;(websocketIndicator as HTMLElement).focus()
+      await Promise.resolve()
+    })
+
+    assert.equal(document.body.textContent?.includes('WebSocket'), true)
+
+    await act(async () => root.unmount())
+    container.remove()
+  })
 })

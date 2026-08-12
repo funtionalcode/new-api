@@ -107,16 +107,26 @@ export function UsageLogModelCell(props: { log: UsageLog }) {
         </TooltipProvider>
       ) : null}
       {showWebsocketBadge ? (
-        <StatusBadge
-          label='WS'
-          variant='blue'
-          size='sm'
-          copyable={false}
-          showDot={false}
-          title='WebSocket'
-          aria-label='WebSocket'
-          className='border-border/60 bg-muted/30 h-5 w-fit border px-1.5 font-mono text-[11px]'
-        />
+        <TooltipProvider delay={0}>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <StatusBadge
+                  variant='blue'
+                  size='sm'
+                  copyable={false}
+                  showDot={false}
+                  aria-label='WebSocket'
+                  tabIndex={0}
+                  className='border-border/60 bg-muted/30 h-5 w-fit cursor-help border px-1.5 font-mono text-[11px]'
+                >
+                  WS
+                </StatusBadge>
+              }
+            />
+            <TooltipContent>WebSocket</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       ) : null}
     </div>
   )
