@@ -18,6 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
@@ -349,6 +350,30 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 		a.finishCursorRun(c, info, agentID, runID, persistent, false)
 		return nil, err
 	}
+	if streamResponse.StatusCode != http.StatusOK {
+		responseBody, readErr := io.ReadAll(streamResponse.Body)
+		service.CloseResponseBodyGracefully(streamResponse)
+		if readErr != nil {
+			a.finishCursorRun(c, info, agentID, runID, persistent, false)
+			return nil, fmt.Errorf("cursor channel: read stream error response: %w", readErr)
+		}
+		var errorResponse cursorAPIErrorResponse
+		unmarshalErr := common.Unmarshal(responseBody, &errorResponse)
+		if streamResponse.StatusCode == http.StatusGone || (unmarshalErr == nil && isCursorStreamUnavailable(errorResponse.Error.Code)) {
+			run, waitErr := a.waitCursorRun(c, info, agentID, runID)
+			if waitErr != nil {
+				a.finishCursorRun(c, info, agentID, runID, persistent, false)
+				return nil, waitErr
+			}
+			streamResponse, err = cursorRunFallbackResponse(run)
+			if err != nil {
+				a.finishCursorRun(c, info, agentID, runID, persistent, true)
+				return nil, err
+			}
+		} else {
+			streamResponse.Body = io.NopCloser(bytes.NewReader(responseBody))
+		}
+	}
 	streamResponse.Header.Set(cursorAgentIDInternalHeader, agentID)
 	streamResponse.Header.Set(cursorRunIDInternalHeader, runID)
 	streamResponse.Header.Set(cursorPersistentInternalKey, strconv.FormatBool(persistent))
@@ -366,6 +391,92 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 		a.finishCursorRun(c, info, agentID, runID, persistent, false)
 	}
 	return streamResponse, nil
+}
+
+func isCursorStreamUnavailable(code string) bool {
+	switch strings.ToLower(strings.TrimSpace(code)) {
+	case "stream_unavailable", "stream_expired":
+		return true
+	default:
+		return false
+	}
+}
+
+func cursorRunTerminal(status string) bool {
+	switch strings.ToUpper(strings.TrimSpace(status)) {
+	case "FINISHED", "ERROR", "CANCELLED", "EXPIRED":
+		return true
+	default:
+		return false
+	}
+}
+
+func cursorRunFallbackResponse(run *cursorRunResponse) (*http.Response, error) {
+	if run == nil {
+		return nil, errors.New("cursor channel: empty run fallback response")
+	}
+	resultData, err := common.Marshal(cursorResultEvent{
+		RunID:      run.ID,
+		Status:     run.Status,
+		Text:       run.Result,
+		DurationMS: run.DurationMS,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("cursor channel: encode run fallback response: %w", err)
+	}
+	body := "event: result\ndata: " + string(resultData) + "\n\nevent: done\ndata: {}\n\n"
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}, nil
+}
+
+func (a *Adaptor) waitCursorRun(c *gin.Context, info *relaycommon.RelayInfo, agentID string, runID string) (*cursorRunResponse, error) {
+	if c == nil || c.Request == nil {
+		return nil, errors.New("cursor channel: request context is required while waiting for a run")
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), cursorRunPollTimeout)
+	defer cancel()
+	runPath := "/v1/agents/" + url.PathEscape(agentID) + "/runs/" + url.PathEscape(runID)
+	pollCount := 0
+	for {
+		response, err := a.doCursorAPIRequest(ctx, c, info, http.MethodGet, runPath, nil, false)
+		if err != nil {
+			return nil, fmt.Errorf("cursor channel: get run after stream became unavailable: %w", err)
+		}
+		responseBody, readErr := io.ReadAll(response.Body)
+		service.CloseResponseBodyGracefully(response)
+		if readErr != nil {
+			return nil, fmt.Errorf("cursor channel: read run fallback response: %w", readErr)
+		}
+		if response.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("cursor channel: get run after stream became unavailable returned status %d", response.StatusCode)
+		}
+		var run cursorRunResponse
+		if err := common.Unmarshal(responseBody, &run); err != nil {
+			return nil, fmt.Errorf("cursor channel: decode run fallback response: %w", err)
+		}
+		if run.ID == "" || run.Status == "" {
+			return nil, errors.New("cursor channel: run fallback response is missing id or status")
+		}
+		if cursorRunTerminal(run.Status) {
+			return &run, nil
+		}
+
+		pollCount++
+		if info != nil && info.IsStream && pollCount%10 == 0 {
+			helper.SetEventStreamHeaders(c)
+			if err := helper.PingData(c); err != nil {
+				return nil, err
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("cursor channel: wait for run after stream became unavailable: %w", ctx.Err())
+		case <-time.After(cursorRunPollInterval):
+		}
+	}
 }
 
 func (a *Adaptor) DeletePersistentAgent(c *gin.Context, info *relaycommon.RelayInfo, agentID string) error {

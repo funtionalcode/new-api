@@ -549,6 +549,110 @@ func TestCursorAdaptorDeletesPersistentAgentWithoutStartingRun(t *testing.T) {
 	assert.Contains(t, recorder.Body.String(), "Cursor Agent deleted.")
 }
 
+func TestCursorAdaptorFallsBackToRunWhenStreamIsUnavailable(t *testing.T) {
+	agentID := "bc-00000000-0000-0000-0000-000000000001"
+	runID := "run-00000000-0000-0000-0000-000000000001"
+	requests := make([]string, 0, 5)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.RequestURI())
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/agents/"+agentID+"/runs":
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"run":{"id":"` + runID + `"}}`))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/stream"):
+			w.WriteHeader(http.StatusGone)
+			_, _ = w.Write([]byte(`{"error":{"code":"stream_unavailable","message":"Run stream is no longer available"}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agents/"+agentID+"/runs/"+runID:
+			_, _ = w.Write([]byte(`{"id":"` + runID + `","agentId":"` + agentID + `","status":"FINISHED","result":"Fallback reply","createdAt":"2026-08-14T00:00:00Z","updatedAt":"2026-08-14T00:00:01Z"}`))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/usage"):
+			_, _ = w.Write([]byte(`{"totalUsage":{"inputTokens":8,"outputTokens":3,"cacheWriteTokens":0,"cacheReadTokens":2,"totalTokens":13},"runs":[{"id":"` + runID + `","usage":{"inputTokens":8,"outputTokens":3,"cacheWriteTokens":0,"cacheReadTokens":2,"totalTokens":13}}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	c.Set("id", 1)
+	common.SetContextKey(c, constant.ContextKeyChannelId, 42)
+	common.SetContextKey(c, constant.ContextKeyChannelMultiKeyIndex, 0)
+	common.SetContextKey(c, common.RequestIdKey, "cursor-stream-fallback")
+	setCursorTestAgentHeaders(c, agentID)
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{
+		ChannelId:         42,
+		ChannelType:       constant.ChannelTypeCursor,
+		ChannelBaseUrl:    server.URL,
+		ApiKey:            "cursor-secret",
+		UpstreamModelName: "composer-2",
+	}}
+	adaptor := &Adaptor{}
+	converted, err := adaptor.ConvertOpenAIRequest(c, info, &dto.GeneralOpenAIRequest{
+		Model:    "composer-2",
+		Messages: []dto.Message{{Role: "user", Content: "continue"}},
+	})
+	require.NoError(t, err)
+	body, err := common.Marshal(converted)
+	require.NoError(t, err)
+
+	upstream, err := adaptor.DoRequest(c, info, bytes.NewReader(body))
+	require.NoError(t, err)
+	usageValue, apiErr := adaptor.DoResponse(c, upstream.(*http.Response), info)
+	require.Nil(t, apiErr)
+	require.NotNil(t, usageValue)
+	assert.Contains(t, recorder.Body.String(), "Fallback reply")
+	assert.Equal(t, agentID, recorder.Header().Get(constant.CursorAgentIDHeader))
+	assert.NotContains(t, requests, "DELETE /v1/agents/"+agentID)
+}
+
+func TestCursorResponseFallsBackWhenStreamEmitsUnavailableError(t *testing.T) {
+	agentID := "bc-00000000-0000-0000-0000-000000000001"
+	runID := "run-00000000-0000-0000-0000-000000000001"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agents/"+agentID+"/runs/"+runID:
+			_, _ = w.Write([]byte(`{"id":"` + runID + `","agentId":"` + agentID + `","status":"FINISHED","result":"Recovered reply","createdAt":"2026-08-14T00:00:00Z","updatedAt":"2026-08-14T00:00:01Z"}`))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/usage"):
+			_, _ = w.Write([]byte(`{"totalUsage":{"inputTokens":5,"outputTokens":2,"cacheWriteTokens":0,"cacheReadTokens":0,"totalTokens":7},"runs":[{"id":"` + runID + `","usage":{"inputTokens":5,"outputTokens":2,"cacheWriteTokens":0,"cacheReadTokens":0,"totalTokens":7}}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	c.Set("id", 1)
+	common.SetContextKey(c, constant.ContextKeyChannelId, 42)
+	common.SetContextKey(c, constant.ContextKeyChannelMultiKeyIndex, 0)
+	common.SetContextKey(c, common.RequestIdKey, "cursor-stream-event-fallback")
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{
+		ChannelId:         42,
+		ChannelType:       constant.ChannelTypeCursor,
+		ChannelBaseUrl:    server.URL,
+		ApiKey:            "cursor-secret",
+		UpstreamModelName: "composer-2",
+	}}
+	responseHeader := make(http.Header)
+	responseHeader.Set(cursorAgentIDInternalHeader, agentID)
+	responseHeader.Set(cursorRunIDInternalHeader, runID)
+	responseHeader.Set(cursorPersistentInternalKey, "true")
+	responseHeader.Set(cursorClientStreamHeader, "false")
+	response := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     responseHeader,
+		Body:       io.NopCloser(strings.NewReader("event: error\ndata: {\"code\":\"stream_unavailable\",\"message\":\"Run stream is no longer available\"}\n\n")),
+	}
+
+	usageValue, apiErr := (&Adaptor{}).DoResponse(c, response, info)
+	require.Nil(t, apiErr)
+	require.NotNil(t, usageValue)
+	assert.Contains(t, recorder.Body.String(), "Recovered reply")
+	assert.Equal(t, agentID, recorder.Header().Get(constant.CursorAgentIDHeader))
+}
+
 func TestCursorAdaptorOnlyAcceptsOpenAITextRequests(t *testing.T) {
 	adaptor := &Adaptor{}
 

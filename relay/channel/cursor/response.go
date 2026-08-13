@@ -213,10 +213,24 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 		return nil
 	})
 
-	terminal := resultStatus == "FINISHED" || resultStatus == "ERROR" || resultStatus == "CANCELLED" || resultStatus == "EXPIRED"
-	defer a.finishCursorRun(c, info, agentID, runID, persistent, terminal)
+	terminal := cursorRunTerminal(resultStatus)
+	defer func() {
+		a.finishCursorRun(c, info, agentID, runID, persistent, terminal)
+	}()
 	if parseErr != nil {
 		return nil, types.NewOpenAIError(parseErr, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
+	}
+	if upstreamError.Message != "" {
+		if isCursorStreamUnavailable(upstreamError.Code) {
+			run, err := a.waitCursorRun(c, info, agentID, runID)
+			if err != nil {
+				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusBadGateway)
+			}
+			resultStatus = run.Status
+			finalText = run.Result
+			terminal = cursorRunTerminal(resultStatus)
+			upstreamError = cursorErrorEvent{}
+		}
 	}
 	if upstreamError.Message != "" {
 		message := upstreamError.Message

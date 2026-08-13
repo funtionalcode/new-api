@@ -1,5 +1,7 @@
 package cursor
 
+import "time"
+
 const (
 	ChannelName = "Cursor"
 
@@ -16,6 +18,8 @@ const (
 	cursorEventStreamContentType = "application/x-cursor-event-stream"
 	cursorAgentSignatureVersion  = "v1"
 	cursorCleanupCommand         = "清理会话agent"
+	cursorRunPollInterval        = time.Second
+	cursorRunPollTimeout         = 10 * time.Minute
 )
 
 var ModelList = []string{}

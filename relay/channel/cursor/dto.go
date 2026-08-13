@@ -68,6 +68,18 @@ type cursorErrorEvent struct {
 	Message string `json:"message"`
 }
 
+type cursorAPIErrorResponse struct {
+	Error cursorErrorEvent `json:"error"`
+}
+
+type cursorRunResponse struct {
+	ID         string `json:"id"`
+	AgentID    string `json:"agentId"`
+	Status     string `json:"status"`
+	Result     string `json:"result"`
+	DurationMS int64  `json:"durationMs"`
+}
+
 type cursorUsage struct {
 	InputTokens      int64 `json:"inputTokens"`
 	OutputTokens     int64 `json:"outputTokens"`
