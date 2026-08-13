@@ -138,13 +138,13 @@ describe('playground message storage', () => {
   test('isolates Cursor Agent sessions by playground user', () => {
     const firstSession = {
       agentId: 'bc-00000000-0000-0000-0000-000000000001',
-      signature: 'v1.first',
+      signature: `v2.${'a'.repeat(64)}`,
       channelId: 10,
       keyIndex: 0,
     }
     const secondSession = {
       agentId: 'bc-00000000-0000-0000-0000-000000000002',
-      signature: 'v1.second',
+      signature: `v2.${'b'.repeat(64)}`,
       channelId: 20,
       keyIndex: 1,
     }
@@ -157,5 +157,26 @@ describe('playground message storage', () => {
     clearCursorAgentSession(1)
     assert.equal(loadCursorAgentSession(1), null)
     assert.deepEqual(loadCursorAgentSession(2), secondSession)
+  })
+
+  test('drops legacy Cursor Agent sessions after a backend restart', () => {
+    const scope = 'legacy-cursor-session'
+    const storageKey = `playground_cursor_agent_session:user:${scope}`
+    getTestConsole().error = () => {}
+    localStorageMock.setItem(
+      storageKey,
+      JSON.stringify({
+        version: 1,
+        data: {
+          agentId: 'bc-00000000-0000-0000-0000-000000000001',
+          signature: 'v1.old-instance-signature',
+          channelId: 10,
+          keyIndex: 0,
+        },
+      })
+    )
+
+    assert.equal(loadCursorAgentSession(scope), null)
+    assert.equal(localStorageMock.getItem(storageKey), null)
   })
 })

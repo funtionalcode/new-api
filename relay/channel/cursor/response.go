@@ -140,7 +140,7 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	persistent, _ := strconv.ParseBool(resp.Header.Get(cursorPersistentInternalKey))
 	clientStream, _ := strconv.ParseBool(resp.Header.Get(cursorClientStreamHeader))
 	if persistent && agentID != "" {
-		setCursorAgentResponseHeaders(c, agentID)
+		setCursorAgentResponseHeaders(c, info, agentID)
 	}
 	if resp.Header.Get(cursorAgentLifecycleHeader) == constant.CursorAgentLifecycleCreate {
 		common.SetContextKey(c, constant.ContextKeyCursorAgentLifecycle, constant.CursorAgentLifecycleCreate)
@@ -304,8 +304,8 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	return usage, nil
 }
 
-func setCursorAgentResponseHeaders(c *gin.Context, agentID string) {
-	if c == nil || agentID == "" {
+func setCursorAgentResponseHeaders(c *gin.Context, info *relaycommon.RelayInfo, agentID string) {
+	if c == nil || info == nil || agentID == "" || strings.TrimSpace(info.ApiKey) == "" {
 		return
 	}
 	userID := c.GetInt("id")
@@ -313,11 +313,11 @@ func setCursorAgentResponseHeaders(c *gin.Context, agentID string) {
 		return
 	}
 	c.Header(constant.CursorAgentIDHeader, agentID)
-	c.Header(constant.CursorAgentSignatureHeader, cursorAgentSignature(userID, agentID))
-	if channelID := common.GetContextKeyInt(c, constant.ContextKeyChannelId); channelID > 0 {
-		c.Header(constant.CursorAgentChannelIDHeader, strconv.Itoa(channelID))
+	c.Header(constant.CursorAgentSignatureHeader, cursorAgentSignature(userID, agentID, info.ChannelId, info.ChannelMultiKeyIndex, info.ApiKey))
+	if info.ChannelId > 0 {
+		c.Header(constant.CursorAgentChannelIDHeader, strconv.Itoa(info.ChannelId))
 	}
-	c.Header(constant.CursorAgentKeyIndexHeader, strconv.Itoa(common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex)))
+	c.Header(constant.CursorAgentKeyIndexHeader, strconv.Itoa(info.ChannelMultiKeyIndex))
 }
 
 func writeCursorAgentDeletedResponse(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
@@ -375,9 +375,9 @@ func writeCursorAgentDeletedResponse(c *gin.Context, info *relaycommon.RelayInfo
 	return usage, nil
 }
 
-func cursorAgentSignature(userID int, agentID string) string {
-	payload := cursorAgentSignatureVersion + ":user:" + strconv.Itoa(userID) + ":" + agentID
-	return cursorAgentSignatureVersion + "." + common.GenerateHMACWithKey([]byte("cursor-agent:"+common.CryptoSecret), payload)
+func cursorAgentSignature(userID int, agentID string, channelID int, keyIndex int, apiKey string) string {
+	payload := cursorAgentSignatureVersion + ":user:" + strconv.Itoa(userID) + ":channel:" + strconv.Itoa(channelID) + ":key:" + strconv.Itoa(keyIndex) + ":" + agentID
+	return cursorAgentSignatureVersion + "." + common.GenerateHMACWithKey([]byte("cursor-agent:"+strings.TrimSpace(apiKey)), payload)
 }
 
 func (a *Adaptor) getCursorUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response, agentID string, runID string) *dto.Usage {

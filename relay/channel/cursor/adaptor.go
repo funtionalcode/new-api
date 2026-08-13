@@ -99,13 +99,16 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	}
 	metadata.AgentID = strings.TrimSpace(metadata.AgentID)
 	if metadata.AgentID != "" {
+		metadata.Persistent = true
 		if err := validateCursorAgentChannel(c, info); err != nil {
 			return nil, err
 		}
-		if err := validateCursorAgentID(c, metadata.AgentID); err != nil {
-			return nil, err
+		if err := validateCursorAgentID(c, info, metadata.AgentID); err != nil {
+			if !errors.Is(err, errCursorLegacyAgentSignature) && !errors.Is(err, errCursorAgentSignatureMismatch) {
+				return nil, err
+			}
+			metadata.AgentID = ""
 		}
-		metadata.Persistent = true
 	}
 
 	transcriptMessages := make([]cursorTranscriptMessage, 0, len(request.Messages))
@@ -222,7 +225,7 @@ func textContentForCursor(message *dto.Message) (string, error) {
 	return content.String(), nil
 }
 
-func validateCursorAgentID(c *gin.Context, agentID string) error {
+func validateCursorAgentID(c *gin.Context, info *relaycommon.RelayInfo, agentID string) error {
 	if !strings.HasPrefix(agentID, "bc-") {
 		return errors.New("cursor channel: cursor_agent_id must start with bc-")
 	}
@@ -240,13 +243,19 @@ func validateCursorAgentID(c *gin.Context, agentID string) error {
 	if requestUserID <= 0 {
 		return errors.New("cursor channel: persistent agent user identity is missing")
 	}
+	if info == nil || strings.TrimSpace(info.ApiKey) == "" {
+		return errors.New("cursor channel: persistent agent channel key is missing")
+	}
 	parts := strings.SplitN(signature, ".", 2)
+	if len(parts) == 2 && parts[0] == "v1" && parts[1] != "" {
+		return errCursorLegacyAgentSignature
+	}
 	if len(parts) != 2 || parts[0] != cursorAgentSignatureVersion || parts[1] == "" {
 		return errors.New("cursor channel: persistent agent signature version is invalid")
 	}
-	expected := cursorAgentSignature(requestUserID, agentID)
+	expected := cursorAgentSignature(requestUserID, agentID, info.ChannelId, info.ChannelMultiKeyIndex, info.ApiKey)
 	if !hmac.Equal([]byte(signature), []byte(expected)) {
-		return errors.New("cursor channel: persistent agent does not belong to this user")
+		return errCursorAgentSignatureMismatch
 	}
 	return nil
 }
@@ -261,6 +270,13 @@ func validateCursorAgentChannel(c *gin.Context, info *relaycommon.RelayInfo) err
 	}
 	if channelID != info.ChannelId {
 		return errors.New("cursor channel: persistent agent belongs to a different channel")
+	}
+	keyIndex, err := strconv.Atoi(strings.TrimSpace(c.Request.Header.Get(constant.CursorAgentKeyIndexHeader)))
+	if err != nil || keyIndex < 0 {
+		return errors.New("cursor channel: persistent agent key index is missing or invalid")
+	}
+	if keyIndex != info.ChannelMultiKeyIndex {
+		return errors.New("cursor channel: persistent agent belongs to a different channel key")
 	}
 	return nil
 }
@@ -293,7 +309,7 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 	persistent := c.GetBool(cursorPersistentContextKey)
 	creatingPersistentAgent := persistent && agentID == ""
 	if persistent && agentID != "" {
-		setCursorAgentResponseHeaders(c, agentID)
+		setCursorAgentResponseHeaders(c, info, agentID)
 	}
 	requestPath := "/v1/agents"
 	if agentID != "" {
@@ -341,7 +357,7 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 		return nil, errors.New("cursor channel: create response is missing agent or run ID")
 	}
 	if persistent {
-		setCursorAgentResponseHeaders(c, agentID)
+		setCursorAgentResponseHeaders(c, info, agentID)
 	}
 
 	streamPath := "/v1/agents/" + url.PathEscape(agentID) + "/runs/" + url.PathEscape(runID) + "/stream"
@@ -484,7 +500,7 @@ func (a *Adaptor) DeletePersistentAgent(c *gin.Context, info *relaycommon.RelayI
 	if err := validateCursorAgentChannel(c, info); err != nil {
 		return err
 	}
-	if err := validateCursorAgentID(c, agentID); err != nil {
+	if err := validateCursorAgentID(c, info, agentID); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)

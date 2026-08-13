@@ -480,15 +480,22 @@ export function saveMessages(
 export function loadCursorAgentSession(
   scope?: PlaygroundStorageScope
 ): CursorAgentSession | null {
+  const storageKey = getScopedStorageKey(
+    STORAGE_KEYS.CURSOR_AGENT_SESSION,
+    scope
+  )
   try {
-    const saved = readStoredValue(
-      getScopedStorageKey(STORAGE_KEYS.CURSOR_AGENT_SESSION, scope)
-    )
+    const saved = readStoredValue(storageKey)
     if (!saved) return null
     return cursorAgentSessionSchema.parse(unwrapStoredValue(saved))
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('Failed to load Cursor Agent session:', error)
+    try {
+      localStorage.removeItem(storageKey)
+    } catch {
+      // Ignore storage cleanup failures; the invalid session is not reused.
+    }
     return null
   }
 }

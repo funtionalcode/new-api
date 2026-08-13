@@ -33,7 +33,7 @@ func newCursorTestContext(t *testing.T) *gin.Context {
 
 func setCursorTestAgentHeaders(c *gin.Context, agentID string) {
 	c.Request.Header.Set(constant.CursorAgentIDHeader, agentID)
-	c.Request.Header.Set(constant.CursorAgentSignatureHeader, cursorAgentSignature(c.GetInt("id"), agentID))
+	c.Request.Header.Set(constant.CursorAgentSignatureHeader, cursorAgentSignature(c.GetInt("id"), agentID, 42, 0, "cursor-secret"))
 	c.Request.Header.Set(constant.CursorAgentChannelIDHeader, "42")
 	c.Request.Header.Set(constant.CursorAgentKeyIndexHeader, "0")
 }
@@ -129,7 +129,7 @@ func TestConvertOpenAIRequestContinuesPersistentAgentWithLatestUserMessage(t *te
 		},
 	}
 
-	converted, err := adaptor.ConvertOpenAIRequest(c, &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 42}}, request)
+	converted, err := adaptor.ConvertOpenAIRequest(c, &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 42, ApiKey: "cursor-secret"}}, request)
 	require.NoError(t, err)
 	runRequest, ok := converted.(*createRunRequest)
 	require.True(t, ok)
@@ -142,7 +142,7 @@ func TestConvertOpenAIRequestTreatsCleanupCommandAsAgentDeletion(t *testing.T) {
 	agentID := "bc-00000000-0000-0000-0000-000000000001"
 	setCursorTestAgentHeaders(c, agentID)
 
-	converted, err := (&Adaptor{}).ConvertOpenAIRequest(c, &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 42}}, &dto.GeneralOpenAIRequest{
+	converted, err := (&Adaptor{}).ConvertOpenAIRequest(c, &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 42, ApiKey: "cursor-secret"}}, &dto.GeneralOpenAIRequest{
 		Model: "composer-2",
 		Messages: []dto.Message{
 			{Role: "user", Content: "previous question"},
@@ -170,14 +170,15 @@ func TestCursorPersistentHeadersRoundTripForSameUser(t *testing.T) {
 	responseRecorder := httptest.NewRecorder()
 	responseContext, _ := gin.CreateTestContext(responseRecorder)
 	responseContext.Set("id", 7)
-	setCursorAgentResponseHeaders(responseContext, agentID)
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 42, ChannelMultiKeyIndex: 0, ApiKey: "cursor-secret"}}
+	setCursorAgentResponseHeaders(responseContext, info, agentID)
 
 	requestContext := newCursorTestContext(t)
 	requestContext.Set("id", 7)
 	requestContext.Request.Header.Set(constant.CursorAgentIDHeader, responseRecorder.Header().Get(constant.CursorAgentIDHeader))
 	requestContext.Request.Header.Set(constant.CursorAgentSignatureHeader, responseRecorder.Header().Get(constant.CursorAgentSignatureHeader))
 
-	require.NoError(t, validateCursorAgentID(requestContext, agentID))
+	require.NoError(t, validateCursorAgentID(requestContext, info, agentID))
 }
 
 func TestConvertOpenAIRequestRejectsPersistentAgentFromAnotherUser(t *testing.T) {
@@ -186,26 +187,76 @@ func TestConvertOpenAIRequestRejectsPersistentAgentFromAnotherUser(t *testing.T)
 	setCursorTestAgentHeaders(c, agentID)
 	c.Set("id", 2)
 
-	_, err := (&Adaptor{}).ConvertOpenAIRequest(c, &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 42}}, &dto.GeneralOpenAIRequest{
+	converted, err := (&Adaptor{}).ConvertOpenAIRequest(c, &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 42, ApiKey: "cursor-secret"}}, &dto.GeneralOpenAIRequest{
 		Model:    "composer-2",
 		Messages: []dto.Message{{Role: "user", Content: "continue"}},
 	})
 
-	require.ErrorContains(t, err, "does not belong to this user")
+	require.NoError(t, err)
+	assert.IsType(t, &createAgentRequest{}, converted)
+	assert.Empty(t, c.GetString(cursorAgentIDContextKey))
 }
 
 func TestConvertOpenAIRequestRejectsUnknownPersistentSignatureVersion(t *testing.T) {
 	c := newCursorTestContext(t)
 	agentID := "bc-00000000-0000-0000-0000-000000000001"
 	setCursorTestAgentHeaders(c, agentID)
-	c.Request.Header.Set(constant.CursorAgentSignatureHeader, "v2.invalid")
+	c.Request.Header.Set(constant.CursorAgentSignatureHeader, "v3.invalid")
 
-	_, err := (&Adaptor{}).ConvertOpenAIRequest(c, &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 42}}, &dto.GeneralOpenAIRequest{
+	_, err := (&Adaptor{}).ConvertOpenAIRequest(c, &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 42, ApiKey: "cursor-secret"}}, &dto.GeneralOpenAIRequest{
 		Model:    "composer-2",
 		Messages: []dto.Message{{Role: "user", Content: "continue"}},
 	})
 
 	require.ErrorContains(t, err, "signature version is invalid")
+}
+
+func TestConvertOpenAIRequestRenewsLegacyPersistentAgentWithoutReusingIt(t *testing.T) {
+	c := newCursorTestContext(t)
+	agentID := "bc-00000000-0000-0000-0000-000000000001"
+	setCursorTestAgentHeaders(c, agentID)
+	c.Request.Header.Set(constant.CursorAgentSignatureHeader, "v1.old-instance-signature")
+
+	converted, err := (&Adaptor{}).ConvertOpenAIRequest(c, &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 42, ApiKey: "cursor-secret"}}, &dto.GeneralOpenAIRequest{
+		Model: "composer-2",
+		Messages: []dto.Message{
+			{Role: "user", Content: "Remember this."},
+			{Role: "assistant", Content: "I will."},
+			{Role: "user", Content: "Continue."},
+		},
+	})
+
+	require.NoError(t, err)
+	createRequest, ok := converted.(*createAgentRequest)
+	require.True(t, ok)
+	assert.Contains(t, createRequest.Prompt.Text, `{"role":"assistant","content":"I will."}`)
+	assert.Empty(t, c.GetString(cursorAgentIDContextKey))
+	assert.True(t, c.GetBool(cursorPersistentContextKey))
+}
+
+func TestCursorAgentSignatureIsStableAcrossRuntimeSecretChanges(t *testing.T) {
+	originalSecret := common.CryptoSecret
+	t.Cleanup(func() { common.CryptoSecret = originalSecret })
+	agentID := "bc-00000000-0000-0000-0000-000000000001"
+
+	common.CryptoSecret = "first-instance-secret"
+	first := cursorAgentSignature(7, agentID, 42, 0, "cursor-secret")
+	common.CryptoSecret = "second-instance-secret"
+	second := cursorAgentSignature(7, agentID, 42, 0, "cursor-secret")
+
+	assert.Equal(t, first, second)
+	assert.True(t, strings.HasPrefix(first, "v2."))
+}
+
+func TestCursorAgentSignatureBindsUserAndChannelKey(t *testing.T) {
+	agentID := "bc-00000000-0000-0000-0000-000000000001"
+
+	first := cursorAgentSignature(7, agentID, 42, 0, "first-cursor-key")
+
+	assert.NotEqual(t, first, cursorAgentSignature(8, agentID, 42, 0, "first-cursor-key"))
+	assert.NotEqual(t, first, cursorAgentSignature(7, agentID, 43, 0, "first-cursor-key"))
+	assert.NotEqual(t, first, cursorAgentSignature(7, agentID, 42, 1, "first-cursor-key"))
+	assert.NotEqual(t, first, cursorAgentSignature(7, agentID, 42, 0, "second-cursor-key"))
 }
 
 func TestConvertOpenAIRequestRejectsInvalidPersistentMetadataTypes(t *testing.T) {

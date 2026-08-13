@@ -1,6 +1,12 @@
 package cursor
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+var errCursorLegacyAgentSignature = errors.New("cursor channel: legacy persistent agent signature must be renewed")
+var errCursorAgentSignatureMismatch = errors.New("cursor channel: persistent agent signature is no longer valid")
 
 const (
 	ChannelName = "Cursor"
@@ -16,7 +22,7 @@ const (
 	cursorSkipRemoteUsageHeader  = "X-New-API-Cursor-Skip-Remote-Usage"
 	cursorAgentLifecycleHeader   = "X-New-API-Cursor-Agent-Lifecycle"
 	cursorEventStreamContentType = "application/x-cursor-event-stream"
-	cursorAgentSignatureVersion  = "v1"
+	cursorAgentSignatureVersion  = "v2"
 	cursorCleanupCommand         = "清理会话agent"
 	cursorRunPollInterval        = time.Second
 	cursorRunPollTimeout         = 10 * time.Minute

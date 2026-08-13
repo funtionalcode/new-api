@@ -47,7 +47,7 @@ export const parameterEnabledSchema = z.object({
 
 export const cursorAgentSessionSchema = z.object({
   agentId: z.string().regex(/^bc-[0-9a-f-]+$/i),
-  signature: z.string().min(1),
+  signature: z.string().regex(/^v2\.[0-9a-f]+$/i),
   channelId: z.number().int().positive(),
   keyIndex: z.number().int().nonnegative(),
 })
