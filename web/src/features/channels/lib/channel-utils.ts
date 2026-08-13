@@ -57,6 +57,7 @@ export function getChannelTypeIcon(type: number): string {
     60: 'NewAPI', // Advanced Custom
     61: 'Sub2API', // Sub2API
     62: 'NewAPI', // New API
+    63: 'Cursor', // Cursor Cloud Agents
     3: 'Azure', // Azure
 
     // Anthropic

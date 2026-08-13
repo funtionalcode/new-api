@@ -402,11 +402,14 @@ func SelectChannelForWebsocketRequest(c *gin.Context, modelName string) (*model.
 }
 
 // channelSupportsRequestPath reports whether a channel can serve the request path.
-// Only Advanced Custom channels are path-checked; all other channel types
-// always pass. A type-58 channel is usable only when one of its routes matches.
+// Advanced Custom channels use their configured routes. Cursor exposes only
+// the OpenAI Chat Completions relay surface.
 func channelSupportsRequestPath(channel *model.Channel, requestPath string, requestModel string) bool {
 	if channel == nil {
 		return false
+	}
+	if channel.Type == constant.ChannelTypeCursor {
+		return normalizePlaygroundRequestPath(requestPath) == "/v1/chat/completions"
 	}
 	if channel.Type != constant.ChannelTypeAdvancedCustom {
 		return true

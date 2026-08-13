@@ -22,6 +22,7 @@ For commercial licensing, please contact support@quantumnous.com
 // ============================================================================
 
 export const CHANNEL_TYPE_NEW_API = 62
+export const CHANNEL_TYPE_CURSOR = 63
 
 export const CHANNEL_TYPES = {
   0: 'Unknown',
@@ -83,12 +84,13 @@ export const CHANNEL_TYPES = {
   60: 'Advanced Custom',
   61: 'Sub2API',
   62: 'New API',
+  63: 'Cursor',
 } as const
 
 const CHANNEL_TYPE_DISPLAY_ORDER: number[] = [
-  1, 14, 33, 24, 43, 3, 41, 48, 62, 60, 42, 34, 20, 4, 40, 27, 25, 17, 26, 15,
-  46, 23, 18, 45, 31, 35, 49, 19, 47, 37, 38, 39, 11, 8, 57, 61, 22, 21, 44, 2,
-  5, 36, 50, 51, 52, 53, 54, 55, 56, 58, 59,
+  1, 14, 33, 24, 43, 3, 41, 48, 62, 63, 60, 42, 34, 20, 4, 40, 27, 25, 17, 26,
+  15, 46, 23, 18, 45, 31, 35, 49, 19, 47, 37, 38, 39, 11, 8, 57, 61, 22, 21, 44,
+  2, 5, 36, 50, 51, 52, 53, 54, 55, 56, 58, 59,
 ]
 
 export const CHANNEL_TYPE_OPTIONS: { value: number; label: string }[] = (() => {
@@ -391,7 +393,7 @@ export const FIELD_DESCRIPTIONS = {
 
 export const MODEL_FETCHABLE_TYPES = new Set([
   1, 4, 14, 17, 20, 23, 24, 25, 26, 27, 31, 34, 35, 40, 42, 43, 47, 48, 57, 58,
-  60, 61, 62,
+  60, 61, 62, 63,
 ])
 
 export const TYPE_TO_KEY_PROMPT: Record<number, string> = {
@@ -406,6 +408,7 @@ export const TYPE_TO_KEY_PROMPT: Record<number, string> = {
   57: 'Paste Codex OAuth JSON credential (access_token / refresh_token / account_id)',
   61: 'Enter API key for this channel',
   62: 'Enter API key for this channel',
+  63: 'Cursor API Key',
 }
 
 export const CHANNEL_TYPE_WARNINGS: Record<number, string> = {

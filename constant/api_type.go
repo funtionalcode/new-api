@@ -41,5 +41,6 @@ const (
 	APITypeAdvancedCustom
 	APITypeSub2API
 	APITypeNewAPI
+	APITypeCursor
 	APITypeDummy // this one is only for count, do not add any channel after this
 )

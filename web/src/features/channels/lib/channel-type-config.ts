@@ -164,6 +164,15 @@ export const CHANNEL_TYPE_CONFIGS: Record<number, ChannelTypeConfig> = {
       models: 'Models',
     },
   },
+  63: {
+    id: 63,
+    name: CHANNEL_TYPES[63],
+    icon: 'Cursor',
+    defaultBaseUrl: 'https://api.cursor.com',
+    hints: {
+      key: 'Cursor API Key',
+    },
+  },
 }
 
 /**

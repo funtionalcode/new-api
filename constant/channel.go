@@ -60,6 +60,7 @@ const (
 	ChannelTypeAdvancedCustom = 60
 	ChannelTypeSub2API        = 61
 	ChannelTypeNewAPI         = 62
+	ChannelTypeCursor         = 63
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
@@ -128,6 +129,7 @@ var ChannelBaseURLs = []string{
 	"",                                          //60
 	"",                                          //61
 	"",                                          //62
+	"https://api.cursor.com",                    //63
 }
 
 var ChannelTypeNames = map[int]string{
@@ -190,6 +192,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeAdvancedCustom: "Advanced Custom",
 	ChannelTypeSub2API:        "Sub2API",
 	ChannelTypeNewAPI:         "New API",
+	ChannelTypeCursor:         "Cursor",
 }
 
 func GetChannelTypeName(channelType int) string {
