@@ -51,7 +51,7 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, header *http.Header, info *
 	return nil
 }
 
-func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, _ *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) (any, error) {
+func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) (any, error) {
 	if request == nil {
 		return nil, errors.New("cursor channel: request is required")
 	}
@@ -131,6 +131,13 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, _ *relaycommon.RelayInfo,
 			return nil, errors.New("cursor channel: a persistent agent continuation must end with a user message")
 		}
 		return &createRunRequest{Prompt: cursorPrompt{Text: latest.Content}}, nil
+	}
+	if info != nil && info.IsChannelTest {
+		return &createAgentRequest{
+			Prompt: cursorPrompt{Text: "Reply exactly with OK. Do not use tools or inspect any repository."},
+			Model:  cursorModelSelection{ID: request.Model},
+			Name:   "new-api channel test",
+		}, nil
 	}
 
 	var transcript strings.Builder
@@ -303,6 +310,9 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 	streamResponse.Header.Set(cursorRunIDInternalHeader, runID)
 	streamResponse.Header.Set(cursorPersistentInternalKey, strconv.FormatBool(persistent))
 	streamResponse.Header.Set(cursorClientStreamHeader, strconv.FormatBool(info.IsStream))
+	if info.IsChannelTest {
+		streamResponse.Header.Set(cursorSkipRemoteUsageHeader, "true")
+	}
 	if !info.IsStream {
 		streamResponse.Header.Set("Content-Type", cursorEventStreamContentType)
 	}

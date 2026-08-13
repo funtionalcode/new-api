@@ -98,6 +98,20 @@ func TestConvertOpenAIRequestPreservesFullConversation(t *testing.T) {
 	assert.Contains(t, createRequest.Prompt.Text, "Return only the assistant reply")
 }
 
+func TestConvertOpenAIRequestUsesMinimalChannelTestPrompt(t *testing.T) {
+	info := &relaycommon.RelayInfo{IsChannelTest: true}
+	converted, err := (&Adaptor{}).ConvertOpenAIRequest(newCursorTestContext(t), info, &dto.GeneralOpenAIRequest{
+		Model:    "composer-2",
+		Messages: []dto.Message{{Role: "user", Content: "hi"}},
+	})
+
+	require.NoError(t, err)
+	createRequest, ok := converted.(*createAgentRequest)
+	require.True(t, ok)
+	assert.Equal(t, "Reply exactly with OK. Do not use tools or inspect any repository.", createRequest.Prompt.Text)
+	assert.Equal(t, "new-api channel test", createRequest.Name)
+}
+
 func TestConvertOpenAIRequestContinuesPersistentAgentWithLatestUserMessage(t *testing.T) {
 	adaptor := &Adaptor{}
 	c := newCursorTestContext(t)

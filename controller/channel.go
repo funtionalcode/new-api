@@ -1301,7 +1301,7 @@ func FetchModels(c *gin.Context) {
 	}
 
 	var channel *model.Channel
-	if req.Type == constant.ChannelTypeAdvancedCustom || req.ChannelID > 0 {
+	if req.Type == constant.ChannelTypeAdvancedCustom {
 		var err error
 		channel, err = buildAdvancedCustomModelPreviewChannel(req)
 		if err != nil {
@@ -1312,22 +1312,54 @@ func FetchModels(c *gin.Context) {
 			return
 		}
 	} else {
-		baseURL := ""
-		if req.BaseURL != nil {
-			baseURL = strings.TrimSpace(*req.BaseURL)
-		}
-		if baseURL == "" {
-			baseURL = constant.ChannelBaseURLs[req.Type]
+		if req.ChannelID > 0 {
+			savedChannel, err := model.GetChannelById(req.ChannelID, true)
+			if err != nil {
+				common.ApiError(c, err)
+				return
+			}
+			if savedChannel.Type != req.Type {
+				c.JSON(http.StatusOK, gin.H{
+					"success": false,
+					"message": fmt.Sprintf("channel %d type does not match preview type", req.ChannelID),
+				})
+				return
+			}
+			channel = savedChannel
+		} else {
+			key := strings.TrimSpace(req.Key)
+			if req.Type != constant.ChannelTypeCodex {
+				key = strings.Split(key, "\n")[0]
+			}
+			channel = &model.Channel{Type: req.Type, Key: key}
 		}
 
-		key := strings.TrimSpace(req.Key)
-		if req.Type != constant.ChannelTypeCodex {
-			key = strings.Split(key, "\n")[0]
+		if req.BaseURL != nil {
+			baseURL := strings.TrimSpace(*req.BaseURL)
+			channel.BaseURL = &baseURL
+		} else if channel.GetBaseURL() == "" {
+			baseURL := constant.ChannelBaseURLs[req.Type]
+			channel.BaseURL = &baseURL
 		}
-		channel = &model.Channel{
-			Type:    req.Type,
-			Key:     key,
-			BaseURL: &baseURL,
+		if req.HeaderOverride != nil {
+			rawHeaderOverride := strings.TrimSpace(*req.HeaderOverride)
+			if rawHeaderOverride != "" {
+				var headerOverride map[string]any
+				if err := common.UnmarshalJsonStr(rawHeaderOverride, &headerOverride); err != nil {
+					c.JSON(http.StatusOK, gin.H{"success": false, "message": fmt.Sprintf("header_override must be a JSON object: %v", err)})
+					return
+				}
+			}
+			channel.HeaderOverride = &rawHeaderOverride
+		}
+		if req.Proxy != nil {
+			channelSettings := channel.GetSetting()
+			channelSettings.Proxy = strings.TrimSpace(*req.Proxy)
+			channel.SetSetting(channelSettings)
+		}
+		if err := validateChannel(channel, false); err != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+			return
 		}
 	}
 

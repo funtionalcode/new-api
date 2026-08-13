@@ -340,8 +340,12 @@ func (a *Adaptor) finishCursorRun(c *gin.Context, info *relaycommon.RelayInfo, a
 	if agentID == "" {
 		return
 	}
+	cleanupTimeout := 10 * time.Second
+	if info != nil && info.IsChannelTest {
+		cleanupTimeout = 2 * time.Second
+	}
 	if !terminal && runID != "" {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
 		cancelPath := "/v1/agents/" + url.PathEscape(agentID) + "/runs/" + url.PathEscape(runID) + "/cancel"
 		cancelResponse, err := a.doCursorAPIRequest(ctx, c, info, http.MethodPost, cancelPath, nil, false)
 		cancel()
@@ -354,7 +358,7 @@ func (a *Adaptor) finishCursorRun(c *gin.Context, info *relaycommon.RelayInfo, a
 	if persistent {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
 	defer cancel()
 	deletePath := "/v1/agents/" + url.PathEscape(agentID)
 	deleteResponse, err := a.doCursorAPIRequest(ctx, c, info, http.MethodDelete, deletePath, nil, false)

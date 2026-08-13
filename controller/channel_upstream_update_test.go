@@ -431,6 +431,52 @@ func TestFetchCursorModelsUsesCloudAgentsContract(t *testing.T) {
 	require.Equal(t, []string{"composer-2", "claude-4-sonnet-thinking"}, models)
 }
 
+func TestFetchCursorModelsEditPreviewUsesSavedKeyAndFormProxy(t *testing.T) {
+	db := setupModelListControllerTestDB(t)
+	proxiedRequest := make(chan *http.Request, 1)
+	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxiedRequest <- r.Clone(r.Context())
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`{"items":[{"id":"composer-2"}]}`))
+		assert.NoError(t, err)
+	}))
+	t.Cleanup(proxyServer.Close)
+
+	targetBaseURL := "http://cursor-preview.invalid"
+	savedChannel := &model.Channel{
+		Type:    constant.ChannelTypeCursor,
+		Name:    "cursor preview",
+		Key:     "saved-cursor-key",
+		BaseURL: &targetBaseURL,
+		Models:  "composer-2",
+	}
+	require.NoError(t, db.Create(savedChannel).Error)
+
+	proxyURL, err := url.Parse(proxyServer.URL)
+	require.NoError(t, err)
+	proxyURL.User = url.UserPassword("preview-user", "preview-password")
+	rawProxyURL := proxyURL.String()
+	body, err := common.Marshal(fetchModelsRequest{
+		ChannelID: savedChannel.Id,
+		Type:      constant.ChannelTypeCursor,
+		BaseURL:   &targetBaseURL,
+		Proxy:     &rawProxyURL,
+	})
+	require.NoError(t, err)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/channel/fetch_models", bytes.NewReader(body))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+	FetchModels(ctx)
+
+	require.JSONEq(t, `{"success":true,"message":"","data":["composer-2"]}`, recorder.Body.String())
+	request := <-proxiedRequest
+	assert.Equal(t, "http://cursor-preview.invalid/v1/models", request.URL.String())
+	assert.Equal(t, "Bearer saved-cursor-key", request.Header.Get("Authorization"))
+	assert.NotEmpty(t, request.Header.Get("Proxy-Authorization"))
+}
+
 func TestNormalizeModelNames(t *testing.T) {
 	result := normalizeModelNames([]string{
 		" gpt-4o ",
