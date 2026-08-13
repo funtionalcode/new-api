@@ -20,8 +20,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { sendChatCompletion } from '../api'
-import { ERROR_MESSAGES } from '../constants'
+import { cursorAgentRequestHeaders, sendChatCompletion } from '../api'
+import { CURSOR_AGENT_HEADERS, ERROR_MESSAGES } from '../constants'
 import {
   applyStreamingChunk,
   buildChatCompletionPayload,
@@ -29,18 +29,28 @@ import {
   updateLastAssistantMessage,
   parseRequestErrorDetails,
   applyChatCompletionResponse,
+  clearCursorAgentSession,
   completeAssistantMessage,
+  loadCursorAgentSession,
+  saveCursorAgentSession,
+  type PlaygroundStorageScope,
   hasChatCompletionChoice,
   isAssistantMessageFinal,
   isAssistantMessagePending,
 } from '../lib'
-import type { Message, PlaygroundConfig, ParameterEnabled } from '../types'
+import type {
+  CursorAgentSession,
+  Message,
+  PlaygroundConfig,
+  ParameterEnabled,
+} from '../types'
 import { useStreamRequest } from './use-stream-request'
 
 interface UseChatHandlerOptions {
   config: PlaygroundConfig
   parameterEnabled: ParameterEnabled
   onMessageUpdate: (updater: (prev: Message[]) => Message[]) => void
+  storageScope?: PlaygroundStorageScope
 }
 
 const KNOWN_ERROR_MESSAGES = new Set<string>(Object.values(ERROR_MESSAGES))
@@ -70,6 +80,7 @@ export function useChatHandler({
   config,
   parameterEnabled,
   onMessageUpdate,
+  storageScope,
 }: UseChatHandlerOptions) {
   const { t } = useTranslation()
   const { sendStreamRequest, stopStream, isStreaming } = useStreamRequest()
@@ -82,6 +93,51 @@ export function useChatHandler({
     reasoning: '',
   })
   const streamFlushTimerRef = useRef<number | null>(null)
+  const cursorAgentSessionRef = useRef<CursorAgentSession | null>(
+    loadCursorAgentSession(storageScope)
+  )
+
+  useEffect(() => {
+    cursorAgentSessionRef.current = loadCursorAgentSession(storageScope)
+  }, [storageScope])
+
+  const updateCursorAgentSession = useCallback(
+    (session: CursorAgentSession | null) => {
+      cursorAgentSessionRef.current = session
+      if (session) {
+        saveCursorAgentSession(session, storageScope)
+        return
+      }
+      clearCursorAgentSession(storageScope)
+    },
+    [storageScope]
+  )
+
+  const handleCursorResponseHeaders = useCallback(
+    (headers: Record<string, string[]>) => {
+      const firstHeader = (name: string) =>
+        headers[name.toLowerCase()]?.[0]?.trim() ?? ''
+      if (firstHeader(CURSOR_AGENT_HEADERS.DELETED) === 'true') {
+        updateCursorAgentSession(null)
+        return
+      }
+      const agentId = firstHeader(CURSOR_AGENT_HEADERS.ID)
+      const signature = firstHeader(CURSOR_AGENT_HEADERS.SIGNATURE)
+      const channelId = Number(firstHeader(CURSOR_AGENT_HEADERS.CHANNEL_ID))
+      const keyIndex = Number(firstHeader(CURSOR_AGENT_HEADERS.KEY_INDEX))
+      if (
+        agentId &&
+        signature &&
+        Number.isInteger(channelId) &&
+        channelId > 0 &&
+        Number.isInteger(keyIndex) &&
+        keyIndex >= 0
+      ) {
+        updateCursorAgentSession({ agentId, signature, channelId, keyIndex })
+      }
+    },
+    [updateCursorAgentSession]
+  )
 
   const discardPendingStreamUpdates = useCallback((generation: number) => {
     if (streamFlushTimerRef.current !== null) {
@@ -256,6 +312,8 @@ export function useChatHandler({
       )
       void sendStreamRequest(
         payload,
+        cursorAgentRequestHeaders(cursorAgentSessionRef.current),
+        handleCursorResponseHeaders,
         (type, chunk) => handleStreamUpdate(generation, type, chunk),
         () => handleStreamComplete(generation),
         (error, errorCode) => handleStreamError(generation, error, errorCode)
@@ -269,6 +327,7 @@ export function useChatHandler({
       handleStreamUpdate,
       handleStreamComplete,
       handleStreamError,
+      handleCursorResponseHeaders,
     ]
   )
 
@@ -291,8 +350,9 @@ export function useChatHandler({
 
       try {
         setIsRequesting(true)
-        const response = await sendChatCompletion(
+        const result = await sendChatCompletion(
           payload,
+          cursorAgentRequestHeaders(cursorAgentSessionRef.current),
           abortController.signal
         )
         if (
@@ -302,7 +362,13 @@ export function useChatHandler({
           return
         }
 
-        if (!hasChatCompletionChoice(response)) {
+        if (result.cursorAgentDeleted) {
+          updateCursorAgentSession(null)
+        } else if (result.cursorSession) {
+          updateCursorAgentSession(result.cursorSession)
+        }
+
+        if (!hasChatCompletionChoice(result.data)) {
           handleStreamError(generation, ERROR_MESSAGES.API_REQUEST_ERROR)
           return
         }
@@ -312,7 +378,7 @@ export function useChatHandler({
           return updateLastAssistantMessage(prev, (message) => {
             const updatedMessage = applyChatCompletionResponse(
               message,
-              response
+              result.data
             )
 
             return updatedMessage ?? message
@@ -342,6 +408,7 @@ export function useChatHandler({
       discardPendingStreamUpdates,
       onMessageUpdate,
       handleStreamError,
+      updateCursorAgentSession,
     ]
   )
 

@@ -18,6 +18,8 @@ type createRunRequest struct {
 	Prompt cursorPrompt `json:"prompt"`
 }
 
+type deleteAgentRequest struct{}
+
 type createAgentResponse struct {
 	Agent struct {
 		ID          string `json:"id"`

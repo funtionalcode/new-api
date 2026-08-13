@@ -45,6 +45,13 @@ export const parameterEnabledSchema = z.object({
   seed: z.boolean().optional(),
 })
 
+export const cursorAgentSessionSchema = z.object({
+  agentId: z.string().regex(/^bc-[0-9a-f-]+$/i),
+  signature: z.string().min(1),
+  channelId: z.number().int().positive(),
+  keyIndex: z.number().int().nonnegative(),
+})
+
 const messageRoleSchema = z.enum(['user', 'assistant', 'system'])
 const messageStatusSchema = z.enum([
   'loading',

@@ -26,12 +26,16 @@ func newCursorTestContext(t *testing.T) *gin.Context {
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 	c.Set("id", 1)
+	common.SetContextKey(c, constant.ContextKeyChannelId, 42)
+	common.SetContextKey(c, constant.ContextKeyChannelMultiKeyIndex, 0)
 	return c
 }
 
 func setCursorTestAgentHeaders(c *gin.Context, agentID string) {
-	c.Request.Header.Set(cursorAgentIDHeader, agentID)
-	c.Request.Header.Set(cursorAgentSignatureHeader, cursorAgentSignature(c.GetInt("id"), agentID))
+	c.Request.Header.Set(constant.CursorAgentIDHeader, agentID)
+	c.Request.Header.Set(constant.CursorAgentSignatureHeader, cursorAgentSignature(c.GetInt("id"), agentID))
+	c.Request.Header.Set(constant.CursorAgentChannelIDHeader, "42")
+	c.Request.Header.Set(constant.CursorAgentKeyIndexHeader, "0")
 }
 
 func TestCursorAdaptorUsesCloudAgentsEndpoint(t *testing.T) {
@@ -125,12 +129,40 @@ func TestConvertOpenAIRequestContinuesPersistentAgentWithLatestUserMessage(t *te
 		},
 	}
 
-	converted, err := adaptor.ConvertOpenAIRequest(c, nil, request)
+	converted, err := adaptor.ConvertOpenAIRequest(c, &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 42}}, request)
 	require.NoError(t, err)
 	runRequest, ok := converted.(*createRunRequest)
 	require.True(t, ok)
 	assert.Equal(t, "What did I ask?", runRequest.Prompt.Text)
 	assert.Equal(t, "bc-00000000-0000-0000-0000-000000000001", c.GetString(cursorAgentIDContextKey))
+}
+
+func TestConvertOpenAIRequestTreatsCleanupCommandAsAgentDeletion(t *testing.T) {
+	c := newCursorTestContext(t)
+	agentID := "bc-00000000-0000-0000-0000-000000000001"
+	setCursorTestAgentHeaders(c, agentID)
+
+	converted, err := (&Adaptor{}).ConvertOpenAIRequest(c, &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 42}}, &dto.GeneralOpenAIRequest{
+		Model: "composer-2",
+		Messages: []dto.Message{
+			{Role: "user", Content: "previous question"},
+			{Role: "assistant", Content: "previous answer"},
+			{Role: "user", Content: "  清理会话agent  "},
+		},
+	})
+
+	require.NoError(t, err)
+	assert.IsType(t, &deleteAgentRequest{}, converted)
+	assert.Equal(t, constant.CursorAgentLifecycleDelete, common.GetContextKeyString(c, constant.ContextKeyCursorAgentLifecycle))
+}
+
+func TestConvertOpenAIRequestRejectsCleanupWithoutActiveAgent(t *testing.T) {
+	_, err := (&Adaptor{}).ConvertOpenAIRequest(newCursorTestContext(t), nil, &dto.GeneralOpenAIRequest{
+		Model:    "composer-2",
+		Messages: []dto.Message{{Role: "user", Content: "清理会话agent"}},
+	})
+
+	require.ErrorContains(t, err, "no active Cursor Agent")
 }
 
 func TestCursorPersistentHeadersRoundTripForSameUser(t *testing.T) {
@@ -142,8 +174,8 @@ func TestCursorPersistentHeadersRoundTripForSameUser(t *testing.T) {
 
 	requestContext := newCursorTestContext(t)
 	requestContext.Set("id", 7)
-	requestContext.Request.Header.Set(cursorAgentIDHeader, responseRecorder.Header().Get(cursorAgentIDHeader))
-	requestContext.Request.Header.Set(cursorAgentSignatureHeader, responseRecorder.Header().Get(cursorAgentSignatureHeader))
+	requestContext.Request.Header.Set(constant.CursorAgentIDHeader, responseRecorder.Header().Get(constant.CursorAgentIDHeader))
+	requestContext.Request.Header.Set(constant.CursorAgentSignatureHeader, responseRecorder.Header().Get(constant.CursorAgentSignatureHeader))
 
 	require.NoError(t, validateCursorAgentID(requestContext, agentID))
 }
@@ -154,7 +186,7 @@ func TestConvertOpenAIRequestRejectsPersistentAgentFromAnotherUser(t *testing.T)
 	setCursorTestAgentHeaders(c, agentID)
 	c.Set("id", 2)
 
-	_, err := (&Adaptor{}).ConvertOpenAIRequest(c, nil, &dto.GeneralOpenAIRequest{
+	_, err := (&Adaptor{}).ConvertOpenAIRequest(c, &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 42}}, &dto.GeneralOpenAIRequest{
 		Model:    "composer-2",
 		Messages: []dto.Message{{Role: "user", Content: "continue"}},
 	})
@@ -166,9 +198,9 @@ func TestConvertOpenAIRequestRejectsUnknownPersistentSignatureVersion(t *testing
 	c := newCursorTestContext(t)
 	agentID := "bc-00000000-0000-0000-0000-000000000001"
 	setCursorTestAgentHeaders(c, agentID)
-	c.Request.Header.Set(cursorAgentSignatureHeader, "v2.invalid")
+	c.Request.Header.Set(constant.CursorAgentSignatureHeader, "v2.invalid")
 
-	_, err := (&Adaptor{}).ConvertOpenAIRequest(c, nil, &dto.GeneralOpenAIRequest{
+	_, err := (&Adaptor{}).ConvertOpenAIRequest(c, &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 42}}, &dto.GeneralOpenAIRequest{
 		Model:    "composer-2",
 		Messages: []dto.Message{{Role: "user", Content: "continue"}},
 	})
@@ -434,6 +466,7 @@ func TestCursorAdaptorContinuesPersistentAgentWithoutDeletingSession(t *testing.
 	setCursorTestAgentHeaders(c, agentID)
 	common.SetContextKey(c, common.RequestIdKey, "cursor-persistent")
 	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{
+		ChannelId:         42,
 		ChannelType:       constant.ChannelTypeCursor,
 		ChannelBaseUrl:    server.URL,
 		ApiKey:            "cursor-secret",
@@ -457,7 +490,7 @@ func TestCursorAdaptorContinuesPersistentAgentWithoutDeletingSession(t *testing.
 	usageValue, apiErr := adaptor.DoResponse(c, upstream.(*http.Response), info)
 	require.Nil(t, apiErr)
 	assert.Equal(t, 12, usageValue.(*dto.Usage).PromptTokens)
-	assert.Equal(t, agentID, recorder.Header().Get(cursorAgentIDHeader))
+	assert.Equal(t, agentID, recorder.Header().Get(constant.CursorAgentIDHeader))
 
 	mutex.Lock()
 	defer mutex.Unlock()
@@ -466,6 +499,54 @@ func TestCursorAdaptorContinuesPersistentAgentWithoutDeletingSession(t *testing.
 		"GET /v1/agents/" + agentID + "/runs/run-2/stream",
 		"GET /v1/agents/" + agentID + "/usage?runId=run-2",
 	}, requests)
+}
+
+func TestCursorAdaptorDeletesPersistentAgentWithoutStartingRun(t *testing.T) {
+	agentID := "bc-00000000-0000-0000-0000-000000000001"
+	requests := make([]string, 0, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.Path)
+		assert.Equal(t, "Bearer cursor-secret", r.Header.Get("Authorization"))
+		if r.Method == http.MethodDelete && r.URL.Path == "/v1/agents/"+agentID {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(server.Close)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	c.Set("id", 1)
+	common.SetContextKey(c, constant.ContextKeyChannelId, 42)
+	common.SetContextKey(c, constant.ContextKeyChannelMultiKeyIndex, 0)
+	common.SetContextKey(c, common.RequestIdKey, "cursor-delete")
+	setCursorTestAgentHeaders(c, agentID)
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{
+		ChannelId:         42,
+		ChannelType:       constant.ChannelTypeCursor,
+		ChannelBaseUrl:    server.URL,
+		ApiKey:            "cursor-secret",
+		UpstreamModelName: "composer-2",
+	}}
+	adaptor := &Adaptor{}
+	converted, err := adaptor.ConvertOpenAIRequest(c, info, &dto.GeneralOpenAIRequest{
+		Model:    "composer-2",
+		Messages: []dto.Message{{Role: "user", Content: "清理会话agent"}},
+	})
+	require.NoError(t, err)
+	body, err := common.Marshal(converted)
+	require.NoError(t, err)
+
+	upstream, err := adaptor.DoRequest(c, info, bytes.NewReader(body))
+	require.NoError(t, err)
+	usageValue, apiErr := adaptor.DoResponse(c, upstream.(*http.Response), info)
+	require.Nil(t, apiErr)
+	require.NotNil(t, usageValue)
+	assert.Equal(t, "true", recorder.Header().Get(constant.CursorAgentDeletedHeader))
+	assert.Equal(t, []string{"DELETE /v1/agents/" + agentID}, requests)
+	assert.Contains(t, recorder.Body.String(), "Cursor Agent deleted.")
 }
 
 func TestCursorAdaptorOnlyAcceptsOpenAITextRequests(t *testing.T) {

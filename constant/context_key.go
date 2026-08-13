@@ -37,7 +37,9 @@ const (
 	ContextKeyChannelStatusCodeMapping ContextKey = "status_code_mapping"
 	ContextKeyChannelIsMultiKey        ContextKey = "channel_is_multi_key"
 	ContextKeyChannelMultiKeyIndex     ContextKey = "channel_multi_key_index"
+	ContextKeyChannelKeyIndexOverride  ContextKey = "channel_key_index_override"
 	ContextKeyChannelKey               ContextKey = "channel_key"
+	ContextKeyCursorAgentLifecycle     ContextKey = "cursor_agent_lifecycle"
 
 	ContextKeyAutoGroup           ContextKey = "auto_group"
 	ContextKeyAutoGroupIndex      ContextKey = "auto_group_index"

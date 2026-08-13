@@ -17,7 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { MESSAGE_STATUS, STORAGE_KEYS } from '../../constants'
-import type { PlaygroundConfig, ParameterEnabled, Message } from '../../types'
+import type {
+  CursorAgentSession,
+  PlaygroundConfig,
+  ParameterEnabled,
+  Message,
+} from '../../types'
 import {
   finalizeMessage,
   isAssistantMessagePending,
@@ -31,6 +36,7 @@ import {
   MAX_STORED_MESSAGES,
   MAX_STORED_MESSAGES_BYTES,
   STORAGE_VERSION,
+  cursorAgentSessionSchema,
   messagesSchema,
   parameterEnabledSchema,
   playgroundConfigSchema,
@@ -346,7 +352,9 @@ export function loadConfig(
   scope?: PlaygroundStorageScope
 ): Partial<PlaygroundConfig> {
   try {
-    const saved = readStoredValue(getScopedStorageKey(STORAGE_KEYS.CONFIG, scope))
+    const saved = readStoredValue(
+      getScopedStorageKey(STORAGE_KEYS.CONFIG, scope)
+    )
     if (!saved) return {}
 
     return playgroundConfigSchema.parse(unwrapStoredValue(saved))
@@ -469,6 +477,49 @@ export function saveMessages(
   }
 }
 
+export function loadCursorAgentSession(
+  scope?: PlaygroundStorageScope
+): CursorAgentSession | null {
+  try {
+    const saved = readStoredValue(
+      getScopedStorageKey(STORAGE_KEYS.CURSOR_AGENT_SESSION, scope)
+    )
+    if (!saved) return null
+    return cursorAgentSessionSchema.parse(unwrapStoredValue(saved))
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to load Cursor Agent session:', error)
+    return null
+  }
+}
+
+export function saveCursorAgentSession(
+  session: CursorAgentSession,
+  scope?: PlaygroundStorageScope
+): void {
+  try {
+    const parsed = cursorAgentSessionSchema.parse(session)
+    writeStoredValue(
+      getScopedStorageKey(STORAGE_KEYS.CURSOR_AGENT_SESSION, scope),
+      parsed
+    )
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to save Cursor Agent session:', error)
+  }
+}
+
+export function clearCursorAgentSession(scope?: PlaygroundStorageScope): void {
+  try {
+    localStorage.removeItem(
+      getScopedStorageKey(STORAGE_KEYS.CURSOR_AGENT_SESSION, scope)
+    )
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to clear Cursor Agent session:', error)
+  }
+}
+
 /**
  * Clear all playground data
  */
@@ -481,6 +532,7 @@ export function clearPlaygroundData(scope?: PlaygroundStorageScope): void {
     const messagesKey = getScopedStorageKey(STORAGE_KEYS.MESSAGES, scope)
     localStorage.removeItem(messagesKey)
     persistedMessagesMemoryCache.delete(messagesKey)
+    clearCursorAgentSession(scope)
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('Failed to clear playground data:', error)

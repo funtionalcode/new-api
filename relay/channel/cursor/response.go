@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -130,6 +131,9 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 		return nil, types.NewOpenAIError(errors.New("cursor channel: empty upstream response"), types.ErrorCodeBadResponse, http.StatusBadGateway)
 	}
 	defer service.CloseResponseBodyGracefully(resp)
+	if resp.Header.Get(cursorAgentLifecycleHeader) == constant.CursorAgentLifecycleDelete {
+		return writeCursorAgentDeletedResponse(c, info, resp)
+	}
 
 	agentID := resp.Header.Get(cursorAgentIDInternalHeader)
 	runID := resp.Header.Get(cursorRunIDInternalHeader)
@@ -137,6 +141,9 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	clientStream, _ := strconv.ParseBool(resp.Header.Get(cursorClientStreamHeader))
 	if persistent && agentID != "" {
 		setCursorAgentResponseHeaders(c, agentID)
+	}
+	if resp.Header.Get(cursorAgentLifecycleHeader) == constant.CursorAgentLifecycleCreate {
+		common.SetContextKey(c, constant.ContextKeyCursorAgentLifecycle, constant.CursorAgentLifecycleCreate)
 	}
 
 	responseID := helper.GetResponseID(c)
@@ -291,8 +298,67 @@ func setCursorAgentResponseHeaders(c *gin.Context, agentID string) {
 	if userID <= 0 {
 		return
 	}
-	c.Header(cursorAgentIDHeader, agentID)
-	c.Header(cursorAgentSignatureHeader, cursorAgentSignature(userID, agentID))
+	c.Header(constant.CursorAgentIDHeader, agentID)
+	c.Header(constant.CursorAgentSignatureHeader, cursorAgentSignature(userID, agentID))
+	if channelID := common.GetContextKeyInt(c, constant.ContextKeyChannelId); channelID > 0 {
+		c.Header(constant.CursorAgentChannelIDHeader, strconv.Itoa(channelID))
+	}
+	c.Header(constant.CursorAgentKeyIndexHeader, strconv.Itoa(common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex)))
+}
+
+func writeCursorAgentDeletedResponse(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
+	const message = "Cursor Agent deleted."
+	responseID := helper.GetResponseID(c)
+	createdAt := common.GetTimestamp()
+	model := info.UpstreamModelName
+	usage := service.ResponseText2Usage(c, message, model, info.GetEstimatePromptTokens())
+	clientStream, _ := strconv.ParseBool(resp.Header.Get(cursorClientStreamHeader))
+	if clientStream {
+		helper.SetEventStreamHeaders(c)
+		chunk := &dto.ChatCompletionsStreamResponse{
+			Id:      responseID,
+			Object:  "chat.completion.chunk",
+			Created: createdAt,
+			Model:   model,
+			Choices: []dto.ChatCompletionsStreamResponseChoice{{
+				Index: 0,
+				Delta: dto.ChatCompletionsStreamResponseChoiceDelta{
+					Role:    "assistant",
+					Content: common.GetPointer(message),
+				},
+			}},
+		}
+		if err := helper.ObjectData(c, chunk); err != nil {
+			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+		}
+		if err := helper.ObjectData(c, helper.GenerateStopResponse(responseID, createdAt, model, "stop")); err != nil {
+			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+		}
+		if info.ShouldIncludeUsage {
+			if err := helper.ObjectData(c, helper.GenerateFinalUsageResponse(responseID, createdAt, model, *usage)); err != nil {
+				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+			}
+		}
+		helper.Done(c)
+		return usage, nil
+	}
+
+	c.JSON(http.StatusOK, &dto.OpenAITextResponse{
+		Id:      responseID,
+		Object:  "chat.completion",
+		Created: createdAt,
+		Model:   model,
+		Choices: []dto.OpenAITextResponseChoice{{
+			Index: 0,
+			Message: dto.Message{
+				Role:    "assistant",
+				Content: message,
+			},
+			FinishReason: "stop",
+		}},
+		Usage: *usage,
+	})
+	return usage, nil
 }
 
 func cursorAgentSignature(userID int, agentID string) string {

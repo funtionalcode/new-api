@@ -217,6 +217,7 @@ export interface LogOtherData {
   matched_tier?: string
   request_rules?: RequestRuleTrace[]
   reasoning_effort?: string
+  cursor_agent_lifecycle?: 'create' | 'delete'
   image?: boolean
   image_ratio?: number
   image_output?: number

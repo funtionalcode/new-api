@@ -68,6 +68,8 @@ await i18n.use(initReactI18next).init({
     en: {
       translation: {
         'Reasoning Effort': 'Reasoning Effort',
+        'Cursor Agent created': 'Cursor Agent created',
+        'Cursor Agent deleted': 'Cursor Agent deleted',
       },
     },
   },
@@ -235,6 +237,45 @@ describe('usage log model reasoning effort', () => {
     })
 
     assert.equal(document.body.textContent?.includes('WebSocket'), true)
+
+    await act(async () => root.unmount())
+    container.remove()
+  })
+
+  test('uses distinct lifecycle icons for Cursor Agent creation and deletion', async () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+
+    await act(async () => {
+      root.render(
+        <I18nextProvider i18n={i18n}>
+          <UsageLogModelCell
+            log={createUsageLog({ cursor_agent_lifecycle: 'create' })}
+          />
+          <UsageLogModelCell
+            log={createUsageLog({ cursor_agent_lifecycle: 'delete' })}
+          />
+        </I18nextProvider>
+      )
+    })
+
+    const created = container.querySelector(
+      '[data-cursor-agent-lifecycle="create"]'
+    )
+    const deleted = container.querySelector(
+      '[data-cursor-agent-lifecycle="delete"]'
+    )
+    assert.ok(created)
+    assert.ok(deleted)
+    assert.ok(created.querySelector('svg'))
+    assert.ok(deleted.querySelector('svg'))
+    assert.notEqual(
+      created.querySelector('svg')?.innerHTML,
+      deleted.querySelector('svg')?.innerHTML
+    )
+    assert.equal(created.getAttribute('aria-label'), 'Cursor Agent created')
+    assert.equal(deleted.getAttribute('aria-label'), 'Cursor Agent deleted')
 
     await act(async () => root.unmount())
     container.remove()

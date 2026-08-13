@@ -11,8 +11,10 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -87,15 +89,18 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		}
 	}
 	if c != nil && c.Request != nil {
-		if headerAgentID := strings.TrimSpace(c.Request.Header.Get(cursorAgentIDHeader)); headerAgentID != "" {
+		if headerAgentID := strings.TrimSpace(c.Request.Header.Get(constant.CursorAgentIDHeader)); headerAgentID != "" {
 			metadata.AgentID = headerAgentID
 		}
-		if persistent, err := strconv.ParseBool(strings.TrimSpace(c.Request.Header.Get(cursorPersistentHeader))); err == nil {
+		if persistent, err := strconv.ParseBool(strings.TrimSpace(c.Request.Header.Get(constant.CursorPersistentHeader))); err == nil {
 			metadata.Persistent = persistent
 		}
 	}
 	metadata.AgentID = strings.TrimSpace(metadata.AgentID)
 	if metadata.AgentID != "" {
+		if err := validateCursorAgentChannel(c, info); err != nil {
+			return nil, err
+		}
 		if err := validateCursorAgentID(c, metadata.AgentID); err != nil {
 			return nil, err
 		}
@@ -130,7 +135,15 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		if latest.Role != "user" {
 			return nil, errors.New("cursor channel: a persistent agent continuation must end with a user message")
 		}
+		if strings.TrimSpace(latest.Content) == cursorCleanupCommand {
+			common.SetContextKey(c, constant.ContextKeyCursorAgentLifecycle, constant.CursorAgentLifecycleDelete)
+			return &deleteAgentRequest{}, nil
+		}
 		return &createRunRequest{Prompt: cursorPrompt{Text: latest.Content}}, nil
+	}
+	latest := transcriptMessages[len(transcriptMessages)-1]
+	if latest.Role == "user" && strings.TrimSpace(latest.Content) == cursorCleanupCommand {
+		return nil, errors.New("cursor channel: no active Cursor Agent can be deleted")
 	}
 	if info != nil && info.IsChannelTest {
 		return &createAgentRequest{
@@ -218,7 +231,7 @@ func validateCursorAgentID(c *gin.Context, agentID string) error {
 	if c == nil || c.Request == nil {
 		return errors.New("cursor channel: request context is required for a persistent agent")
 	}
-	signature := strings.TrimSpace(c.Request.Header.Get(cursorAgentSignatureHeader))
+	signature := strings.TrimSpace(c.Request.Header.Get(constant.CursorAgentSignatureHeader))
 	if signature == "" {
 		return errors.New("cursor channel: persistent agent signature is missing")
 	}
@@ -237,6 +250,20 @@ func validateCursorAgentID(c *gin.Context, agentID string) error {
 	return nil
 }
 
+func validateCursorAgentChannel(c *gin.Context, info *relaycommon.RelayInfo) error {
+	if c == nil || c.Request == nil || info == nil {
+		return errors.New("cursor channel: request channel context is required for a persistent agent")
+	}
+	channelID, err := strconv.Atoi(strings.TrimSpace(c.Request.Header.Get(constant.CursorAgentChannelIDHeader)))
+	if err != nil || channelID <= 0 {
+		return errors.New("cursor channel: persistent agent channel is missing or invalid")
+	}
+	if channelID != info.ChannelId {
+		return errors.New("cursor channel: persistent agent belongs to a different channel")
+	}
+	return nil
+}
+
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
 	if requestBody == nil {
 		return nil, errors.New("cursor channel: request body is required")
@@ -245,9 +272,25 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 	if err != nil {
 		return nil, fmt.Errorf("cursor channel: read request body: %w", err)
 	}
+	if common.GetContextKeyString(c, constant.ContextKeyCursorAgentLifecycle) == constant.CursorAgentLifecycleDelete {
+		agentID := c.GetString(cursorAgentIDContextKey)
+		if err := a.DeletePersistentAgent(c, info, agentID); err != nil {
+			return nil, err
+		}
+		c.Header(constant.CursorAgentDeletedHeader, "true")
+		responseHeader := make(http.Header)
+		responseHeader.Set(cursorAgentLifecycleHeader, constant.CursorAgentLifecycleDelete)
+		responseHeader.Set(cursorClientStreamHeader, strconv.FormatBool(info.IsStream))
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     responseHeader,
+			Body:       io.NopCloser(strings.NewReader("")),
+		}, nil
+	}
 
 	agentID := c.GetString(cursorAgentIDContextKey)
 	persistent := c.GetBool(cursorPersistentContextKey)
+	creatingPersistentAgent := persistent && agentID == ""
 	if persistent && agentID != "" {
 		setCursorAgentResponseHeaders(c, agentID)
 	}
@@ -310,6 +353,9 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 	streamResponse.Header.Set(cursorRunIDInternalHeader, runID)
 	streamResponse.Header.Set(cursorPersistentInternalKey, strconv.FormatBool(persistent))
 	streamResponse.Header.Set(cursorClientStreamHeader, strconv.FormatBool(info.IsStream))
+	if creatingPersistentAgent {
+		streamResponse.Header.Set(cursorAgentLifecycleHeader, constant.CursorAgentLifecycleCreate)
+	}
 	if info.IsChannelTest {
 		streamResponse.Header.Set(cursorSkipRemoteUsageHeader, "true")
 	}
@@ -320,6 +366,31 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 		a.finishCursorRun(c, info, agentID, runID, persistent, false)
 	}
 	return streamResponse, nil
+}
+
+func (a *Adaptor) DeletePersistentAgent(c *gin.Context, info *relaycommon.RelayInfo, agentID string) error {
+	agentID = strings.TrimSpace(agentID)
+	if err := validateCursorAgentChannel(c, info); err != nil {
+		return err
+	}
+	if err := validateCursorAgentID(c, agentID); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+	deletePath := "/v1/agents/" + url.PathEscape(agentID)
+	response, err := a.doCursorAPIRequest(ctx, c, info, http.MethodDelete, deletePath, nil, false)
+	if err != nil {
+		return err
+	}
+	defer service.CloseResponseBodyGracefully(response)
+	if response.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("cursor channel: delete agent returned status %d", response.StatusCode)
+	}
+	return nil
 }
 
 func (a *Adaptor) doCursorAPIRequest(ctx context.Context, c *gin.Context, info *relaycommon.RelayInfo, method string, path string, body io.Reader, stream bool) (*http.Response, error) {

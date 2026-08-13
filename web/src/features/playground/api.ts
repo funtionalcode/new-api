@@ -18,12 +18,13 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
-import { API_ENDPOINTS } from './constants'
+import { API_ENDPOINTS, CURSOR_AGENT_HEADERS } from './constants'
 import type {
   AudioTranscriptionRequest,
   AudioTranscriptionResponse,
   ChatCompletionRequest,
   ChatCompletionResponse,
+  CursorAgentSession,
   ImageGenerationRequest,
   ImageGenerationResponse,
   ModelOption,
@@ -54,15 +55,68 @@ async function attachmentToBlobFile(
 /**
  * Send chat completion request (non-streaming)
  */
+export interface ChatCompletionResult {
+  data: ChatCompletionResponse
+  cursorSession: CursorAgentSession | null
+  cursorAgentDeleted: boolean
+}
+
+function getCursorSessionFromHeaders(
+  headers: Record<string, unknown>
+): CursorAgentSession | null {
+  const agentId = String(headers[CURSOR_AGENT_HEADERS.ID.toLowerCase()] ?? '')
+  const signature = String(
+    headers[CURSOR_AGENT_HEADERS.SIGNATURE.toLowerCase()] ?? ''
+  )
+  const channelId = Number(
+    headers[CURSOR_AGENT_HEADERS.CHANNEL_ID.toLowerCase()]
+  )
+  const keyIndex = Number(headers[CURSOR_AGENT_HEADERS.KEY_INDEX.toLowerCase()])
+  if (
+    !agentId ||
+    !signature ||
+    !Number.isInteger(channelId) ||
+    channelId <= 0
+  ) {
+    return null
+  }
+  if (!Number.isInteger(keyIndex) || keyIndex < 0) return null
+  return { agentId, signature, channelId, keyIndex }
+}
+
 export async function sendChatCompletion(
   payload: ChatCompletionRequest,
+  requestHeaders: Record<string, string>,
   signal?: AbortSignal
-): Promise<ChatCompletionResponse> {
+): Promise<ChatCompletionResult> {
   const res = await api.post(API_ENDPOINTS.CHAT_COMPLETIONS, payload, {
+    headers: requestHeaders,
     signal,
     skipErrorHandler: true,
   } as Record<string, unknown>)
-  return res.data
+  const headers = res.headers as Record<string, unknown>
+  return {
+    data: res.data,
+    cursorSession: getCursorSessionFromHeaders(headers),
+    cursorAgentDeleted:
+      String(headers[CURSOR_AGENT_HEADERS.DELETED.toLowerCase()]) === 'true',
+  }
+}
+
+export function cursorAgentRequestHeaders(
+  session: CursorAgentSession | null
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    [CURSOR_AGENT_HEADERS.PERSISTENT]: 'true',
+  }
+  if (!session) return headers
+  return {
+    ...headers,
+    [CURSOR_AGENT_HEADERS.ID]: session.agentId,
+    [CURSOR_AGENT_HEADERS.SIGNATURE]: session.signature,
+    [CURSOR_AGENT_HEADERS.CHANNEL_ID]: String(session.channelId),
+    [CURSOR_AGENT_HEADERS.KEY_INDEX]: String(session.keyIndex),
+  }
 }
 
 export async function sendImageGeneration(

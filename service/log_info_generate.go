@@ -87,6 +87,9 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 		other["ws"] = true
 		other["transport"] = "websocket"
 	}
+	if lifecycle := common.GetContextKeyString(ctx, constant.ContextKeyCursorAgentLifecycle); lifecycle != "" {
+		other["cursor_agent_lifecycle"] = lifecycle
+	}
 	if relayInfo.IsModelMapped {
 		other["is_model_mapped"] = true
 		other["upstream_model_name"] = relayInfo.UpstreamModelName

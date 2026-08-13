@@ -43,6 +43,15 @@ export const API_ENDPOINTS = {
   USER_GROUPS: '/api/user/self/groups',
 } as const
 
+export const CURSOR_AGENT_HEADERS = {
+  ID: 'X-Cursor-Agent-ID',
+  SIGNATURE: 'X-Cursor-Agent-Signature',
+  CHANNEL_ID: 'X-Cursor-Agent-Channel-ID',
+  KEY_INDEX: 'X-Cursor-Agent-Key-Index',
+  DELETED: 'X-Cursor-Agent-Deleted',
+  PERSISTENT: 'X-Cursor-Persistent',
+} as const
+
 // Default group — uses 'default' as the safe fallback; auto-group is
 // only selected when the backend confirms it is available for the user.
 export const DEFAULT_GROUP = 'default' as const
@@ -74,6 +83,7 @@ export const STORAGE_KEYS = {
   CONFIG: 'playground_config',
   MESSAGES: 'playground_messages',
   PARAMETER_ENABLED: 'playground_parameter_enabled',
+  CURSOR_AGENT_SESSION: 'playground_cursor_agent_session',
 } as const
 
 // Error messages

@@ -94,6 +94,13 @@ export interface ChatCompletionRequest {
   seed?: number
 }
 
+export interface CursorAgentSession {
+  agentId: string
+  signature: string
+  channelId: number
+  keyIndex: number
+}
+
 export interface ChatCompletionChunk {
   id: string
   object: string

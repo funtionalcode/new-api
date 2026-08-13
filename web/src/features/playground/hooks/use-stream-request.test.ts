@@ -36,12 +36,26 @@ class FakeStreamSource {
   streamed = false
   private listeners = new Map<
     string,
-    Array<(event: Event & { data?: string; readyState?: number }) => void>
+    Array<
+      (
+        event: Event & {
+          data?: string
+          readyState?: number
+          headers?: Record<string, string[]>
+        }
+      ) => void
+    >
   >()
 
   addEventListener(
     type: string,
-    listener: (event: Event & { data?: string; readyState?: number }) => void
+    listener: (
+      event: Event & {
+        data?: string
+        readyState?: number
+        headers?: Record<string, string[]>
+      }
+    ) => void
   ) {
     const listeners = this.listeners.get(type) ?? []
     listeners.push(listener)
@@ -56,11 +70,12 @@ class FakeStreamSource {
     this.streamed = true
   }
 
-  emit(type: string, data?: string) {
+  emit(type: string, data?: string, headers?: Record<string, string[]>) {
     for (const listener of this.listeners.get(type) ?? []) {
-      listener({ data, readyState: this.readyState } as Event & {
+      listener({ data, readyState: this.readyState, headers } as Event & {
         data?: string
         readyState?: number
+        headers?: Record<string, string[]>
       })
     }
   }
@@ -77,6 +92,8 @@ const noopCallbacks = {
   onComplete: () => undefined,
   onError: () => undefined,
 }
+
+const noRequestHeaders: Record<string, string> = {}
 
 describe('latest-wins stream request coordination', () => {
   test('only creates a stream for the latest header request', async () => {
@@ -99,8 +116,8 @@ describe('latest-wins stream request coordination', () => {
       setStreaming: () => undefined,
     })
 
-    const first = controller.send(payload, noopCallbacks)
-    const second = controller.send(payload, noopCallbacks)
+    const first = controller.send(payload, noRequestHeaders, noopCallbacks)
+    const second = controller.send(payload, noRequestHeaders, noopCallbacks)
     firstHeaders.resolve({ Authorization: 'Bearer stale' })
     await first
     assert.equal(sources.length, 0)
@@ -123,7 +140,7 @@ describe('latest-wins stream request coordination', () => {
       setStreaming: () => undefined,
     })
 
-    const request = controller.send(payload, noopCallbacks)
+    const request = controller.send(payload, noRequestHeaders, noopCallbacks)
     controller.stop()
     headers.resolve({ Authorization: 'Bearer ignored' })
     await request
@@ -144,7 +161,7 @@ describe('latest-wins stream request coordination', () => {
       setStreaming: (streaming) => streamingStates.push(streaming),
     })
 
-    const request = controller.send(payload, noopCallbacks)
+    const request = controller.send(payload, noRequestHeaders, noopCallbacks)
     controller.dispose()
     headers.resolve({ Authorization: 'Bearer ignored' })
     await request
@@ -180,8 +197,8 @@ describe('latest-wins stream request coordination', () => {
       onError: () => undefined,
     }
 
-    await controller.send(payload, callbacks)
-    const second = controller.send(payload, callbacks)
+    await controller.send(payload, noRequestHeaders, callbacks)
+    const second = controller.send(payload, noRequestHeaders, callbacks)
     assert.equal(sources[0]?.closed, true)
     sources[0]?.emit(
       'message',
@@ -196,5 +213,37 @@ describe('latest-wins stream request coordination', () => {
     )
 
     assert.deepEqual(updates, ['current'])
+  })
+
+  test('merges Cursor session headers and exposes response headers on open', async () => {
+    let sourceHeaders: Record<string, string> = {}
+    const source = new FakeStreamSource()
+    const openedHeaders: Array<Record<string, string[]>> = []
+    const controller = createStreamRequestController({
+      getHeaders: () => Promise.resolve({ Authorization: 'Bearer user' }),
+      createSource: (_payload, headers) => {
+        sourceHeaders = headers
+        return source
+      },
+      setStreaming: () => undefined,
+    })
+
+    await controller.send(
+      payload,
+      { 'X-Cursor-Persistent': 'true' },
+      { ...noopCallbacks, onOpen: (headers) => openedHeaders.push(headers) }
+    )
+    source.emit('open', undefined, {
+      'x-cursor-agent-id': ['bc-00000000-0000-0000-0000-000000000001'],
+    })
+
+    assert.deepEqual(sourceHeaders, {
+      Authorization: 'Bearer user',
+      'X-Cursor-Persistent': 'true',
+    })
+    assert.equal(
+      openedHeaders[0]?.['x-cursor-agent-id']?.[0],
+      'bc-00000000-0000-0000-0000-000000000001'
+    )
   })
 })

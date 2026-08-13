@@ -1307,6 +1307,8 @@
     "Current version": "Текущая версия",
     "Current:": "Текущий:",
     "Cursor": "Cursor",
+    "Cursor Agent created": "Агент Cursor создан",
+    "Cursor Agent deleted": "Агент Cursor удалён",
     "Cursor API Key": "API-ключ Cursor",
     "Custom": "Пользовательский",
     "Custom (seconds)": "Пользовательский (секунды)",

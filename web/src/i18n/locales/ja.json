@@ -1307,6 +1307,8 @@
     "Current version": "現在のバージョン",
     "Current:": "現在:",
     "Cursor": "Cursor",
+    "Cursor Agent created": "Cursor Agent を作成しました",
+    "Cursor Agent deleted": "Cursor Agent を削除しました",
     "Cursor API Key": "Cursor APIキー",
     "Custom": "カスタム",
     "Custom (seconds)": "カスタム（秒）",

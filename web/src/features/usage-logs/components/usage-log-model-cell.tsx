@@ -25,6 +25,8 @@ import {
   BrainCircuitIcon,
   BrainCogIcon,
   CancelCircleIcon,
+  AddCircleIcon,
+  Delete02Icon,
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { useTranslation } from 'react-i18next'
@@ -71,6 +73,15 @@ export function UsageLogModelCell(props: { log: UsageLog }) {
       ] ?? BrainCogIcon)
     : BrainCogIcon
   const showWebsocketBadge = isWebsocketLog(other)
+  const cursorAgentLifecycle = other?.cursor_agent_lifecycle
+  const showCursorAgentLifecycle =
+    cursorAgentLifecycle === 'create' || cursorAgentLifecycle === 'delete'
+  const cursorAgentLifecycleLabel =
+    cursorAgentLifecycle === 'create'
+      ? t('Cursor Agent created')
+      : t('Cursor Agent deleted')
+  const cursorAgentLifecycleIcon =
+    cursorAgentLifecycle === 'create' ? AddCircleIcon : Delete02Icon
 
   return (
     <div className='flex w-fit max-w-full items-center gap-1'>
@@ -78,6 +89,34 @@ export function UsageLogModelCell(props: { log: UsageLog }) {
         modelName={modelInfo.name}
         actualModel={modelInfo.actualModel}
       />
+      {showCursorAgentLifecycle ? (
+        <TooltipProvider delay={0}>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <StatusBadge
+                  variant={cursorAgentLifecycle === 'create' ? 'green' : 'red'}
+                  size='sm'
+                  copyable={false}
+                  showDot={false}
+                  aria-label={cursorAgentLifecycleLabel}
+                  role='img'
+                  tabIndex={0}
+                  data-cursor-agent-lifecycle={cursorAgentLifecycle}
+                  className='border-border/60 bg-muted/30 size-5 shrink-0 cursor-help justify-center border p-0 [&>svg]:size-3.5'
+                >
+                  <HugeiconsIcon
+                    icon={cursorAgentLifecycleIcon}
+                    strokeWidth={2}
+                    aria-hidden='true'
+                  />
+                </StatusBadge>
+              }
+            />
+            <TooltipContent>{cursorAgentLifecycleLabel}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      ) : null}
       {reasoningEffort ? (
         <TooltipProvider delay={0}>
           <Tooltip>

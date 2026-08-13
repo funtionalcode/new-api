@@ -1,8 +1,15 @@
 import assert from 'node:assert/strict'
 import { afterEach, beforeEach, describe, test } from 'node:test'
 
-import { clearPlaygroundData, loadMessages, saveMessages } from './storage'
 import type { Message } from '../../types'
+import {
+  clearCursorAgentSession,
+  clearPlaygroundData,
+  loadCursorAgentSession,
+  loadMessages,
+  saveCursorAgentSession,
+  saveMessages,
+} from './storage'
 
 class LocalStorageMock {
   private store = new Map<string, string>()
@@ -101,7 +108,10 @@ describe('playground message storage', () => {
   test('preserves generated video mode when loading from storage', () => {
     const scope = 'video-history'
 
-    saveMessages([createVideoMessage('[Video Preview](/v1/videos/task_123/content)')], scope)
+    saveMessages(
+      [createVideoMessage('[Video Preview](/v1/videos/task_123/content)')],
+      scope
+    )
     const loaded = loadMessages(scope)
 
     assert.equal(loaded?.[0]?.mode, 'video')
@@ -123,5 +133,29 @@ describe('playground message storage', () => {
 
     assert.deepEqual(loaded?.[0]?.imageUrls, ['data:image/png;base64,abc'])
     clearPlaygroundData(scope)
+  })
+
+  test('isolates Cursor Agent sessions by playground user', () => {
+    const firstSession = {
+      agentId: 'bc-00000000-0000-0000-0000-000000000001',
+      signature: 'v1.first',
+      channelId: 10,
+      keyIndex: 0,
+    }
+    const secondSession = {
+      agentId: 'bc-00000000-0000-0000-0000-000000000002',
+      signature: 'v1.second',
+      channelId: 20,
+      keyIndex: 1,
+    }
+
+    saveCursorAgentSession(firstSession, 1)
+    saveCursorAgentSession(secondSession, 2)
+
+    assert.deepEqual(loadCursorAgentSession(1), firstSession)
+    assert.deepEqual(loadCursorAgentSession(2), secondSession)
+    clearCursorAgentSession(1)
+    assert.equal(loadCursorAgentSession(1), null)
+    assert.deepEqual(loadCursorAgentSession(2), secondSession)
   })
 })

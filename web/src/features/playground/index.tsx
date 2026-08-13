@@ -98,6 +98,7 @@ export function Playground() {
     config,
     parameterEnabled,
     onMessageUpdate: updateMessages,
+    storageScope: userId,
   })
 
   const sendTaskMessages = useCallback(

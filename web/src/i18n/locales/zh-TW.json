@@ -1307,6 +1307,8 @@
     "Current version": "目前版本",
     "Current:": "目前：",
     "Cursor": "Cursor",
+    "Cursor Agent created": "已建立 Cursor Agent",
+    "Cursor Agent deleted": "已刪除 Cursor Agent",
     "Cursor API Key": "Cursor API 金鑰",
     "Custom": "自訂",
     "Custom (seconds)": "自訂(秒)",

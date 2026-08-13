@@ -1307,6 +1307,8 @@
     "Current version": "Phiên bản hiện tại",
     "Current:": "Hiện tại:",
     "Cursor": "Cursor",
+    "Cursor Agent created": "Đã tạo Cursor Agent",
+    "Cursor Agent deleted": "Đã xóa Cursor Agent",
     "Cursor API Key": "Khóa API Cursor",
     "Custom": "Tùy chỉnh",
     "Custom (seconds)": "Tùy chỉnh (giây)",

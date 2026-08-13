@@ -35,13 +35,20 @@ interface StreamEventSource {
   readyState?: number
   addEventListener: (
     type: string,
-    listener: (event: Event & { data?: string; readyState?: number }) => void
+    listener: (
+      event: Event & {
+        data?: string
+        readyState?: number
+        headers?: Record<string, string[]>
+      }
+    ) => void
   ) => void
   close: () => void
   stream: () => void
 }
 
 interface StreamRequestCallbacks {
+  onOpen?: (headers: Record<string, string[]>) => void
   onUpdate: (type: 'reasoning' | 'content', chunk: string) => void
   onComplete: () => void
   onError: (error: string, errorCode?: string) => void
@@ -72,6 +79,7 @@ export function createStreamRequestController(
 
   const send = async (
     payload: ChatCompletionRequest,
+    requestHeaders: Record<string, string>,
     callbacks: StreamRequestCallbacks
   ) => {
     const requestGeneration = generation + 1
@@ -95,7 +103,10 @@ export function createStreamRequestController(
     }
     if (generation !== requestGeneration) return
 
-    const nextSource = runtime.createSource(payload, headers)
+    const nextSource = runtime.createSource(payload, {
+      ...headers,
+      ...requestHeaders,
+    })
     source = nextSource
     runtime.setStreaming(true)
     let completed = false
@@ -109,6 +120,11 @@ export function createStreamRequestController(
       callbacks.onError(errorMessage, errorCode)
       closeActiveSource(nextSource)
     }
+
+    nextSource.addEventListener('open', (event) => {
+      if (!isCurrent() || completed) return
+      callbacks.onOpen?.(event.headers ?? {})
+    })
 
     nextSource.addEventListener('message', (event) => {
       if (!isCurrent() || completed) return
@@ -204,11 +220,14 @@ export function useStreamRequest() {
   const sendStreamRequest = useCallback(
     (
       payload: ChatCompletionRequest,
+      requestHeaders: Record<string, string>,
+      onOpen: (headers: Record<string, string[]>) => void,
       onUpdate: (type: 'reasoning' | 'content', chunk: string) => void,
       onComplete: () => void,
       onError: (error: string, errorCode?: string) => void
     ) =>
-      controllerRef.current?.send(payload, {
+      controllerRef.current?.send(payload, requestHeaders, {
+        onOpen,
         onUpdate,
         onComplete,
         onError,
