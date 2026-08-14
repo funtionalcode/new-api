@@ -608,7 +608,7 @@ func getVertexArrayKeys(keys string) ([]string, error) {
 		case string:
 			keyStr = strings.TrimSpace(v)
 		default:
-			bytes, err := json.Marshal(v)
+			bytes, err := common.Marshal(v)
 			if err != nil {
 				return nil, fmt.Errorf("Vertex AI key JSON 编码失败: %w", err)
 			}
@@ -1016,9 +1016,44 @@ func UpdateChannel(c *gin.Context) {
 		return
 	}
 
-	// If the request explicitly specifies a new MultiKeyMode, apply it on top of the original info.
-	if channel.MultiKeyMode != nil && *channel.MultiKeyMode != "" {
-		channel.ChannelInfo.MultiKeyMode = constant.MultiKeyMode(*channel.MultiKeyMode)
+	// If the request explicitly specifies a multi-key strategy, apply it on top
+	// of the original info. For a single-key channel this also enables multi-key
+	// mode, allowing the edit endpoint to retain the saved key and append new
+	// keys in one operation.
+	convertingToMultiKey := false
+	if channel.MultiKeyMode != nil {
+		multiKeyMode := constant.MultiKeyMode(*channel.MultiKeyMode)
+		if multiKeyMode != constant.MultiKeyModeRandom && multiKeyMode != constant.MultiKeyModePolling {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "无效的多密钥策略",
+			})
+			return
+		}
+		channel.ChannelInfo.MultiKeyMode = multiKeyMode
+		if !originChannel.ChannelInfo.IsMultiKey {
+			if channel.Type == constant.ChannelTypeCodex ||
+				(channel.Type == constant.ChannelTypeVertexAi && channel.GetOtherSettings().VertexKeyType == dto.VertexKeyTypeAPIKey) {
+				c.JSON(http.StatusOK, gin.H{
+					"success": false,
+					"message": "该渠道类型不支持多密钥模式",
+				})
+				return
+			}
+			if strings.TrimSpace(channel.Key) == "" {
+				c.JSON(http.StatusOK, gin.H{
+					"success": false,
+					"message": "将单密钥渠道转换为多密钥模式时必须提供新密钥",
+				})
+				return
+			}
+			channel.ChannelInfo.IsMultiKey = true
+			convertingToMultiKey = true
+			if channel.KeyMode == nil {
+				appendMode := "append"
+				channel.KeyMode = &appendMode
+			}
+		}
 	}
 
 	// 处理多key模式下的密钥追加/覆盖逻辑
@@ -1034,7 +1069,7 @@ func UpdateChannel(c *gin.Context) {
 				if strings.HasPrefix(strings.TrimSpace(originChannel.Key), "[") {
 					// JSON数组格式
 					var arr []json.RawMessage
-					if err := json.Unmarshal([]byte(strings.TrimSpace(originChannel.Key)), &arr); err == nil {
+					if err := common.Unmarshal([]byte(strings.TrimSpace(originChannel.Key)), &arr); err == nil {
 						existingKeys = make([]string, len(arr))
 						for i, v := range arr {
 							existingKeys[i] = string(v)
@@ -1099,7 +1134,20 @@ func UpdateChannel(c *gin.Context) {
 			}
 		case "replace":
 			// 覆盖模式：直接使用新密钥（默认行为，不需要特殊处理）
+		default:
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "无效的密钥更新模式",
+			})
+			return
 		}
+	}
+	if convertingToMultiKey && len(channel.GetKeys()) < 2 {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "多密钥模式至少需要两个密钥",
+		})
+		return
 	}
 	err = channel.Update()
 	if err != nil {

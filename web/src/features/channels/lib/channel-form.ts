@@ -24,7 +24,7 @@ import {
   ERROR_MESSAGES,
   MODEL_FETCHABLE_TYPES,
 } from '../constants'
-import type { Channel } from '../types'
+import type { Channel, UpdateChannelRequest } from '../types'
 import {
   CHANNEL_TYPE_ADVANCED_CUSTOM,
   advancedCustomConfigUsesRelativeUpstreamPath,
@@ -489,8 +489,7 @@ export function transformChannelToFormDefaults(
         thinking_to_content: parsed.thinking_to_content || false,
         proxy: parsed.proxy || '',
         http_protocol: protocol,
-        http2_connection_shards:
-          protocol === HTTP_PROTOCOL_HTTP1 ? 1 : shards,
+        http2_connection_shards: protocol === HTTP_PROTOCOL_HTTP1 ? 1 : shards,
         pass_through_body_enabled: parsed.pass_through_body_enabled || false,
         system_prompt: parsed.system_prompt || '',
         system_prompt_override: parsed.system_prompt_override || false,
@@ -575,7 +574,9 @@ export function transformChannelToFormDefaults(
     header_override: channel.header_override || '',
     settings: channel.settings || '{}',
     other: channel.other || '',
-    multi_key_mode: 'single',
+    multi_key_mode: channel.channel_info.is_multi_key
+      ? 'multi_to_single'
+      : 'single',
     multi_key_type: channel.channel_info.multi_key_mode || 'random',
     batch_add_set_key_prefix_2_name: false,
     key_mode: 'append', // Default to append mode for editing multi-key channels
@@ -768,14 +769,16 @@ function normalizeBaseUrl(value: string | undefined): string {
     .replace(/\/+$/, '')
 }
 
-function normalizeOpenUserIds(values: Array<number | string> | undefined): number[] {
-  return Array.from(
-    new Set(
+function normalizeOpenUserIds(
+  values: Array<number | string> | undefined
+): number[] {
+  return [
+    ...new Set(
       (values || [])
         .map((value) => Number(value))
         .filter((value) => Number.isInteger(value) && value > 0)
-    )
-  ).sort((a, b) => a - b)
+    ),
+  ].sort((a, b) => a - b)
 }
 
 function parseOpenUserIds(values: string[] | undefined): number[] {
@@ -841,8 +844,8 @@ export function transformFormDataToCreatePayload(formData: ChannelFormValues): {
 export function transformFormDataToUpdatePayload(
   formData: ChannelFormValues,
   channelId: number
-): Partial<Channel> {
-  const payload: Partial<Channel> = {
+): UpdateChannelRequest {
+  const payload: UpdateChannelRequest = {
     id: channelId,
     name: formData.name,
     type: formData.type,
@@ -869,6 +872,13 @@ export function transformFormDataToUpdatePayload(
   // Only include key if it was changed (not empty)
   if (formData.key && formData.key.trim()) {
     payload.key = formData.key
+  }
+
+  if (formData.multi_key_mode === 'multi_to_single') {
+    payload.multi_key_mode = formData.multi_key_type || 'random'
+    if (payload.key && formData.key_mode) {
+      payload.key_mode = formData.key_mode
+    }
   }
 
   // Clean up empty strings to null for optional fields

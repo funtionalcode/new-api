@@ -25,3 +25,37 @@ export function prepareRevealedChannelKeyForEditing(
     keyMode: isMultiKey ? 'replace' : undefined,
   }
 }
+
+export type ChannelKeyStorageMode = 'single' | 'batch' | 'multi_to_single'
+
+type ChannelKeyModeAvailability = {
+  showSelector: boolean
+  modes: ChannelKeyStorageMode[]
+}
+
+export function getChannelKeyModeAvailability(
+  isEditing: boolean,
+  isMultiKeyChannel: boolean,
+  supportsMultiKeyMode: boolean
+): ChannelKeyModeAvailability {
+  if (!isEditing) {
+    return {
+      showSelector: true,
+      modes: supportsMultiKeyMode
+        ? ['single', 'batch', 'multi_to_single']
+        : ['single'],
+    }
+  }
+
+  if (isMultiKeyChannel) {
+    return {
+      showSelector: false,
+      modes: ['multi_to_single'],
+    }
+  }
+
+  return {
+    showSelector: supportsMultiKeyMode,
+    modes: supportsMultiKeyMode ? ['single', 'multi_to_single'] : ['single'],
+  }
+}
