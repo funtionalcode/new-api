@@ -366,7 +366,14 @@ func (channel *Channel) GetKeys() []string {
 		return []string{}
 	}
 	if len(channel.Keys) > 0 {
-		return channel.Keys
+		keys := make([]string, 0, len(channel.Keys))
+		for _, key := range channel.Keys {
+			key = strings.TrimSpace(key)
+			if key != "" {
+				keys = append(keys, key)
+			}
+		}
+		return keys
 	}
 	trimmed := strings.TrimSpace(channel.Key)
 	// If the key starts with '[', try to parse it as a JSON array (e.g., for Vertex AI scenarios)
@@ -381,14 +388,21 @@ func (channel *Channel) GetKeys() []string {
 		}
 	}
 	// Otherwise, fall back to splitting by newline
-	keys := strings.Split(strings.Trim(channel.Key, "\n"), "\n")
+	rawKeys := strings.Split(channel.Key, "\n")
+	keys := make([]string, 0, len(rawKeys))
+	for _, key := range rawKeys {
+		key = strings.TrimSpace(key)
+		if key != "" {
+			keys = append(keys, key)
+		}
+	}
 	return keys
 }
 
 func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
-	// If not in multi-key mode, return the original key string directly.
+	// If not in multi-key mode, normalize outer whitespace before using the key in an upstream request.
 	if !channel.ChannelInfo.IsMultiKey {
-		return channel.Key, 0, nil
+		return strings.TrimSpace(channel.Key), 0, nil
 	}
 
 	// Obtain all keys (split by \n)

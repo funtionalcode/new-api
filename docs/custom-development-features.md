@@ -35,6 +35,7 @@
 | 常规菜单 | 认证文件、GLM 额度和 DeepSeek 额度移动到常规菜单，普通用户可进入查看并刷新，编辑、新建、删除仍限管理员 | `controller/cliproxy.go`、`router/api-router.go`、`web/src/hooks/use-sidebar-*`、`web/src/features/*quota*`、`web/src/features/cliproxy-auth-files` | 本次同步 |
 | 渠道管理 | 渠道支持开放用户限制；未配置时默认开放给所有用户 | `controller/channel.go`、`model/channel.go`、`middleware/distributor.go`、`service/channel_select.go`、`web/src/features/channels` | `001cd50f` |
 | 渠道管理 | 在 `web` 实现渠道开放用户限制，支持编辑抽屉搜索选择用户、列表展示开放用户范围 | `web/src/features/channels` | 本次同步 |
+| 渠道管理 | 渠道分发时统一清理单 Key 与换行多 Key 的首尾空白、CRLF 和空行；请求头 `{api_key}` 占位符使用规范化后的密钥，并在发起网络请求前拒绝残留控制字符，避免 Cursor 等渠道因非法 `Authorization` 值在代理链路前被 `net/http` 拒绝 | `model/channel.go`、`relay/channel/api_request.go`、`relay/channel/cursor` | 本次同步 |
 | 登录认证 | Passkey 支持检测不再要求内置平台验证器，浏览器支持 WebAuthn 时允许外置安全密钥/跨平台通行密钥入口 | `web/src/lib/passkey.ts`、`web/src/lib/passkey.test.ts` | 本次同步 |
 | 用户管理 | 新增每日、每周、每月可使用 Token 数量限制 | `model/user_token_limit.go`、`middleware/distributor.go`、`controller/user.go`、`web/src/features/users` | `ef3f665e` |
 | 用户管理 | 在 `web` 实现用户周期 Token 限制，创建/编辑用户时可维护每日、每周、每月 Token 上限，列表展示限制状态 | `web/src/features/users` | 本次同步 |

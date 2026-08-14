@@ -26,6 +26,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/tidwall/sjson"
+	"golang.org/x/net/http/httpguts"
 )
 
 type Adaptor struct{}
@@ -57,9 +58,16 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, header *http.Header, info *
 	if key == "" {
 		return errors.New("cursor channel: API key is required")
 	}
+	authorization := "Bearer " + key
+	if !httpguts.ValidHeaderFieldValue(authorization) {
+		return types.NewError(
+			errors.New("cursor channel: API key contains invalid header characters"),
+			types.ErrorCodeChannelInvalidKey,
+		)
+	}
 
 	channel.SetupApiRequestHeader(info, c, header)
-	header.Set("Authorization", "Bearer "+key)
+	header.Set("Authorization", authorization)
 	header.Set("Content-Type", "application/json")
 	return nil
 }

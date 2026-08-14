@@ -26,6 +26,7 @@ import (
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"golang.org/x/net/http/httpguts"
 )
 
 // ApplyUpstreamBodyMetadata restores metadata that net/http cannot infer from
@@ -178,9 +179,10 @@ func applyHeaderOverridePlaceholders(template string, c *gin.Context, apiKey str
 	}
 
 	if strings.Contains(template, "{api_key}") {
-		template = strings.ReplaceAll(template, "{api_key}", apiKey)
+		template = strings.ReplaceAll(template, "{api_key}", strings.TrimSpace(apiKey))
 	}
-	if strings.TrimSpace(template) == "" {
+	template = strings.TrimSpace(template)
+	if template == "" {
 		return "", false, nil
 	}
 	return template, true, nil
@@ -289,6 +291,12 @@ func processHeaderOverride(info *common.RelayInfo, c *gin.Context) (map[string]s
 		}
 		if !include {
 			continue
+		}
+		if !httpguts.ValidHeaderFieldValue(value) {
+			return nil, types.NewError(
+				fmt.Errorf("header override %q contains an invalid field value", k),
+				types.ErrorCodeChannelHeaderOverrideInvalid,
+			)
 		}
 
 		headerOverride[key] = value

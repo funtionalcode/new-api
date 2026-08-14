@@ -68,6 +68,54 @@ func TestCursorAdaptorNormalizesTrailingSlashInBaseURL(t *testing.T) {
 	assert.Equal(t, "https://api.cursor.com/v1/agents", requestURL)
 }
 
+func TestCursorAdaptorNormalizesAPIKeyBeforeAuthorizationOverrideTransport(t *testing.T) {
+	receivedAuthorization := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuthorization <- r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	t.Cleanup(server.Close)
+
+	c := newCursorTestContext(t)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{
+		ChannelType:    constant.ChannelTypeCursor,
+		ChannelBaseUrl: server.URL,
+		ApiKey:         "\r\n cursor-secret \r\n",
+		HeadersOverride: map[string]interface{}{
+			"Authorization": "Bearer {api_key}",
+		},
+	}}
+
+	upstream, err := (&Adaptor{}).DoRequest(c, info, strings.NewReader(`{
+		"prompt":{"text":"hello"},
+		"model":{"id":"composer-2"}
+	}`))
+
+	require.NoError(t, err)
+	response, ok := upstream.(*http.Response)
+	require.True(t, ok)
+	defer service.CloseResponseBodyGracefully(response)
+	assert.Equal(t, http.StatusBadRequest, response.StatusCode)
+	assert.Equal(t, "Bearer cursor-secret", <-receivedAuthorization)
+}
+
+func TestCursorAdaptorRejectsEmbeddedLineBreakInAPIKeyBeforeTransport(t *testing.T) {
+	header := make(http.Header)
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{
+		ApiKey: "cursor-key-one\ncursor-key-two",
+	}}
+
+	err := (&Adaptor{}).SetupRequestHeader(newCursorTestContext(t), &header, info)
+
+	require.Error(t, err)
+	var apiErr *types.NewAPIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, types.ErrorCodeChannelInvalidKey, apiErr.GetErrorCode())
+	assert.NotContains(t, err.Error(), "cursor-key-one")
+	assert.Empty(t, header.Get("Authorization"))
+}
+
 func TestCursorAdaptorUsesCloudAgentsEndpointForClaudeMessages(t *testing.T) {
 	requestURL, err := (&Adaptor{}).GetRequestURL(&relaycommon.RelayInfo{
 		RelayFormat: types.RelayFormatClaude,
