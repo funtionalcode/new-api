@@ -122,6 +122,13 @@ type cursorResultEvent struct {
 	DurationMS int64  `json:"durationMs"`
 }
 
+type cursorToolCallEvent struct {
+	CallID string `json:"callId"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	Result any    `json:"result,omitempty"`
+}
+
 type cursorErrorEvent struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`

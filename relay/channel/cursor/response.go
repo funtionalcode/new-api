@@ -129,6 +129,16 @@ func cursorTokenTotal(info *relaycommon.RelayInfo, values ...int) int {
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (any, *types.NewAPIError) {
+	return a.doResponse(c, resp, info, true, nil)
+}
+
+func (a *Adaptor) doResponse(
+	c *gin.Context,
+	resp *http.Response,
+	info *relaycommon.RelayInfo,
+	allowExternalToolRecovery bool,
+	priorUsage *dto.Usage,
+) (any, *types.NewAPIError) {
 	if resp == nil || resp.Body == nil {
 		return nil, types.NewOpenAIError(errors.New("cursor channel: empty upstream response"), types.ErrorCodeBadResponse, http.StatusBadGateway)
 	}
@@ -171,7 +181,10 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	finalText := ""
 	resultStatus := ""
 	upstreamError := cursorErrorEvent{}
+	lastClientToolCollision := cursorToolCallEvent{}
 	firstChunk := true
+	thinkingStreamed := false
+	clientOutputStarted := false
 
 	if clientStream {
 		helper.SetEventStreamHeaders(c)
@@ -206,6 +219,13 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 				bufferAssistantForTools = false
 				chunkText = streamedText.String()
 			}
+			if !thinkingStreamed && streamedThinking.Len() > 0 {
+				if err := writeCursorThinkingChunk(c, info, responsesStreamState, responseID, model, createdAt, streamedThinking.String()); err != nil {
+					return err
+				}
+				thinkingStreamed = true
+				clientOutputStarted = true
+			}
 			chunk := &dto.ChatCompletionsStreamResponse{
 				Id:      responseID,
 				Object:  "chat.completion.chunk",
@@ -219,7 +239,11 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 					},
 				}},
 			}
-			return writeCursorStreamChunk(c, info, responsesStreamState, chunk)
+			err := writeCursorStreamChunk(c, info, responsesStreamState, chunk)
+			if err == nil {
+				clientOutputStarted = true
+			}
+			return err
 		case "thinking":
 			var textEvent cursorTextEvent
 			if err := common.Unmarshal(event.Data, &textEvent); err != nil {
@@ -236,20 +260,15 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 				info.FirstResponseTime = time.Now()
 				firstChunk = false
 			}
-			chunk := &dto.ChatCompletionsStreamResponse{
-				Id:      responseID,
-				Object:  "chat.completion.chunk",
-				Created: createdAt,
-				Model:   model,
-				Choices: []dto.ChatCompletionsStreamResponseChoice{{
-					Index: 0,
-					Delta: dto.ChatCompletionsStreamResponseChoiceDelta{
-						Role:             "assistant",
-						ReasoningContent: &textEvent.Text,
-					},
-				}},
+			if bufferAssistantForTools {
+				return nil
 			}
-			return writeCursorStreamChunk(c, info, responsesStreamState, chunk)
+			err := writeCursorThinkingChunk(c, info, responsesStreamState, responseID, model, createdAt, textEvent.Text)
+			if err == nil {
+				thinkingStreamed = true
+				clientOutputStarted = true
+			}
+			return err
 		case "result":
 			var result cursorResultEvent
 			if err := common.Unmarshal(event.Data, &result); err != nil {
@@ -257,6 +276,20 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 			}
 			resultStatus = result.Status
 			finalText = result.Text
+		case "status":
+			var status cursorResultEvent
+			if err := common.Unmarshal(event.Data, &status); err != nil {
+				return fmt.Errorf("cursor channel: decode status event: %w", err)
+			}
+			resultStatus = status.Status
+		case "tool_call":
+			var toolCall cursorToolCallEvent
+			if err := common.Unmarshal(event.Data, &toolCall); err != nil {
+				return fmt.Errorf("cursor channel: decode tool call event: %w", err)
+			}
+			if cursorExternalToolAliasForName(allowedExternalTools, toolCall.Name) != "" {
+				lastClientToolCollision = toolCall
+			}
 		case "error":
 			if err := common.Unmarshal(event.Data, &upstreamError); err != nil {
 				return fmt.Errorf("cursor channel: decode error event: %w", err)
@@ -270,8 +303,11 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	})
 
 	terminal := cursorRunTerminal(resultStatus)
+	finishRun := true
 	defer func() {
-		a.finishCursorRun(c, info, agentID, runID, persistent, terminal)
+		if finishRun {
+			a.finishCursorRun(c, info, agentID, runID, persistent, terminal)
+		}
 	}()
 	if parseErr != nil {
 		return nil, types.NewOpenAIError(parseErr, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
@@ -295,15 +331,57 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 		}
 		return nil, types.NewOpenAIError(errors.New(message), types.ErrorCodeBadResponse, http.StatusBadGateway)
 	}
+	if finalText == "" {
+		finalText = streamedText.String()
+	}
+	if resultStatus != "FINISHED" && agentID != "" && runID != "" {
+		run, err := a.waitCursorRun(c, info, agentID, runID)
+		if err != nil {
+			logger.LogWarn(c, "cursor channel: fetch terminal run detail failed: "+err.Error())
+		} else {
+			resultStatus = run.Status
+			if strings.TrimSpace(run.Result) != "" {
+				finalText = run.Result
+			}
+			terminal = cursorRunTerminal(resultStatus)
+		}
+	}
+	clientToolAlias := cursorExternalToolAliasForName(allowedExternalTools, lastClientToolCollision.Name)
+	canRecoverStream := !clientStream || !clientOutputStarted
+	shouldRecoverExternalTool := clientToolAlias != "" && canRecoverStream &&
+		(resultStatus == "ERROR" || (resultStatus == "FINISHED" && cursorCloudEnvironmentRefusal(finalText)))
+	if allowExternalToolRecovery && agentID != "" && shouldRecoverExternalTool {
+		logger.LogWarn(c, fmt.Sprintf("cursor channel: intercepted internal tool %q for client tool %q; start one recovery run", lastClientToolCollision.Name, clientToolAlias))
+		failedUsage := a.getCursorUsage(c, info, resp, agentID, runID)
+		recoveryResponse, err := a.startCursorExternalToolRecoveryRun(
+			c,
+			info,
+			agentID,
+			lastClientToolCollision.Name,
+			clientToolAlias,
+			persistent,
+			clientStream,
+			resp.Header.Get(cursorSkipRemoteUsageHeader) == "true",
+		)
+		if err != nil {
+			return nil, types.NewOpenAIError(
+				fmt.Errorf("cursor channel: recover client external tool after run status %s: %w", resultStatus, err),
+				types.ErrorCodeBadResponse,
+				http.StatusBadGateway,
+			)
+		}
+		finishRun = false
+		return a.doResponse(c, recoveryResponse, info, false, mergeCursorUsage(info, priorUsage, failedUsage))
+	}
 	if resultStatus != "FINISHED" {
 		if resultStatus == "" {
 			resultStatus = "missing"
 		}
-		return nil, types.NewOpenAIError(fmt.Errorf("cursor channel: run ended with status %s", resultStatus), types.ErrorCodeBadResponse, http.StatusBadGateway)
-	}
-
-	if finalText == "" {
-		finalText = streamedText.String()
+		message := fmt.Sprintf("cursor channel: run ended with status %s", resultStatus)
+		if detail := cursorRunErrorDetail(finalText, lastClientToolCollision.Name); detail != "" {
+			message += ": " + detail
+		}
+		return nil, types.NewOpenAIError(errors.New(message), types.ErrorCodeBadResponse, http.StatusBadGateway)
 	}
 	externalToolCalls, hasExternalToolCalls := parseCursorExternalToolCalls(finalText, allowedExternalTools)
 	if clientStream && !bufferAssistantForTools {
@@ -316,8 +394,15 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	if usage == nil || !service.ValidUsage(usage) {
 		usage = service.ResponseText2Usage(c, finalText, model, info.GetEstimatePromptTokens())
 	}
+	usage = mergeCursorUsage(info, priorUsage, usage)
 
 	if clientStream {
+		if !thinkingStreamed && streamedThinking.Len() > 0 {
+			if err := writeCursorThinkingChunk(c, info, responsesStreamState, responseID, model, createdAt, streamedThinking.String()); err != nil {
+				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+			}
+			thinkingStreamed = true
+		}
 		if hasExternalToolCalls {
 			streamToolCalls := make([]dto.ToolCallResponse, 0, len(externalToolCalls))
 			for index, toolCall := range externalToolCalls {
@@ -537,6 +622,91 @@ func parseCursorExternalToolCalls(text string, allowedTools map[string]cursorExt
 	return toolCalls, true
 }
 
+func cursorExternalToolAliasForName(allowedTools map[string]cursorExternalToolSpec, name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+	for alias, spec := range allowedTools {
+		if !strings.HasPrefix(alias, cursorExternalToolAliasPrefix) {
+			continue
+		}
+		if cursorQualifiedToolName(spec.Namespace, spec.Name) == name || spec.Name == name {
+			return alias
+		}
+	}
+	return ""
+}
+
+func cursorCloudEnvironmentRefusal(text string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(text))
+	if normalized == "" || !strings.Contains(normalized, "cloud agent") {
+		return false
+	}
+	return strings.Contains(normalized, "no filesystem") ||
+		strings.Contains(normalized, "no file system") ||
+		strings.Contains(normalized, "only have access to /agent") ||
+		(strings.Contains(normalized, "local mac") &&
+			(strings.Contains(normalized, "can't complete") || strings.Contains(normalized, "cannot complete")))
+}
+
+func cursorRunErrorDetail(text string, internalToolName string) string {
+	detail := strings.Join(strings.Fields(text), " ")
+	if detail != "" {
+		runes := []rune(detail)
+		if len(runes) > 1000 {
+			detail = string(runes[:1000]) + "…"
+		}
+		return detail
+	}
+	internalToolName = strings.TrimSpace(internalToolName)
+	if internalToolName == "" {
+		return ""
+	}
+	return fmt.Sprintf("after Cursor internal tool %q", internalToolName)
+}
+
+func mergeCursorUsage(info *relaycommon.RelayInfo, prior *dto.Usage, current *dto.Usage) *dto.Usage {
+	if prior == nil {
+		return current
+	}
+	if current == nil {
+		return prior
+	}
+	merged := &dto.Usage{
+		PromptTokens:         cursorTokenTotal(info, prior.PromptTokens, current.PromptTokens),
+		CompletionTokens:     cursorTokenTotal(info, prior.CompletionTokens, current.CompletionTokens),
+		PromptCacheHitTokens: cursorTokenTotal(info, prior.PromptCacheHitTokens, current.PromptCacheHitTokens),
+		UsageSemantic:        dto.BillingUsageSemanticOpenAI,
+		UsageSource:          dto.BillingUsageSourceOAIChat,
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedTokens:         cursorTokenTotal(info, prior.PromptTokensDetails.CachedTokens, current.PromptTokensDetails.CachedTokens),
+			CachedCreationTokens: cursorTokenTotal(info, prior.PromptTokensDetails.CachedCreationTokens, current.PromptTokensDetails.CachedCreationTokens),
+			CacheWriteTokens:     cursorTokenTotal(info, prior.PromptTokensDetails.CacheWriteTokens, current.PromptTokensDetails.CacheWriteTokens),
+			TextTokens:           cursorTokenTotal(info, prior.PromptTokensDetails.TextTokens, current.PromptTokensDetails.TextTokens),
+			AudioTokens:          cursorTokenTotal(info, prior.PromptTokensDetails.AudioTokens, current.PromptTokensDetails.AudioTokens),
+			ImageTokens:          cursorTokenTotal(info, prior.PromptTokensDetails.ImageTokens, current.PromptTokensDetails.ImageTokens),
+		},
+		CompletionTokenDetails: dto.OutputTokenDetails{
+			TextTokens:      cursorTokenTotal(info, prior.CompletionTokenDetails.TextTokens, current.CompletionTokenDetails.TextTokens),
+			AudioTokens:     cursorTokenTotal(info, prior.CompletionTokenDetails.AudioTokens, current.CompletionTokenDetails.AudioTokens),
+			ImageTokens:     cursorTokenTotal(info, prior.CompletionTokenDetails.ImageTokens, current.CompletionTokenDetails.ImageTokens),
+			ReasoningTokens: cursorTokenTotal(info, prior.CompletionTokenDetails.ReasoningTokens, current.CompletionTokenDetails.ReasoningTokens),
+		},
+		InputTokens:                 cursorTokenTotal(info, prior.InputTokens, current.InputTokens),
+		OutputTokens:                cursorTokenTotal(info, prior.OutputTokens, current.OutputTokens),
+		ClaudeCacheCreation5mTokens: cursorTokenTotal(info, prior.ClaudeCacheCreation5mTokens, current.ClaudeCacheCreation5mTokens),
+		ClaudeCacheCreation1hTokens: cursorTokenTotal(info, prior.ClaudeCacheCreation1hTokens, current.ClaudeCacheCreation1hTokens),
+		Cost:                        current.Cost,
+	}
+	merged.TotalTokens = cursorTokenTotal(info, merged.PromptTokens, merged.CompletionTokens)
+	if prior.InputTokensDetails != nil || current.InputTokensDetails != nil {
+		merged.InputTokensDetails = &merged.PromptTokensDetails
+	}
+	merged.BillingUsage = dto.NewOpenAIChatBillingUsage(merged)
+	return merged
+}
+
 func repairCursorExternalToolJSON(payload string) string {
 	var repaired strings.Builder
 	repaired.Grow(len(payload))
@@ -606,12 +776,42 @@ func cursorExternalToolStreamCandidate(text string) bool {
 		"i made an error by invoking",
 		"i mistakenly invoked",
 		"i accidentally invoked",
+		"i can't complete this task",
+		"i cannot complete this task",
 	} {
 		if strings.HasPrefix(correctionPrefix, lowerPayload) || strings.HasPrefix(lowerPayload, correctionPrefix) {
 			return true
 		}
 	}
 	return false
+}
+
+func writeCursorThinkingChunk(
+	c *gin.Context,
+	info *relaycommon.RelayInfo,
+	responsesState *relayconvert.ResponseStreamState,
+	responseID string,
+	model string,
+	createdAt int64,
+	thinking string,
+) error {
+	if thinking == "" {
+		return nil
+	}
+	chunk := &dto.ChatCompletionsStreamResponse{
+		Id:      responseID,
+		Object:  "chat.completion.chunk",
+		Created: createdAt,
+		Model:   model,
+		Choices: []dto.ChatCompletionsStreamResponseChoice{{
+			Index: 0,
+			Delta: dto.ChatCompletionsStreamResponseChoiceDelta{
+				Role:             "assistant",
+				ReasoningContent: &thinking,
+			},
+		}},
+	}
+	return writeCursorStreamChunk(c, info, responsesState, chunk)
 }
 
 func writeCursorStreamChunk(c *gin.Context, info *relaycommon.RelayInfo, responsesState *relayconvert.ResponseStreamState, chunk *dto.ChatCompletionsStreamResponse) error {

@@ -807,6 +807,160 @@ func TestCursorStreamResponseRecoversCorrectedMalformedExternalToolEnvelope(t *t
 	assert.NotContains(t, body, "cursor_external_tool_calls")
 }
 
+func TestCursorResponseRetriesInternalAgentCollisionWithClientTool(t *testing.T) {
+	agentID := "bc-00000000-0000-0000-0000-000000000071"
+	failedRunID := "run-00000000-0000-0000-0000-000000000071"
+	recoveryRunID := "run-00000000-0000-0000-0000-000000000072"
+	toolEnvelope := `{"cursor_external_tool_calls":[{"id":"call_client_agent","name":"client_external_tool_1","arguments":{"description":"Inspect local project","prompt":"Read the client workspace"}}]}`
+	recoveryRequest := make(chan createRunRequest, 1)
+	deletedAgent := make(chan struct{}, 1)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agents/"+agentID+"/runs/"+failedRunID:
+			_, _ = w.Write([]byte(`{"id":"` + failedRunID + `","agentId":"` + agentID + `","status":"ERROR","result":"Cursor internal Agent failed","durationMs":60000}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/agents/"+agentID+"/runs":
+			var request createRunRequest
+			if err := common.DecodeJson(r.Body, &request); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			recoveryRequest <- request
+			_, _ = w.Write([]byte(`{"run":{"id":"` + recoveryRunID + `"}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agents/"+agentID+"/runs/"+recoveryRunID+"/stream":
+			_, _ = w.Write([]byte("event: assistant\ndata: {\"text\":\"" + strings.ReplaceAll(toolEnvelope, `"`, `\"`) + "\"}\n\nevent: result\ndata: {\"runId\":\"" + recoveryRunID + "\",\"status\":\"FINISHED\",\"text\":\"" + strings.ReplaceAll(toolEnvelope, `"`, `\"`) + "\"}\n\n"))
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agents/"+agentID+"/usage":
+			runID := r.URL.Query().Get("runId")
+			switch runID {
+			case failedRunID:
+				_, _ = w.Write([]byte(`{"runs":[{"id":"` + failedRunID + `","usage":{"inputTokens":5,"outputTokens":1,"cacheWriteTokens":0,"cacheReadTokens":0,"totalTokens":6}}]}`))
+			case recoveryRunID:
+				_, _ = w.Write([]byte(`{"runs":[{"id":"` + recoveryRunID + `","usage":{"inputTokens":7,"outputTokens":2,"cacheWriteTokens":0,"cacheReadTokens":0,"totalTokens":9}}]}`))
+			default:
+				http.Error(w, "unknown run", http.StatusBadRequest)
+			}
+		case r.Method == http.MethodDelete && r.URL.Path == "/v1/agents/"+agentID:
+			deletedAgent <- struct{}{}
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	c.Set("id", 1)
+	c.Set(cursorExternalToolsContextKey, map[string]cursorExternalToolSpec{
+		"client_external_tool_1": {Kind: "function", Name: "Agent"},
+		"Agent":                  {Kind: "function", Name: "Agent"},
+	})
+	common.SetContextKey(c, common.RequestIdKey, "req-cursor-internal-agent-recovery")
+	common.SetContextKey(c, constant.ContextKeyChannelId, 42)
+	common.SetContextKey(c, constant.ContextKeyChannelMultiKeyIndex, 0)
+
+	responseHeader := make(http.Header)
+	responseHeader.Set(cursorAgentIDInternalHeader, agentID)
+	responseHeader.Set(cursorRunIDInternalHeader, failedRunID)
+	responseHeader.Set(cursorPersistentInternalKey, "false")
+	responseHeader.Set(cursorClientStreamHeader, "true")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     responseHeader,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			"event: thinking",
+			`data: {"text":"I should inspect the cloud workspace."}`,
+			"",
+			"event: tool_call",
+			`data: {"callId":"internal-agent","name":"Agent","status":"running"}`,
+			"",
+			"event: tool_call",
+			`data: {"callId":"internal-agent","name":"Agent","status":"completed","result":{"error":"cloud workspace unavailable"}}`,
+			"",
+			"event: result",
+			`data: {"runId":"` + failedRunID + `","status":"ERROR","durationMs":60000}`,
+			"",
+		}, "\n"))),
+	}
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatClaude,
+		IsStream:    true,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelId:         42,
+			ChannelType:       constant.ChannelTypeCursor,
+			ChannelBaseUrl:    server.URL,
+			ApiKey:            "cursor-secret",
+			UpstreamModelName: "claude-opus-5",
+		},
+	}
+
+	usageValue, apiErr := (&Adaptor{}).DoResponse(c, resp, info)
+	require.Nil(t, apiErr)
+	usage, ok := usageValue.(*dto.Usage)
+	require.True(t, ok)
+	assert.Equal(t, 12, usage.PromptTokens)
+	assert.Equal(t, 3, usage.CompletionTokens)
+	assert.Equal(t, 15, usage.TotalTokens)
+	request := <-recoveryRequest
+	assert.Contains(t, request.Prompt.Text, `Cursor's internal "Agent" tool`)
+	assert.Contains(t, request.Prompt.Text, `client_external_tool_1`)
+	select {
+	case <-deletedAgent:
+	default:
+		t.Fatal("expected ephemeral Cursor Agent to be deleted after recovery")
+	}
+	body := recorder.Body.String()
+	assert.Equal(t, 1, strings.Count(body, "event: message_start\n"))
+	assert.Contains(t, body, `"type":"tool_use","id":"call_client_agent","name":"Agent"`)
+	assert.Contains(t, body, `"stop_reason":"tool_use"`)
+	assert.NotContains(t, body, "I should inspect the cloud workspace")
+	assert.NotContains(t, body, "run ended with status ERROR")
+	assert.NotContains(t, body, "cursor_external_tool_calls")
+}
+
+func TestCursorResponseFetchesTerminalRunResultForErrorDetail(t *testing.T) {
+	agentID := "bc-00000000-0000-0000-0000-000000000081"
+	runID := "run-00000000-0000-0000-0000-000000000081"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/agents/"+agentID+"/runs/"+runID {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`{"id":"` + runID + `","agentId":"` + agentID + `","status":"ERROR","result":"Model provider temporarily unavailable","durationMs":60000}`))
+	}))
+	t.Cleanup(server.Close)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	common.SetContextKey(c, common.RequestIdKey, "req-cursor-terminal-error-detail")
+	responseHeader := make(http.Header)
+	responseHeader.Set(cursorAgentIDInternalHeader, agentID)
+	responseHeader.Set(cursorRunIDInternalHeader, runID)
+	responseHeader.Set(cursorPersistentInternalKey, "true")
+	responseHeader.Set(cursorClientStreamHeader, "false")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     responseHeader,
+		Body:       io.NopCloser(strings.NewReader("event: result\ndata: {\"runId\":\"" + runID + "\",\"status\":\"ERROR\",\"durationMs\":60000}\n\n")),
+	}
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{
+		ChannelType:       constant.ChannelTypeCursor,
+		ChannelBaseUrl:    server.URL,
+		ApiKey:            "cursor-secret",
+		UpstreamModelName: "claude-opus-5",
+	}}
+
+	usage, apiErr := (&Adaptor{}).DoResponse(c, resp, info)
+	require.Nil(t, usage)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusBadGateway, apiErr.StatusCode)
+	assert.Contains(t, apiErr.Error(), "run ended with status ERROR")
+	assert.Contains(t, apiErr.Error(), "Model provider temporarily unavailable")
+}
+
 func TestCursorStreamResponseKeepsNormalTextStreamingWhenToolsAreAvailable(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()

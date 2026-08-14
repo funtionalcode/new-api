@@ -575,6 +575,102 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 	return streamResponse, nil
 }
 
+func (a *Adaptor) startCursorExternalToolRecoveryRun(
+	c *gin.Context,
+	info *relaycommon.RelayInfo,
+	agentID string,
+	internalToolName string,
+	clientToolAlias string,
+	persistent bool,
+	clientStream bool,
+	skipRemoteUsage bool,
+) (*http.Response, error) {
+	if c == nil || c.Request == nil {
+		return nil, errors.New("cursor channel: request context is required for external tool recovery")
+	}
+	recoveryPrompt := fmt.Sprintf(
+		"The previous run incorrectly invoked Cursor's internal %q tool. Do not use or retry any Cursor internal tools. Re-read the client external-tool protocol and schema from the preceding prompt, then request the matching client tool alias %q. Return only the valid cursor_external_tool_calls JSON object with fully escaped string values and no other text.",
+		strings.TrimSpace(internalToolName),
+		clientToolAlias,
+	)
+	body, err := common.Marshal(createRunRequest{Prompt: cursorPrompt{Text: recoveryPrompt}})
+	if err != nil {
+		return nil, fmt.Errorf("cursor channel: encode external tool recovery run: %w", err)
+	}
+	createPath := "/v1/agents/" + url.PathEscape(agentID) + "/runs"
+	createResponse, err := a.doCursorAPIRequest(c.Request.Context(), c, info, http.MethodPost, createPath, bytes.NewReader(body), false)
+	if err != nil {
+		return nil, err
+	}
+	createBody, readErr := io.ReadAll(createResponse.Body)
+	service.CloseResponseBodyGracefully(createResponse)
+	if readErr != nil {
+		return nil, fmt.Errorf("cursor channel: read external tool recovery response: %w", readErr)
+	}
+	if createResponse.StatusCode < http.StatusOK || createResponse.StatusCode >= http.StatusMultipleChoices {
+		var errorResponse cursorAPIErrorResponse
+		if err := common.Unmarshal(createBody, &errorResponse); err == nil && errorResponse.Error.Message != "" {
+			return nil, fmt.Errorf("cursor channel: create external tool recovery run returned status %d: %s", createResponse.StatusCode, errorResponse.Error.Message)
+		}
+		return nil, fmt.Errorf("cursor channel: create external tool recovery run returned status %d", createResponse.StatusCode)
+	}
+	var created createRunResponse
+	if err := common.Unmarshal(createBody, &created); err != nil {
+		return nil, fmt.Errorf("cursor channel: decode external tool recovery response: %w", err)
+	}
+	runID := strings.TrimSpace(created.Run.ID)
+	if runID == "" {
+		return nil, errors.New("cursor channel: external tool recovery response is missing run ID")
+	}
+	handedOff := false
+	defer func() {
+		if !handedOff {
+			// The caller still owns the original Agent cleanup. Only cancel the
+			// newly-created recovery run here so a stream setup failure cannot
+			// leave it running on a persistent Agent.
+			a.finishCursorRun(c, info, agentID, runID, true, false)
+		}
+	}()
+
+	streamPath := "/v1/agents/" + url.PathEscape(agentID) + "/runs/" + url.PathEscape(runID) + "/stream"
+	streamResponse, err := a.doCursorAPIRequest(c.Request.Context(), c, info, http.MethodGet, streamPath, nil, true)
+	if err != nil {
+		return nil, err
+	}
+	if streamResponse.StatusCode != http.StatusOK {
+		responseBody, readErr := io.ReadAll(streamResponse.Body)
+		service.CloseResponseBodyGracefully(streamResponse)
+		if readErr != nil {
+			return nil, fmt.Errorf("cursor channel: read external tool recovery stream response: %w", readErr)
+		}
+		var errorResponse cursorAPIErrorResponse
+		unmarshalErr := common.Unmarshal(responseBody, &errorResponse)
+		if streamResponse.StatusCode == http.StatusGone || (unmarshalErr == nil && isCursorStreamUnavailable(errorResponse.Error.Code)) {
+			run, waitErr := a.waitCursorRun(c, info, agentID, runID)
+			if waitErr != nil {
+				return nil, waitErr
+			}
+			streamResponse, err = cursorRunFallbackResponse(run)
+			if err != nil {
+				return nil, err
+			}
+		} else if unmarshalErr == nil && errorResponse.Error.Message != "" {
+			return nil, fmt.Errorf("cursor channel: external tool recovery stream returned status %d: %s", streamResponse.StatusCode, errorResponse.Error.Message)
+		} else {
+			return nil, fmt.Errorf("cursor channel: external tool recovery stream returned status %d", streamResponse.StatusCode)
+		}
+	}
+	streamResponse.Header.Set(cursorAgentIDInternalHeader, agentID)
+	streamResponse.Header.Set(cursorRunIDInternalHeader, runID)
+	streamResponse.Header.Set(cursorPersistentInternalKey, strconv.FormatBool(persistent))
+	streamResponse.Header.Set(cursorClientStreamHeader, strconv.FormatBool(clientStream))
+	if skipRemoteUsage {
+		streamResponse.Header.Set(cursorSkipRemoteUsageHeader, "true")
+	}
+	handedOff = true
+	return streamResponse, nil
+}
+
 func isCursorStreamUnavailable(code string) bool {
 	switch strings.ToLower(strings.TrimSpace(code)) {
 	case "stream_unavailable", "stream_expired":
@@ -625,22 +721,22 @@ func (a *Adaptor) waitCursorRun(c *gin.Context, info *relaycommon.RelayInfo, age
 	for {
 		response, err := a.doCursorAPIRequest(ctx, c, info, http.MethodGet, runPath, nil, false)
 		if err != nil {
-			return nil, fmt.Errorf("cursor channel: get run after stream became unavailable: %w", err)
+			return nil, fmt.Errorf("cursor channel: get run: %w", err)
 		}
 		responseBody, readErr := io.ReadAll(response.Body)
 		service.CloseResponseBodyGracefully(response)
 		if readErr != nil {
-			return nil, fmt.Errorf("cursor channel: read run fallback response: %w", readErr)
+			return nil, fmt.Errorf("cursor channel: read run response: %w", readErr)
 		}
 		if response.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("cursor channel: get run after stream became unavailable returned status %d", response.StatusCode)
+			return nil, fmt.Errorf("cursor channel: get run returned status %d", response.StatusCode)
 		}
 		var run cursorRunResponse
 		if err := common.Unmarshal(responseBody, &run); err != nil {
-			return nil, fmt.Errorf("cursor channel: decode run fallback response: %w", err)
+			return nil, fmt.Errorf("cursor channel: decode run response: %w", err)
 		}
 		if run.ID == "" || run.Status == "" {
-			return nil, errors.New("cursor channel: run fallback response is missing id or status")
+			return nil, errors.New("cursor channel: run response is missing id or status")
 		}
 		if cursorRunTerminal(run.Status) {
 			return &run, nil
@@ -655,7 +751,7 @@ func (a *Adaptor) waitCursorRun(c *gin.Context, info *relaycommon.RelayInfo, age
 		}
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("cursor channel: wait for run after stream became unavailable: %w", ctx.Err())
+			return nil, fmt.Errorf("cursor channel: wait for run: %w", ctx.Err())
 		case <-time.After(cursorRunPollInterval):
 		}
 	}
