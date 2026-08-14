@@ -40,6 +40,7 @@ const (
 	ContextKeyChannelKeyIndexOverride  ContextKey = "channel_key_index_override"
 	ContextKeyChannelKey               ContextKey = "channel_key"
 	ContextKeyCursorAgentLifecycle     ContextKey = "cursor_agent_lifecycle"
+	ContextKeyCursorAgentSession       ContextKey = "cursor_agent_session"
 
 	ContextKeyAutoGroup           ContextKey = "auto_group"
 	ContextKeyAutoGroupIndex      ContextKey = "auto_group_index"

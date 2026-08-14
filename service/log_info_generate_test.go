@@ -36,18 +36,22 @@ func TestGenerateTextOtherInfoMarksWebsocketTransport(t *testing.T) {
 
 func TestGenerateTextOtherInfoIncludesCursorAgentLifecycle(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	common.SetContextKey(ctx, constant.ContextKeyCursorAgentLifecycle, constant.CursorAgentLifecycleCreate)
+	for _, lifecycle := range []string{constant.CursorAgentLifecycleCreate, constant.CursorAgentLifecycleDelete} {
+		t.Run(lifecycle, func(t *testing.T) {
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+			common.SetContextKey(ctx, constant.ContextKeyCursorAgentLifecycle, lifecycle)
 
-	startTime := time.Unix(1000, 0)
-	relayInfo := &relaycommon.RelayInfo{
-		StartTime:         startTime,
-		FirstResponseTime: startTime,
-		ChannelMeta:       &relaycommon.ChannelMeta{},
+			startTime := time.Unix(1000, 0)
+			relayInfo := &relaycommon.RelayInfo{
+				StartTime:         startTime,
+				FirstResponseTime: startTime,
+				ChannelMeta:       &relaycommon.ChannelMeta{},
+			}
+
+			other := GenerateTextOtherInfo(ctx, relayInfo, 1, 1, 1, 0, 0, 0, -1)
+
+			require.Equal(t, lifecycle, other["cursor_agent_lifecycle"])
+		})
 	}
-
-	other := GenerateTextOtherInfo(ctx, relayInfo, 1, 1, 1, 0, 0, 0, -1)
-
-	require.Equal(t, constant.CursorAgentLifecycleCreate, other["cursor_agent_lifecycle"])
 }

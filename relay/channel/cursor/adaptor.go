@@ -15,6 +15,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -175,6 +176,9 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		if err := validateCursorAgentID(c, info, metadata.AgentID); err != nil {
 			if !errors.Is(err, errCursorLegacyAgentSignature) && !errors.Is(err, errCursorAgentSignatureMismatch) {
 				return nil, err
+			}
+			if cacheErr := service.DeleteCursorAgentSession(c); cacheErr != nil {
+				logger.LogWarn(c, "cursor channel: clear invalid agent session failed: "+cacheErr.Error())
 			}
 			metadata.AgentID = ""
 		}
@@ -410,6 +414,9 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 		if err := a.DeletePersistentAgent(c, info, agentID); err != nil {
 			return nil, err
 		}
+		if err := service.DeleteCursorAgentSession(c); err != nil {
+			logger.LogWarn(c, "cursor channel: delete agent session cache failed: "+err.Error())
+		}
 		c.Header(constant.CursorAgentDeletedHeader, "true")
 		responseHeader := make(http.Header)
 		responseHeader.Set(cursorAgentLifecycleHeader, constant.CursorAgentLifecycleDelete)
@@ -473,6 +480,15 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 		return nil, errors.New("cursor channel: create response is missing agent or run ID")
 	}
 	if persistent {
+		signature := cursorAgentSignature(c.GetInt("id"), agentID, info.ChannelId, info.ChannelMultiKeyIndex, info.ApiKey)
+		if err := service.SaveCursorAgentSession(c, service.CursorAgentSession{
+			AgentID:   agentID,
+			Signature: signature,
+			ChannelID: info.ChannelId,
+			KeyIndex:  info.ChannelMultiKeyIndex,
+		}); err != nil {
+			logger.LogWarn(c, "cursor channel: save agent session cache failed: "+err.Error())
+		}
 		setCursorAgentResponseHeaders(c, info, agentID)
 	}
 

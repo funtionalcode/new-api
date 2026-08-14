@@ -16,6 +16,7 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -926,6 +927,162 @@ func TestCursorAdaptorDeletesPersistentAgentWithoutStartingRun(t *testing.T) {
 	assert.Contains(t, recorder.Body.String(), "Cursor Agent deleted.")
 }
 
+func TestCursorAdaptorReusesServerManagedClaudeCodeAgentUntilCleanup(t *testing.T) {
+	agentID := "bc-00000000-0000-0000-0000-000000000099"
+	var mutex sync.Mutex
+	requests := make([]string, 0, 8)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mutex.Lock()
+		requests = append(requests, r.Method+" "+r.URL.RequestURI())
+		mutex.Unlock()
+
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/agents":
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"agent":{"id":"` + agentID + `"},"run":{"id":"run-1"}}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/agents/"+agentID+"/runs":
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"run":{"id":"run-2"}}`))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/runs/run-1/stream"):
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte("event: result\ndata: {\"runId\":\"run-1\",\"status\":\"FINISHED\",\"text\":\"first reply\"}\n\n"))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/runs/run-2/stream"):
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte("event: result\ndata: {\"runId\":\"run-2\",\"status\":\"FINISHED\",\"text\":\"second reply\"}\n\n"))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/usage") && r.URL.Query().Get("runId") == "run-1":
+			_, _ = w.Write([]byte(`{"runs":[{"id":"run-1","usage":{"inputTokens":10,"outputTokens":2,"cacheWriteTokens":8,"cacheReadTokens":0,"totalTokens":20}}]}`))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/usage") && r.URL.Query().Get("runId") == "run-2":
+			_, _ = w.Write([]byte(`{"runs":[{"id":"run-2","usage":{"inputTokens":3,"outputTokens":2,"cacheWriteTokens":0,"cacheReadTokens":9,"totalTokens":14}}]}`))
+		case r.Method == http.MethodDelete && r.URL.Path == "/v1/agents/"+agentID:
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatClaude,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelId:            42,
+			ChannelType:          constant.ChannelTypeCursor,
+			ChannelBaseUrl:       server.URL,
+			ChannelMultiKeyIndex: 0,
+			ApiKey:               "cursor-secret",
+			UpstreamModelName:    "claude-sonnet-5",
+		},
+	}
+	adaptor := &Adaptor{}
+
+	firstRecorder := httptest.NewRecorder()
+	first, _ := gin.CreateTestContext(firstRecorder)
+	first.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	first.Set("id", 23)
+	common.SetContextKey(first, constant.ContextKeyUsingGroup, "default")
+	common.SetContextKey(first, common.RequestIdKey, "cursor-claude-first")
+	firstStorage, err := common.CreateBodyStorage([]byte(`{"model":"claude-sonnet-5","metadata":{"user_id":"claude-session-99"}}`))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = firstStorage.Close() })
+	first.Set(common.KeyBodyStorage, firstStorage)
+	service.PrepareCursorAgentSession(first, "claude-sonnet-5")
+	firstConverted, err := adaptor.ConvertClaudeRequest(first, info, &dto.ClaudeRequest{
+		Model:    "claude-sonnet-5",
+		Messages: []dto.ClaudeMessage{{Role: "user", Content: "first question"}},
+		Metadata: []byte(`{"user_id":"claude-session-99"}`),
+	})
+	require.NoError(t, err)
+	firstBody, err := common.Marshal(firstConverted)
+	require.NoError(t, err)
+	firstUpstream, err := adaptor.DoRequest(first, info, bytes.NewReader(firstBody))
+	require.NoError(t, err)
+	firstUsageValue, firstAPIErr := adaptor.DoResponse(first, firstUpstream.(*http.Response), info)
+	require.Nil(t, firstAPIErr)
+	firstUsage := firstUsageValue.(*dto.Usage)
+	assert.Equal(t, 8, firstUsage.PromptTokensDetails.CacheWriteTokens)
+	assert.Equal(t, constant.CursorAgentLifecycleCreate, common.GetContextKeyString(first, constant.ContextKeyCursorAgentLifecycle))
+
+	secondRecorder := httptest.NewRecorder()
+	second, _ := gin.CreateTestContext(secondRecorder)
+	second.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	second.Set("id", 23)
+	common.SetContextKey(second, constant.ContextKeyUsingGroup, "default")
+	common.SetContextKey(second, common.RequestIdKey, "cursor-claude-second")
+	secondStorage, err := common.CreateBodyStorage([]byte(`{"model":"claude-sonnet-5","metadata":{"user_id":"claude-session-99"}}`))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = secondStorage.Close() })
+	second.Set(common.KeyBodyStorage, secondStorage)
+	service.PrepareCursorAgentSession(second, "claude-sonnet-5")
+	assert.Equal(t, agentID, second.GetHeader(constant.CursorAgentIDHeader))
+	secondConverted, err := adaptor.ConvertClaudeRequest(second, info, &dto.ClaudeRequest{
+		Model: "claude-sonnet-5",
+		Messages: []dto.ClaudeMessage{
+			{Role: "user", Content: "first question"},
+			{Role: "assistant", Content: "first reply"},
+			{Role: "user", Content: "second question"},
+		},
+		Metadata: []byte(`{"user_id":"claude-session-99"}`),
+	})
+	require.NoError(t, err)
+	assert.IsType(t, &createRunRequest{}, secondConverted)
+	secondBody, err := common.Marshal(secondConverted)
+	require.NoError(t, err)
+	secondUpstream, err := adaptor.DoRequest(second, info, bytes.NewReader(secondBody))
+	require.NoError(t, err)
+	secondUsageValue, secondAPIErr := adaptor.DoResponse(second, secondUpstream.(*http.Response), info)
+	require.Nil(t, secondAPIErr)
+	secondUsage := secondUsageValue.(*dto.Usage)
+	assert.Equal(t, 9, secondUsage.PromptTokensDetails.CachedTokens)
+	assert.Empty(t, common.GetContextKeyString(second, constant.ContextKeyCursorAgentLifecycle))
+
+	cleanupRecorder := httptest.NewRecorder()
+	cleanup, _ := gin.CreateTestContext(cleanupRecorder)
+	cleanup.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	cleanup.Set("id", 23)
+	common.SetContextKey(cleanup, constant.ContextKeyUsingGroup, "default")
+	common.SetContextKey(cleanup, common.RequestIdKey, "cursor-claude-cleanup")
+	cleanupStorage, err := common.CreateBodyStorage([]byte(`{"model":"claude-sonnet-5","metadata":{"user_id":"claude-session-99"}}`))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cleanupStorage.Close() })
+	cleanup.Set(common.KeyBodyStorage, cleanupStorage)
+	service.PrepareCursorAgentSession(cleanup, "claude-sonnet-5")
+	cleanupConverted, err := adaptor.ConvertClaudeRequest(cleanup, info, &dto.ClaudeRequest{
+		Model:    "claude-sonnet-5",
+		Messages: []dto.ClaudeMessage{{Role: "user", Content: cursorCleanupCommand}},
+		Metadata: []byte(`{"user_id":"claude-session-99"}`),
+	})
+	require.NoError(t, err)
+	cleanupBody, err := common.Marshal(cleanupConverted)
+	require.NoError(t, err)
+	cleanupUpstream, err := adaptor.DoRequest(cleanup, info, bytes.NewReader(cleanupBody))
+	require.NoError(t, err)
+	_, cleanupAPIErr := adaptor.DoResponse(cleanup, cleanupUpstream.(*http.Response), info)
+	require.Nil(t, cleanupAPIErr)
+	assert.Equal(t, constant.CursorAgentLifecycleDelete, common.GetContextKeyString(cleanup, constant.ContextKeyCursorAgentLifecycle))
+
+	afterCleanup := newCursorTestContext(t)
+	afterCleanup.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	afterCleanup.Set("id", 23)
+	common.SetContextKey(afterCleanup, constant.ContextKeyUsingGroup, "default")
+	afterCleanupStorage, err := common.CreateBodyStorage([]byte(`{"model":"claude-sonnet-5","metadata":{"user_id":"claude-session-99"}}`))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = afterCleanupStorage.Close() })
+	afterCleanup.Set(common.KeyBodyStorage, afterCleanupStorage)
+	service.PrepareCursorAgentSession(afterCleanup, "claude-sonnet-5")
+	assert.Empty(t, afterCleanup.GetHeader(constant.CursorAgentIDHeader))
+
+	mutex.Lock()
+	defer mutex.Unlock()
+	assert.Equal(t, []string{
+		"POST /v1/agents",
+		"GET /v1/agents/" + agentID + "/runs/run-1/stream",
+		"GET /v1/agents/" + agentID + "/usage?runId=run-1",
+		"POST /v1/agents/" + agentID + "/runs",
+		"GET /v1/agents/" + agentID + "/runs/run-2/stream",
+		"GET /v1/agents/" + agentID + "/usage?runId=run-2",
+		"DELETE /v1/agents/" + agentID,
+	}, requests)
+}
+
 func TestCursorAdaptorFallsBackToRunWhenStreamIsUnavailable(t *testing.T) {
 	agentID := "bc-00000000-0000-0000-0000-000000000001"
 	runID := "run-00000000-0000-0000-0000-000000000001"
@@ -1059,6 +1216,60 @@ func TestConvertOpenAIResponsesRequestPreservesCodexCustomToolsAndHistory(t *tes
 		"apply_patch":  {Kind: dto.CustomType, Name: "apply_patch"},
 		"exec_command": {Kind: "function", Name: "exec_command"},
 	}, toolKinds)
+}
+
+func TestConvertOpenAIResponsesRequestReusesServerManagedCodexAgent(t *testing.T) {
+	agentID := "bc-00000000-0000-0000-0000-000000000098"
+	info := &relaycommon.RelayInfo{
+		RelayMode:   relayconstant.RelayModeResponses,
+		RelayFormat: types.RelayFormatOpenAIResponses,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelId:            42,
+			ChannelType:          constant.ChannelTypeCursor,
+			ChannelMultiKeyIndex: 0,
+			ApiKey:               "cursor-secret",
+			UpstreamModelName:    "gpt-5.6-sol",
+		},
+	}
+	requestBody := []byte(`{"model":"gpt-5.6-sol","prompt_cache_key":"codex-session-98"}`)
+
+	first := newCursorTestContext(t)
+	first.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	first.Set("id", 24)
+	common.SetContextKey(first, constant.ContextKeyUsingGroup, "default")
+	firstStorage, err := common.CreateBodyStorage(requestBody)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = firstStorage.Close() })
+	first.Set(common.KeyBodyStorage, firstStorage)
+	service.PrepareCursorAgentSession(first, "gpt-5.6-sol")
+	require.NoError(t, service.SaveCursorAgentSession(first, service.CursorAgentSession{
+		AgentID:   agentID,
+		Signature: cursorAgentSignature(24, agentID, 42, 0, "cursor-secret"),
+		ChannelID: 42,
+		KeyIndex:  0,
+	}))
+
+	second := newCursorTestContext(t)
+	second.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	second.Set("id", 24)
+	common.SetContextKey(second, constant.ContextKeyUsingGroup, "default")
+	secondStorage, err := common.CreateBodyStorage(requestBody)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = secondStorage.Close() })
+	second.Set(common.KeyBodyStorage, secondStorage)
+	service.PrepareCursorAgentSession(second, "gpt-5.6-sol")
+
+	converted, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(second, info, dto.OpenAIResponsesRequest{
+		Model:          "gpt-5.6-sol",
+		Input:          []byte(`[{"role":"user","content":[{"type":"input_text","text":"continue"}]}]`),
+		PromptCacheKey: []byte(`"codex-session-98"`),
+	})
+
+	require.NoError(t, err)
+	runRequest, ok := converted.(*createRunRequest)
+	require.True(t, ok)
+	assert.Equal(t, "continue", runRequest.Prompt.Text)
+	assert.Equal(t, agentID, second.GetString(cursorAgentIDContextKey))
 }
 
 func TestCursorNonStreamResponseConvertsCustomToolCallToResponses(t *testing.T) {

@@ -39,6 +39,9 @@ func Distribute() func(c *gin.Context) {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 			return
 		}
+		if modelRequest != nil {
+			service.PrepareCursorAgentSession(c, modelRequest.Model)
+		}
 		// Keep model name for middleware error logs (e.g. token/user model limits).
 		if modelRequest != nil && strings.TrimSpace(modelRequest.Model) != "" {
 			c.Set("original_model", modelRequest.Model)
