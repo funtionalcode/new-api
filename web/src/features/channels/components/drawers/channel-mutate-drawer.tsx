@@ -184,6 +184,7 @@ import {
 import { ParamOverrideEditorDialog } from '../dialogs/param-override-editor-dialog'
 import { StatusCodeRiskDialog } from '../dialogs/status-code-risk-dialog'
 import { ModelMappingEditor } from '../model-mapping-editor'
+import { ChannelKeyDisplay } from './channel-key-display'
 import {
   ChannelAdvancedSection,
   ChannelApiAccessSection,
@@ -3053,13 +3054,12 @@ export function ChannelMutateDrawer({
                                               </Button>
                                             </div>
                                           </div>
-                                          <Input
-                                            readOnly
-                                            value={channelKey ?? ''}
+                                          <ChannelKeyDisplay
+                                            label={t('Current key')}
                                             placeholder={t(
                                               'Hidden — verify to reveal'
                                             )}
-                                            className='font-mono'
+                                            value={channelKey}
                                           />
                                         </div>
                                       )}
@@ -4276,9 +4276,7 @@ export function ChannelMutateDrawer({
                                         <SelectValue />
                                       </SelectTrigger>
                                     </FormControl>
-                                    <SelectContent
-                                      alignItemWithTrigger={false}
-                                    >
+                                    <SelectContent alignItemWithTrigger={false}>
                                       <SelectGroup>
                                         <SelectItem value='auto'>
                                           {t('Auto')}
