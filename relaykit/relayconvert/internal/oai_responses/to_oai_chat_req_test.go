@@ -257,6 +257,86 @@ func TestResponsesRequestToChatCompletionsRequestCustomToolCallPreservesRawShape
 	assert.Equal(t, "patch body", gjson.GetBytes(toolCalls[0].Custom, "input").String())
 }
 
+func TestResponsesRequestToChatCompletionsRequestCustomToolDefinitionAndOutput(t *testing.T) {
+	got, err := ResponsesRequestToChatCompletionsRequest(&dto.OpenAIResponsesRequest{
+		Model: "gpt-test",
+		Input: mustRawMessage(t, []map[string]any{
+			{
+				"type":    "custom_tool_call",
+				"call_id": "call_patch",
+				"name":    "apply_patch",
+				"input":   "*** Begin Patch",
+			},
+			{
+				"type":    "custom_tool_call_output",
+				"call_id": "call_patch",
+				"output":  "Done!",
+			},
+		}),
+		Tools: mustRawMessage(t, []map[string]any{
+			{
+				"type":        "custom",
+				"name":        "apply_patch",
+				"description": "Apply a patch",
+				"format":      map[string]any{"type": "grammar", "syntax": "lark", "definition": "start: /.+/s"},
+			},
+		}),
+	})
+	require.NoError(t, err)
+
+	require.Len(t, got.Tools, 1)
+	assert.Equal(t, dto.CustomType, got.Tools[0].Type)
+	assert.Equal(t, "apply_patch", got.Tools[0].Function.Name)
+	assert.Equal(t, "Apply a patch", got.Tools[0].Function.Description)
+	require.Len(t, got.Messages, 2)
+	assert.Equal(t, "assistant", got.Messages[0].Role)
+	assert.Equal(t, "tool", got.Messages[1].Role)
+	assert.Equal(t, "call_patch", got.Messages[1].ToolCallId)
+	assert.Equal(t, "Done!", got.Messages[1].Content)
+}
+
+func TestResponsesRequestToChatCompletionsRequestFlattensCodexAdditionalNamespaceTools(t *testing.T) {
+	got, err := ResponsesRequestToChatCompletionsRequest(&dto.OpenAIResponsesRequest{
+		Model: "gpt-test",
+		Input: mustRawMessage(t, []map[string]any{
+			{
+				"type": "additional_tools",
+				"role": "developer",
+				"tools": []any{
+					map[string]any{
+						"type": "namespace",
+						"name": "collaboration",
+						"tools": []any{
+							map[string]any{"type": "function", "name": "send_message", "parameters": map[string]any{"type": "object"}},
+							map[string]any{"type": "custom", "name": "exec", "description": "Run free-form input"},
+						},
+					},
+				},
+			},
+			{"role": "user", "content": "hello"},
+			{"type": "function_call", "call_id": "call_send", "namespace": "collaboration", "name": "send_message", "arguments": `{}`},
+		}),
+		ToolChoice: mustRawMessage(t, map[string]any{"type": "function", "namespace": "collaboration", "name": "send_message"}),
+	})
+	require.NoError(t, err)
+
+	require.Len(t, got.Tools, 2)
+	assert.Equal(t, "collaboration__send_message", got.Tools[0].Function.Name)
+	assert.Equal(t, "collaboration__exec", got.Tools[1].Function.Name)
+	assert.Equal(t, dto.CustomType, got.Tools[1].Type)
+	require.Len(t, got.Messages, 2)
+	assert.Equal(t, "user", got.Messages[0].Role)
+	toolCalls := got.Messages[1].ParseToolCalls()
+	require.Len(t, toolCalls, 1)
+	assert.Equal(t, "collaboration__send_message", toolCalls[0].Function.Name)
+	assert.Equal(t, map[string]any{
+		"type": "function",
+		"function": map[string]any{
+			"name": "collaboration__send_message",
+		},
+	}, got.ToolChoice)
+}
+
 func TestResponsesRequestToChatCompletionsRequestRejectsStatefulFields(t *testing.T) {
 	tests := []struct {
 		name string

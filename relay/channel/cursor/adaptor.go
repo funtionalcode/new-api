@@ -34,8 +34,15 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	if info == nil {
 		return "", errors.New("cursor channel: relay info is required")
 	}
-	if info.RelayFormat != types.RelayFormatClaude && info.RelayMode != 0 && info.RelayMode != relayconstant.RelayModeChatCompletions {
-		return "", errors.New("cursor channel: only /v1/chat/completions and /v1/messages are supported")
+	if info.RelayMode == relayconstant.RelayModeResponsesCompact {
+		return "", errors.New("cursor channel: /v1/responses/compact endpoint not supported")
+	}
+	if info.RelayFormat != types.RelayFormatClaude &&
+		info.RelayFormat != types.RelayFormatOpenAIResponses &&
+		info.RelayMode != 0 &&
+		info.RelayMode != relayconstant.RelayModeChatCompletions &&
+		info.RelayMode != relayconstant.RelayModeResponses {
+		return "", errors.New("cursor channel: only /v1/chat/completions, /v1/messages and /v1/responses are supported")
 	}
 	return relaycommon.GetFullRequestURL(strings.TrimRight(info.ChannelBaseUrl, "/"), "/v1/agents", info.ChannelType), nil
 }
@@ -65,8 +72,69 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if len(request.Messages) == 0 {
 		return nil, errors.New("cursor channel: messages are required")
 	}
-	if len(request.Tools) > 0 || len(request.Functions) > 0 || request.ToolChoice != nil || len(request.FunctionCall) > 0 {
-		return nil, errors.New("cursor channel: tools are not supported in text chat mode")
+	if len(request.Functions) > 0 || len(request.FunctionCall) > 0 {
+		return nil, errors.New("cursor channel: legacy functions are not supported; use tools instead")
+	}
+
+	externalToolSpecs := make(map[string]cursorExternalToolSpec, len(request.Tools))
+	externalToolsPrompt := ""
+	if len(request.Tools) > 0 {
+		// Cursor Cloud Agents accept a text prompt rather than client-defined tool schemas,
+		// so expose those tools through a small, validated text protocol.
+		externalTools := make([]any, 0, len(request.Tools))
+		for index := range request.Tools {
+			tool := &request.Tools[index]
+			toolType := strings.TrimSpace(tool.Type)
+			if toolType == "" {
+				toolType = "function"
+			}
+			name := strings.TrimSpace(tool.Function.Name)
+			switch toolType {
+			case "function":
+				externalTools = append(externalTools, tool)
+			case dto.CustomType:
+				var customTool map[string]any
+				if err := common.Unmarshal(tool.Custom, &customTool); err != nil {
+					return nil, fmt.Errorf("cursor channel: invalid custom tool: %w", err)
+				}
+				if customName, ok := customTool["name"].(string); ok {
+					name = strings.TrimSpace(customName)
+				}
+				tool.Function.Name = name
+				externalTools = append(externalTools, customTool)
+			default:
+				continue
+			}
+			if name == "" {
+				return nil, errors.New("cursor channel: tool name is required")
+			}
+			externalToolSpecs[name] = cursorExternalToolSpec{Kind: toolType, Name: name}
+		}
+		toolsJSON, err := common.Marshal(externalTools)
+		if err != nil {
+			return nil, fmt.Errorf("cursor channel: encode tools: %w", err)
+		}
+		var toolChoiceJSON []byte
+		if request.ToolChoice != nil {
+			toolChoiceJSON, err = common.Marshal(request.ToolChoice)
+			if err != nil {
+				return nil, fmt.Errorf("cursor channel: encode tool choice: %w", err)
+			}
+		}
+		var protocol strings.Builder
+		protocol.WriteString("\nThe client exposes external tools. Do not execute these tools with Cursor's internal tools. ")
+		protocol.WriteString("When an external tool is needed, return only one JSON object. For function tools use this exact shape: ")
+		protocol.WriteString(`{"cursor_external_tool_calls":[{"id":"call_unique","name":"tool_name","arguments":{}}]}`)
+		protocol.WriteString(". For custom tools use this exact shape with free-form string input: ")
+		protocol.WriteString(`{"cursor_external_tool_calls":[{"id":"call_unique","name":"tool_name","input":"free-form tool input"}]}`)
+		protocol.WriteString(". The name must match an available tool. Multiple calls may be returned in the array, using arguments only for function tools and input only for custom tools. ")
+		protocol.WriteString("If no external tool is needed, return the normal assistant answer without this JSON envelope.\nAvailable external tools: ")
+		protocol.Write(toolsJSON)
+		if len(toolChoiceJSON) > 0 {
+			protocol.WriteString("\nClient tool choice: ")
+			protocol.Write(toolChoiceJSON)
+		}
+		externalToolsPrompt = protocol.String()
 	}
 
 	metadata := cursorMetadata{}
@@ -116,35 +184,81 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	for index := range request.Messages {
 		message := &request.Messages[index]
 		switch message.Role {
-		case "system", "developer", "user", "assistant":
+		case "system", "developer", "user", "assistant", "tool":
 		default:
 			return nil, fmt.Errorf("cursor channel: message role %q is not supported in text chat mode", message.Role)
 		}
-		if len(message.ToolCalls) > 0 || message.ToolCallId != "" {
-			return nil, errors.New("cursor channel: tool messages are not supported in text chat mode")
+		transcriptMessage := cursorTranscriptMessage{Role: message.Role, ToolCallID: message.ToolCallId}
+		if message.Name != nil {
+			transcriptMessage.Name = *message.Name
 		}
-		content, err := textContentForCursor(message)
-		if err != nil {
-			return nil, err
+		if message.Content != nil {
+			content, err := textContentForCursor(message)
+			if err != nil {
+				return nil, err
+			}
+			transcriptMessage.Content = content
 		}
-		transcriptMessages = append(transcriptMessages, cursorTranscriptMessage{Role: message.Role, Content: content})
+		for _, toolCall := range message.ParseToolCalls() {
+			arguments := any(map[string]any{})
+			if strings.TrimSpace(toolCall.Function.Arguments) != "" {
+				if err := common.UnmarshalJsonStr(toolCall.Function.Arguments, &arguments); err != nil {
+					arguments = toolCall.Function.Arguments
+				}
+			}
+			transcriptMessage.ToolCalls = append(transcriptMessage.ToolCalls, cursorTranscriptToolCall{
+				ID:        toolCall.ID,
+				Type:      toolCall.Type,
+				Name:      toolCall.Function.Name,
+				Arguments: arguments,
+			})
+		}
+		if transcriptMessage.Content == "" && len(transcriptMessage.ToolCalls) == 0 && transcriptMessage.ToolCallID == "" {
+			return nil, errors.New("cursor channel: message must contain text or a tool call")
+		}
+		transcriptMessages = append(transcriptMessages, transcriptMessage)
 	}
 
 	if c != nil {
 		c.Set(cursorAgentIDContextKey, metadata.AgentID)
 		c.Set(cursorPersistentContextKey, metadata.Persistent)
+		c.Set(cursorExternalToolsContextKey, externalToolSpecs)
 	}
 
 	if metadata.AgentID != "" {
 		latest := transcriptMessages[len(transcriptMessages)-1]
-		if latest.Role != "user" {
-			return nil, errors.New("cursor channel: a persistent agent continuation must end with a user message")
-		}
-		if strings.TrimSpace(latest.Content) == cursorCleanupCommand {
+		if latest.Role == "user" && strings.TrimSpace(latest.Content) == cursorCleanupCommand {
 			common.SetContextKey(c, constant.ContextKeyCursorAgentLifecycle, constant.CursorAgentLifecycleDelete)
 			return &deleteAgentRequest{}, nil
 		}
-		return &createRunRequest{Prompt: cursorPrompt{Text: latest.Content}}, nil
+
+		continuationStart := 0
+		for index := len(transcriptMessages) - 1; index >= 0; index-- {
+			if transcriptMessages[index].Role == "assistant" {
+				continuationStart = index + 1
+				break
+			}
+		}
+		continuation := transcriptMessages[continuationStart:]
+		if len(continuation) == 0 {
+			return nil, errors.New("cursor channel: persistent agent continuation has no new client message")
+		}
+		if len(continuation) == 1 && continuation[0].Role == "user" && len(continuation[0].ToolCalls) == 0 && continuation[0].ToolCallID == "" {
+			return &createRunRequest{Prompt: cursorPrompt{Text: continuation[0].Content + externalToolsPrompt}}, nil
+		}
+		var prompt strings.Builder
+		prompt.WriteString("Continue the conversation using these new client events as JSON Lines:\n")
+		for _, message := range continuation {
+			line, err := common.Marshal(message)
+			if err != nil {
+				return nil, fmt.Errorf("cursor channel: encode continuation: %w", err)
+			}
+			prompt.Write(line)
+			prompt.WriteByte('\n')
+		}
+		prompt.WriteString("Respond to the new events.")
+		prompt.WriteString(externalToolsPrompt)
+		return &createRunRequest{Prompt: cursorPrompt{Text: prompt.String()}}, nil
 	}
 	latest := transcriptMessages[len(transcriptMessages)-1]
 	if latest.Role == "user" && strings.TrimSpace(latest.Content) == cursorCleanupCommand {
@@ -159,7 +273,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	}
 
 	var transcript strings.Builder
-	transcript.WriteString("You are continuing a text-only chat. Do not use tools, edit files, run commands, or create artifacts.\n")
+	transcript.WriteString("You are continuing a text-only chat. Do not use Cursor's repository, shell, file editing, or artifact tools.\n")
 	transcript.WriteString("Conversation transcript follows as JSON Lines. Respect each message role and all prior context.\n")
 	for _, message := range transcriptMessages {
 		line, err := common.Marshal(message)
@@ -169,7 +283,8 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		transcript.Write(line)
 		transcript.WriteByte('\n')
 	}
-	transcript.WriteString("Return only the assistant reply to the final user message.")
+	transcript.WriteString("Return only the assistant reply to the final client event.")
+	transcript.WriteString(externalToolsPrompt)
 
 	return &createAgentRequest{
 		Prompt: cursorPrompt{Text: transcript.String()},
@@ -577,8 +692,93 @@ func (a *Adaptor) ConvertImageRequest(*gin.Context, *relaycommon.RelayInfo, dto.
 	return nil, errors.New("cursor channel: image endpoints are not supported")
 }
 
-func (a *Adaptor) ConvertOpenAIResponsesRequest(*gin.Context, *relaycommon.RelayInfo, dto.OpenAIResponsesRequest) (any, error) {
-	return nil, errors.New("cursor channel: /v1/responses endpoint not supported")
+func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
+	if info != nil && info.RelayMode == relayconstant.RelayModeResponsesCompact {
+		return nil, errors.New("cursor channel: /v1/responses/compact endpoint not supported")
+	}
+	externalToolSpecs, err := cursorResponsesExternalToolSpecs(request)
+	if err != nil {
+		return nil, err
+	}
+	openAIRequest, err := service.ResponsesRequestToChatCompletionsRequest(&request)
+	if err != nil {
+		return nil, fmt.Errorf("cursor channel: convert Responses request: %w", err)
+	}
+	converted, err := a.ConvertOpenAIRequest(c, info, openAIRequest)
+	if err == nil && c != nil && len(externalToolSpecs) > 0 {
+		c.Set(cursorExternalToolsContextKey, externalToolSpecs)
+	}
+	return converted, err
+}
+
+func cursorResponsesExternalToolSpecs(request dto.OpenAIResponsesRequest) (map[string]cursorExternalToolSpec, error) {
+	tools := make([]map[string]any, 0)
+	if len(request.Tools) > 0 {
+		if err := common.Unmarshal(request.Tools, &tools); err != nil {
+			return nil, fmt.Errorf("cursor channel: invalid Responses tools: %w", err)
+		}
+	}
+	if len(request.Input) > 0 && common.GetJsonType(request.Input) == "array" {
+		var inputItems []map[string]any
+		if err := common.Unmarshal(request.Input, &inputItems); err != nil {
+			return nil, fmt.Errorf("cursor channel: invalid Responses input: %w", err)
+		}
+		for _, item := range inputItems {
+			if itemType, _ := item["type"].(string); itemType != "additional_tools" {
+				continue
+			}
+			additionalTools, ok := item["tools"].([]any)
+			if !ok {
+				continue
+			}
+			for _, rawTool := range additionalTools {
+				if tool, ok := rawTool.(map[string]any); ok {
+					tools = append(tools, tool)
+				}
+			}
+		}
+	}
+
+	specs := make(map[string]cursorExternalToolSpec)
+	for _, tool := range tools {
+		appendCursorResponsesToolSpecs(specs, tool, "")
+	}
+	return specs, nil
+}
+
+func appendCursorResponsesToolSpecs(specs map[string]cursorExternalToolSpec, tool map[string]any, namespace string) {
+	toolType, _ := tool["type"].(string)
+	toolType = strings.TrimSpace(toolType)
+	name, _ := tool["name"].(string)
+	name = strings.TrimSpace(name)
+	if toolType == "namespace" {
+		namespace = cursorQualifiedToolName(namespace, name)
+		children, ok := tool["tools"].([]any)
+		if !ok {
+			return
+		}
+		for _, rawChild := range children {
+			if child, ok := rawChild.(map[string]any); ok {
+				appendCursorResponsesToolSpecs(specs, child, namespace)
+			}
+		}
+		return
+	}
+	if (toolType != "function" && toolType != dto.CustomType) || name == "" {
+		return
+	}
+	qualifiedName := cursorQualifiedToolName(namespace, name)
+	specs[qualifiedName] = cursorExternalToolSpec{Kind: toolType, Name: name, Namespace: namespace}
+}
+
+func cursorQualifiedToolName(namespace string, name string) string {
+	if namespace == "" || name == "" || strings.HasPrefix(name, namespace+"__") {
+		return name
+	}
+	if strings.HasSuffix(namespace, "__") {
+		return namespace + name
+	}
+	return namespace + "__" + name
 }
 
 func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.ClaudeRequest) (any, error) {
@@ -591,6 +791,7 @@ func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayIn
 		return nil, fmt.Errorf("cursor channel: expected OpenAI chat completions request, got %T", result.Value)
 	}
 	openAIRequest.Metadata = request.Metadata
+	openAIRequest.ToolChoice = request.ToolChoice
 	return a.ConvertOpenAIRequest(c, info, openAIRequest)
 }
 

@@ -40,7 +40,7 @@ func ResponsesRequestToChatCompletionsRequest(req *dto.OpenAIResponsesRequest) (
 		return nil, err
 	}
 
-	tools, err := responsesRequestToolsToChat(req.Tools)
+	tools, err := responsesRequestToolsToChat(req.Tools, req.Input)
 	if err != nil {
 		return nil, err
 	}
@@ -167,6 +167,8 @@ func responsesRequestMessagesToChat(req *dto.OpenAIResponsesRequest) ([]dto.Mess
 func responsesInputItemToChatMessages(item map[string]any, messages []dto.Message) ([]dto.Message, error) {
 	itemType := strings.TrimSpace(kitutil.Interface2String(item["type"]))
 	switch itemType {
+	case "additional_tools":
+		return messages, nil
 	case responsesInputTypeFunctionCall:
 		toolCall, err := responsesFunctionCallItemToChatToolCall(item)
 		if err != nil {
@@ -179,7 +181,7 @@ func responsesInputItemToChatMessages(item map[string]any, messages []dto.Messag
 			return nil, err
 		}
 		return appendToolCallToLastAssistant(messages, toolCall), nil
-	case responsesInputTypeFunctionCallOutput:
+	case responsesInputTypeFunctionCallOutput, responsesInputTypeCustomToolOutput:
 		callID := strings.TrimSpace(kitutil.Interface2String(item["call_id"]))
 		content := responseToolOutputToChatContent(item["output"])
 		return append(messages, dto.Message{Role: "tool", ToolCallId: callID, Content: content}), nil
@@ -277,6 +279,7 @@ func responsesContentPartsToChatContent(parts []any) (any, error) {
 
 func responsesFunctionCallItemToChatToolCall(item map[string]any) (dto.ToolCallRequest, error) {
 	name := strings.TrimSpace(kitutil.Interface2String(item["name"]))
+	name = responsesQualifiedToolName(strings.TrimSpace(kitutil.Interface2String(item["namespace"])), name)
 	if name == "" {
 		return dto.ToolCallRequest{}, errors.New("function_call item is missing name")
 	}
@@ -300,7 +303,7 @@ func responsesCustomToolCallItemToChatToolCall(item map[string]any) (dto.ToolCal
 		Type:   dto.CustomType,
 		Custom: raw,
 		Function: dto.FunctionRequest{
-			Name:      strings.TrimSpace(kitutil.Interface2String(item["name"])),
+			Name:      responsesQualifiedToolName(strings.TrimSpace(kitutil.Interface2String(item["namespace"])), strings.TrimSpace(kitutil.Interface2String(item["name"]))),
 			Arguments: responsesArgumentsString(item["input"]),
 		},
 	}, nil
@@ -319,41 +322,112 @@ func appendToolCallToLastAssistant(messages []dto.Message, toolCall dto.ToolCall
 	return messages
 }
 
-func responsesRequestToolsToChat(raw json.RawMessage) ([]dto.ToolCallRequest, error) {
-	if !rawJSONPresent(raw) {
+func responsesRequestToolsToChat(rawTools json.RawMessage, rawInput json.RawMessage) ([]dto.ToolCallRequest, error) {
+	if !rawJSONPresent(rawTools) && !rawJSONPresent(rawInput) {
 		return nil, nil
 	}
 
 	var tools []map[string]any
-	if err := kitutil.Unmarshal(raw, &tools); err != nil {
-		return nil, fmt.Errorf("invalid tools: %w", err)
+	if rawJSONPresent(rawTools) {
+		if err := kitutil.Unmarshal(rawTools, &tools); err != nil {
+			return nil, fmt.Errorf("invalid tools: %w", err)
+		}
+	}
+	if rawJSONPresent(rawInput) && kitutil.GetJsonType(rawInput) == "array" {
+		var inputItems []map[string]any
+		if err := kitutil.Unmarshal(rawInput, &inputItems); err != nil {
+			return nil, fmt.Errorf("invalid input: %w", err)
+		}
+		for _, item := range inputItems {
+			if strings.TrimSpace(kitutil.Interface2String(item["type"])) != "additional_tools" {
+				continue
+			}
+			additionalTools, ok := item["tools"].([]any)
+			if !ok {
+				continue
+			}
+			for _, rawTool := range additionalTools {
+				if tool, ok := rawTool.(map[string]any); ok {
+					tools = append(tools, tool)
+				}
+			}
+		}
 	}
 
 	out := make([]dto.ToolCallRequest, 0, len(tools))
 	for _, tool := range tools {
-		toolType := strings.TrimSpace(kitutil.Interface2String(tool["type"]))
-		if toolType == "function" {
-			out = append(out, dto.ToolCallRequest{
-				Type: "function",
-				Function: dto.FunctionRequest{
-					Name:        strings.TrimSpace(kitutil.Interface2String(tool["name"])),
-					Description: kitutil.Interface2String(tool["description"]),
-					Parameters:  tool["parameters"],
-				},
-			})
-			continue
-		}
-
-		rawTool, err := kitutil.Marshal(tool)
+		var err error
+		out, err = appendResponsesToolToChat(out, tool, "")
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, dto.ToolCallRequest{
-			Type:   toolType,
-			Custom: rawTool,
-		})
 	}
 	return out, nil
+}
+
+func appendResponsesToolToChat(out []dto.ToolCallRequest, tool map[string]any, namespace string) ([]dto.ToolCallRequest, error) {
+	toolType := strings.TrimSpace(kitutil.Interface2String(tool["type"]))
+	if toolType == "namespace" {
+		namespace = responsesQualifiedToolName(namespace, strings.TrimSpace(kitutil.Interface2String(tool["name"])))
+		children, ok := tool["tools"].([]any)
+		if !ok {
+			return out, nil
+		}
+		for _, rawChild := range children {
+			child, ok := rawChild.(map[string]any)
+			if !ok {
+				continue
+			}
+			var err error
+			out, err = appendResponsesToolToChat(out, child, namespace)
+			if err != nil {
+				return nil, err
+			}
+		}
+		return out, nil
+	}
+
+	name := responsesQualifiedToolName(namespace, strings.TrimSpace(kitutil.Interface2String(tool["name"])))
+	if toolType == "function" {
+		return append(out, dto.ToolCallRequest{
+			Type: "function",
+			Function: dto.FunctionRequest{
+				Name:        name,
+				Description: kitutil.Interface2String(tool["description"]),
+				Parameters:  tool["parameters"],
+			},
+		}), nil
+	}
+
+	toolCopy := make(map[string]any, len(tool))
+	for key, value := range tool {
+		toolCopy[key] = value
+	}
+	if name != "" {
+		toolCopy["name"] = name
+	}
+	rawTool, err := kitutil.Marshal(toolCopy)
+	if err != nil {
+		return nil, err
+	}
+	return append(out, dto.ToolCallRequest{
+		Type:   toolType,
+		Custom: rawTool,
+		Function: dto.FunctionRequest{
+			Name:        name,
+			Description: kitutil.Interface2String(tool["description"]),
+		},
+	}), nil
+}
+
+func responsesQualifiedToolName(namespace string, name string) string {
+	if namespace == "" || name == "" || strings.HasPrefix(name, namespace+"__") {
+		return name
+	}
+	if strings.HasSuffix(namespace, "__") {
+		return namespace + name
+	}
+	return namespace + "__" + name
 }
 
 func responsesRequestToolChoiceToChat(raw json.RawMessage) (any, error) {
@@ -373,7 +447,7 @@ func responsesRequestToolChoiceToChat(raw json.RawMessage) (any, error) {
 		return nil, fmt.Errorf("invalid tool_choice: %w", err)
 	}
 	if kitutil.Interface2String(choice["type"]) == "function" {
-		name := strings.TrimSpace(kitutil.Interface2String(choice["name"]))
+		name := responsesQualifiedToolName(strings.TrimSpace(kitutil.Interface2String(choice["namespace"])), strings.TrimSpace(kitutil.Interface2String(choice["name"])))
 		if name != "" {
 			return map[string]any{
 				"type": "function",

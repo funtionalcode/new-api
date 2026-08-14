@@ -138,3 +138,68 @@ func mustResponsesEventsFromChatChunk(t *testing.T, state *ChatToResponsesStream
 	require.NoError(t, err)
 	return events
 }
+
+func TestChatCompletionsResponseToResponsesPreservesCustomToolCall(t *testing.T) {
+	message := dto.Message{Role: "assistant"}
+	message.SetToolCalls([]dto.ToolCallRequest{{
+		ID:   "call_patch",
+		Type: dto.CustomType,
+		Function: dto.FunctionRequest{
+			Name:      "apply_patch",
+			Arguments: "*** Begin Patch",
+		},
+	}})
+	response, _, err := ChatCompletionsResponseToResponsesResponse(&dto.OpenAITextResponse{
+		Model: "gpt-test",
+		Choices: []dto.OpenAITextResponseChoice{{
+			Message:      message,
+			FinishReason: "tool_calls",
+		}},
+	}, "resp_1")
+	require.NoError(t, err)
+
+	require.Len(t, response.Output, 1)
+	assert.Equal(t, responsesOutputTypeCustomToolCall, response.Output[0].Type)
+	assert.Equal(t, "call_patch", response.Output[0].CallId)
+	assert.Equal(t, "apply_patch", response.Output[0].Name)
+	require.NotNil(t, response.Output[0].Input)
+	assert.Equal(t, "*** Begin Patch", *response.Output[0].Input)
+}
+
+func TestChatCompletionsStreamToResponsesEmitsCustomToolInputEvents(t *testing.T) {
+	state := NewChatToResponsesStreamState("resp_1", "gpt-test")
+	toolIndex := 0
+	events := mustResponsesEventsFromChatChunk(t, state, &dto.ChatCompletionsStreamResponse{
+		Choices: []dto.ChatCompletionsStreamResponseChoice{{
+			Delta: dto.ChatCompletionsStreamResponseChoiceDelta{ToolCalls: []dto.ToolCallResponse{{
+				Index: &toolIndex,
+				ID:    "call_patch",
+				Type:  dto.CustomType,
+				Function: dto.FunctionResponse{
+					Name:      "apply_patch",
+					Arguments: "*** Begin Patch",
+				},
+			}}},
+		}},
+	})
+	finishReason := "tool_calls"
+	events = append(events, mustResponsesEventsFromChatChunk(t, state, &dto.ChatCompletionsStreamResponse{
+		Choices: []dto.ChatCompletionsStreamResponseChoice{{FinishReason: &finishReason}},
+	})...)
+	events = append(events, FinalizeChatCompletionsStreamToResponses(state)...)
+
+	require.Len(t, events, 6)
+	assert.Equal(t, responsesEventCreated, events[0].Type)
+	assert.Equal(t, responsesEventOutputItemAdded, events[1].Type)
+	require.NotNil(t, events[1].Payload.Item)
+	assert.Equal(t, responsesOutputTypeCustomToolCall, events[1].Payload.Item.Type)
+	assert.Equal(t, responsesEventCustomToolInputDelta, events[2].Type)
+	assert.Equal(t, "*** Begin Patch", events[2].Payload.Delta)
+	assert.Equal(t, responsesEventCustomToolInputDone, events[3].Type)
+	require.NotNil(t, events[3].Payload.Input)
+	assert.Equal(t, "*** Begin Patch", *events[3].Payload.Input)
+	assert.Equal(t, responsesEventCompleted, events[5].Type)
+	require.Len(t, events[5].Payload.Response.Output, 1)
+	require.NotNil(t, events[5].Payload.Response.Output[0].Input)
+	assert.Equal(t, "*** Begin Patch", *events[5].Payload.Response.Output[0].Input)
+}

@@ -40,6 +40,7 @@ type ChatToResponsesStreamState struct {
 type chatToResponsesStreamTool struct {
 	ChatIndex   int
 	OutputIndex int
+	Kind        string
 	ID          string
 	Name        string
 	Arguments   strings.Builder
@@ -199,9 +200,14 @@ func (s *ChatToResponsesStreamState) appendToolCallDelta(toolCall dto.ToolCallRe
 	tool := s.toolsByIndex[chatIndex]
 	events := make([]ChatToResponsesStreamEvent, 0, 2)
 	if tool == nil {
+		kind := strings.TrimSpace(fmt.Sprint(toolCall.Type))
+		if toolCall.Type == nil || kind == "" || kind == "<nil>" {
+			kind = "function"
+		}
 		tool = &chatToResponsesStreamTool{
 			ChatIndex:   chatIndex,
 			OutputIndex: s.nextIndex("tool", chatIndex),
+			Kind:        kind,
 			ID:          strings.TrimSpace(toolCall.ID),
 			Name:        strings.TrimSpace(toolCall.Function.Name),
 		}
@@ -209,18 +215,25 @@ func (s *ChatToResponsesStreamState) appendToolCallDelta(toolCall dto.ToolCallRe
 			tool.ID = fmt.Sprintf("%s_call_%d", s.ID, chatIndex)
 		}
 		s.toolsByIndex[chatIndex] = tool
+		output := &dto.ResponsesOutput{
+			Type:      responsesOutputTypeFunctionCall,
+			ID:        tool.ID,
+			Status:    "in_progress",
+			CallId:    tool.ID,
+			Name:      tool.Name,
+			Arguments: []byte(`""`),
+		}
+		if tool.Kind == dto.CustomType {
+			emptyInput := ""
+			output.Type = responsesOutputTypeCustomToolCall
+			output.Arguments = nil
+			output.Input = &emptyInput
+		}
 		events = append(events, responsesStreamEvent(responsesEventOutputItemAdded, dto.ResponsesStreamResponse{
 			Type:        responsesEventOutputItemAdded,
 			OutputIndex: intPtr(tool.OutputIndex),
 			ItemID:      tool.ID,
-			Item: &dto.ResponsesOutput{
-				Type:      responsesOutputTypeFunctionCall,
-				ID:        tool.ID,
-				Status:    "in_progress",
-				CallId:    tool.ID,
-				Name:      tool.Name,
-				Arguments: []byte(`""`),
-			},
+			Item:        output,
 		}))
 	}
 	if strings.TrimSpace(toolCall.ID) != "" {
@@ -231,8 +244,12 @@ func (s *ChatToResponsesStreamState) appendToolCallDelta(toolCall dto.ToolCallRe
 	}
 	if toolCall.Function.Arguments != "" {
 		tool.Arguments.WriteString(toolCall.Function.Arguments)
-		events = append(events, responsesStreamEvent(responsesEventFunctionArgsDelta, dto.ResponsesStreamResponse{
-			Type:        responsesEventFunctionArgsDelta,
+		eventType := responsesEventFunctionArgsDelta
+		if tool.Kind == dto.CustomType {
+			eventType = responsesEventCustomToolInputDelta
+		}
+		events = append(events, responsesStreamEvent(eventType, dto.ResponsesStreamResponse{
+			Type:        eventType,
 			OutputIndex: intPtr(tool.OutputIndex),
 			ItemID:      tool.ID,
 			Delta:       toolCall.Function.Arguments,
@@ -281,11 +298,19 @@ func (s *ChatToResponsesStreamState) doneDeltaEvents() []ChatToResponsesStreamEv
 			continue
 		}
 		tool.Done = true
-		events = append(events, responsesStreamEvent(responsesEventFunctionArgsDone, dto.ResponsesStreamResponse{
-			Type:        responsesEventFunctionArgsDone,
+		eventType := responsesEventFunctionArgsDone
+		done := dto.ResponsesStreamResponse{
+			Type:        eventType,
 			OutputIndex: intPtr(tool.OutputIndex),
 			ItemID:      tool.ID,
-		}))
+		}
+		if tool.Kind == dto.CustomType {
+			eventType = responsesEventCustomToolInputDone
+			done.Type = eventType
+			input := tool.Arguments.String()
+			done.Input = &input
+		}
+		events = append(events, responsesStreamEvent(eventType, done))
 		events = append(events, responsesStreamEvent(responsesEventOutputItemDone, dto.ResponsesStreamResponse{
 			Type:        responsesEventOutputItemDone,
 			OutputIndex: intPtr(tool.OutputIndex),
@@ -406,6 +431,17 @@ func (s *ChatToResponsesStreamState) reasoningOutput(status string) *dto.Respons
 }
 
 func (s *ChatToResponsesStreamState) toolOutput(tool *chatToResponsesStreamTool, status string) *dto.ResponsesOutput {
+	if tool.Kind == dto.CustomType {
+		input := tool.Arguments.String()
+		return &dto.ResponsesOutput{
+			Type:   responsesOutputTypeCustomToolCall,
+			ID:     tool.ID,
+			Status: status,
+			CallId: tool.ID,
+			Name:   tool.Name,
+			Input:  &input,
+		}
+	}
 	return &dto.ResponsesOutput{
 		Type:      responsesOutputTypeFunctionCall,
 		ID:        tool.ID,

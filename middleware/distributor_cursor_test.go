@@ -19,7 +19,8 @@ func TestCursorChannelSupportsTextChatPaths(t *testing.T) {
 	assert.True(t, channelSupportsRequestPath(channel, "/v1/chat/completions", "composer-2"))
 	assert.True(t, channelSupportsRequestPath(channel, "/pg/chat/completions", "composer-2"))
 	assert.True(t, channelSupportsRequestPath(channel, "/v1/messages", "composer-2"))
-	assert.False(t, channelSupportsRequestPath(channel, "/v1/responses", "composer-2"))
+	assert.True(t, channelSupportsRequestPath(channel, "/v1/responses", "composer-2"))
+	assert.False(t, channelSupportsRequestPath(channel, "/v1/responses/compact", "composer-2"))
 }
 
 func TestSetupContextForSelectedCursorChannelUsesSavedKey(t *testing.T) {

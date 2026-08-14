@@ -22,6 +22,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
 
@@ -150,6 +151,21 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	responseID := helper.GetResponseID(c)
 	createdAt := common.GetTimestamp()
 	model := info.UpstreamModelName
+	externalToolNames, _ := c.Get(cursorExternalToolsContextKey)
+	allowedExternalTools, _ := externalToolNames.(map[string]cursorExternalToolSpec)
+	bufferAssistantForTools := len(allowedExternalTools) > 0
+	var responsesStreamState *relayconvert.ResponseStreamState
+	if clientStream && info.RelayFormat == types.RelayFormatOpenAIResponses {
+		var err error
+		responsesStreamState, err = relayconvert.NewResponseStreamState(types.RelayFormatOpenAI, types.RelayFormatOpenAIResponses, relayconvert.ResponseStreamOptions{
+			ID:      responseID,
+			Model:   model,
+			Created: createdAt,
+		})
+		if err != nil {
+			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError)
+		}
+	}
 	var streamedText strings.Builder
 	var streamedThinking strings.Builder
 	finalText := ""
@@ -182,6 +198,14 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 				info.FirstResponseTime = time.Now()
 				firstChunk = false
 			}
+			chunkText := textEvent.Text
+			if bufferAssistantForTools {
+				if cursorExternalToolStreamCandidate(streamedText.String()) {
+					return nil
+				}
+				bufferAssistantForTools = false
+				chunkText = streamedText.String()
+			}
 			chunk := &dto.ChatCompletionsStreamResponse{
 				Id:      responseID,
 				Object:  "chat.completion.chunk",
@@ -191,11 +215,11 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 					Index: 0,
 					Delta: dto.ChatCompletionsStreamResponseChoiceDelta{
 						Role:    "assistant",
-						Content: &textEvent.Text,
+						Content: &chunkText,
 					},
 				}},
 			}
-			return writeCursorStreamChunk(c, info, chunk)
+			return writeCursorStreamChunk(c, info, responsesStreamState, chunk)
 		case "thinking":
 			var textEvent cursorTextEvent
 			if err := common.Unmarshal(event.Data, &textEvent); err != nil {
@@ -225,7 +249,7 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 					},
 				}},
 			}
-			return writeCursorStreamChunk(c, info, chunk)
+			return writeCursorStreamChunk(c, info, responsesStreamState, chunk)
 		case "result":
 			var result cursorResultEvent
 			if err := common.Unmarshal(event.Data, &result); err != nil {
@@ -281,13 +305,49 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	if finalText == "" {
 		finalText = streamedText.String()
 	}
+	externalToolCalls, hasExternalToolCalls := parseCursorExternalToolCalls(finalText, allowedExternalTools)
+	if clientStream && !bufferAssistantForTools {
+		// Normal text has already been streamed, so a differing final result must not
+		// append a structured tool call to the same assistant turn.
+		externalToolCalls = nil
+		hasExternalToolCalls = false
+	}
 	usage := a.getCursorUsage(c, info, resp, agentID, runID)
 	if usage == nil || !service.ValidUsage(usage) {
 		usage = service.ResponseText2Usage(c, finalText, model, info.GetEstimatePromptTokens())
 	}
 
 	if clientStream {
-		if streamedText.Len() == 0 && finalText != "" {
+		if hasExternalToolCalls {
+			streamToolCalls := make([]dto.ToolCallResponse, 0, len(externalToolCalls))
+			for index, toolCall := range externalToolCalls {
+				streamToolCalls = append(streamToolCalls, dto.ToolCallResponse{
+					Index: common.GetPointer(index),
+					ID:    toolCall.ID,
+					Type:  toolCall.Type,
+					Function: dto.FunctionResponse{
+						Name:      toolCall.Function.Name,
+						Arguments: toolCall.Function.Arguments,
+					},
+				})
+			}
+			chunk := &dto.ChatCompletionsStreamResponse{
+				Id:      responseID,
+				Object:  "chat.completion.chunk",
+				Created: createdAt,
+				Model:   model,
+				Choices: []dto.ChatCompletionsStreamResponseChoice{{
+					Index: 0,
+					Delta: dto.ChatCompletionsStreamResponseChoiceDelta{
+						Role:      "assistant",
+						ToolCalls: streamToolCalls,
+					},
+				}},
+			}
+			if err := writeCursorStreamChunk(c, info, responsesStreamState, chunk); err != nil {
+				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+			}
+		} else if (bufferAssistantForTools || streamedText.Len() == 0) && finalText != "" {
 			chunk := &dto.ChatCompletionsStreamResponse{
 				Id:      responseID,
 				Object:  "chat.completion.chunk",
@@ -301,16 +361,25 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 					},
 				}},
 			}
-			if err := writeCursorStreamChunk(c, info, chunk); err != nil {
+			if err := writeCursorStreamChunk(c, info, responsesStreamState, chunk); err != nil {
 				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 			}
 		}
-		stopChunk := helper.GenerateStopResponse(responseID, createdAt, model, "stop")
-		if info.RelayFormat == types.RelayFormatClaude {
+		finishReason := "stop"
+		if hasExternalToolCalls {
+			finishReason = types.FinishReasonToolCalls
+		}
+		stopChunk := helper.GenerateStopResponse(responseID, createdAt, model, finishReason)
+		if info.RelayFormat == types.RelayFormatClaude || info.RelayFormat == types.RelayFormatOpenAIResponses {
 			stopChunk.Usage = usage
 		}
-		if err := writeCursorStreamChunk(c, info, stopChunk); err != nil {
+		if err := writeCursorStreamChunk(c, info, responsesStreamState, stopChunk); err != nil {
 			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+		}
+		if info.RelayFormat == types.RelayFormatOpenAIResponses {
+			if err := finalizeCursorResponseStream(c, info, responsesStreamState); err != nil {
+				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+			}
 		}
 		if info.RelayFormat == types.RelayFormatOpenAI && info.ShouldIncludeUsage {
 			if err := helper.ObjectData(c, helper.GenerateFinalUsageResponse(responseID, createdAt, model, *usage)); err != nil {
@@ -323,28 +392,35 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 		return usage, nil
 	}
 
+	finishReason := "stop"
+	message := dto.Message{Role: "assistant", Content: finalText}
+	if hasExternalToolCalls {
+		finishReason = types.FinishReasonToolCalls
+		message.Content = nil
+		message.SetToolCalls(externalToolCalls)
+	}
 	response := &dto.OpenAITextResponse{
 		Id:      responseID,
 		Object:  "chat.completion",
 		Created: createdAt,
 		Model:   model,
 		Choices: []dto.OpenAITextResponseChoice{{
-			Index: 0,
-			Message: dto.Message{
-				Role:    "assistant",
-				Content: finalText,
-			},
-			FinishReason: "stop",
+			Index:        0,
+			Message:      message,
+			FinishReason: finishReason,
 		}},
 		Usage: *usage,
 	}
 	if streamedThinking.Len() > 0 {
 		response.Choices[0].Message.ReasoningContent = common.GetPointer(streamedThinking.String())
 	}
-	if info.RelayFormat == types.RelayFormatClaude {
-		converted, err := relayconvert.ConvertResponse(c, info, types.RelayFormatClaude, response)
+	if info.RelayFormat == types.RelayFormatClaude || info.RelayFormat == types.RelayFormatOpenAIResponses {
+		converted, err := relayconvert.ConvertResponse(c, info, info.RelayFormat, response)
 		if err != nil {
 			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+		}
+		if responsesResponse, ok := converted.Value.(*dto.OpenAIResponsesResponse); ok {
+			normalizeCursorResponsesOutput(responsesResponse.Output, allowedExternalTools)
 		}
 		c.JSON(http.StatusOK, converted.Value)
 	} else {
@@ -353,9 +429,125 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	return usage, nil
 }
 
-func writeCursorStreamChunk(c *gin.Context, info *relaycommon.RelayInfo, chunk *dto.ChatCompletionsStreamResponse) error {
-	if info.RelayFormat != types.RelayFormatClaude {
+func parseCursorExternalToolCalls(text string, allowedTools map[string]cursorExternalToolSpec) ([]dto.ToolCallRequest, bool) {
+	if len(allowedTools) == 0 {
+		return nil, false
+	}
+	payload := strings.TrimSpace(text)
+	if strings.HasPrefix(payload, "```json") && strings.HasSuffix(payload, "```") {
+		payload = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(payload, "```json"), "```"))
+	} else if strings.HasPrefix(payload, "```") && strings.HasSuffix(payload, "```") {
+		payload = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(payload, "```"), "```"))
+	}
+
+	var envelope cursorExternalToolEnvelope
+	if err := common.UnmarshalJsonStr(payload, &envelope); err != nil || len(envelope.ToolCalls) == 0 {
+		return nil, false
+	}
+	toolCalls := make([]dto.ToolCallRequest, 0, len(envelope.ToolCalls))
+	for _, call := range envelope.ToolCalls {
+		name := strings.TrimSpace(call.Name)
+		toolSpec, ok := allowedTools[name]
+		if !ok {
+			return nil, false
+		}
+		id := strings.TrimSpace(call.ID)
+		if id == "" {
+			id = "call_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+		}
+		switch toolSpec.Kind {
+		case "function":
+			arguments := []byte("{}")
+			var err error
+			switch value := call.Arguments.(type) {
+			case nil:
+			case string:
+				arguments = []byte(strings.TrimSpace(value))
+			default:
+				arguments, err = common.Marshal(value)
+			}
+			if err != nil || common.GetJsonType(arguments) != "object" {
+				return nil, false
+			}
+			toolCalls = append(toolCalls, dto.ToolCallRequest{
+				ID:   id,
+				Type: "function",
+				Function: dto.FunctionRequest{
+					Name:      name,
+					Arguments: string(arguments),
+				},
+			})
+		case dto.CustomType:
+			input := call.Input
+			if input == nil {
+				input = call.Arguments
+			}
+			var inputText string
+			switch value := input.(type) {
+			case nil:
+			case string:
+				inputText = value
+			default:
+				encoded, err := common.Marshal(value)
+				if err != nil {
+					return nil, false
+				}
+				inputText = string(encoded)
+			}
+			toolCalls = append(toolCalls, dto.ToolCallRequest{
+				ID:   id,
+				Type: dto.CustomType,
+				Function: dto.FunctionRequest{
+					Name:      name,
+					Arguments: inputText,
+				},
+			})
+		default:
+			return nil, false
+		}
+	}
+	return toolCalls, true
+}
+
+func cursorExternalToolStreamCandidate(text string) bool {
+	payload := strings.ReplaceAll(strings.TrimLeft(text, " \t\r\n"), "\r\n", "\n")
+	marker := `{"cursor_external_tool_calls"`
+	for _, prefix := range []string{marker, "```json\n" + marker, "```\n" + marker} {
+		if strings.HasPrefix(prefix, payload) || strings.HasPrefix(payload, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func writeCursorStreamChunk(c *gin.Context, info *relaycommon.RelayInfo, responsesState *relayconvert.ResponseStreamState, chunk *dto.ChatCompletionsStreamResponse) error {
+	if info.RelayFormat == types.RelayFormatOpenAI {
 		return helper.ObjectData(c, chunk)
+	}
+	if info.RelayFormat == types.RelayFormatOpenAIResponses {
+		if responsesState == nil {
+			return errors.New("cursor channel: Responses stream state is required")
+		}
+		info.IncrSendResponseCount()
+		results, err := relayconvert.ConvertStreamResponseChunk(c, info, responsesState, chunk)
+		if err != nil {
+			return err
+		}
+		for _, result := range results {
+			event, ok := result.Value.(relayconvert.ChatToResponsesStreamEvent)
+			if !ok {
+				return fmt.Errorf("cursor channel: expected Responses stream event, got %T", result.Value)
+			}
+			normalizeCursorResponsesStreamEvent(&event.Payload, cursorExternalToolSpecs(c))
+			data, err := common.Marshal(event.Payload)
+			if err != nil {
+				return err
+			}
+			if err := helper.ResponseChunkData(c, dto.ResponsesStreamResponse{Type: event.Type}, string(data)); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 	info.IncrSendResponseCount()
 	converted, err := relayconvert.ConvertStreamResponse(c, info, types.RelayFormatClaude, chunk)
@@ -375,6 +567,69 @@ func writeCursorStreamChunk(c *gin.Context, info *relaycommon.RelayInfo, chunk *
 		}
 	}
 	return nil
+}
+
+func finalizeCursorResponseStream(c *gin.Context, info *relaycommon.RelayInfo, state *relayconvert.ResponseStreamState) error {
+	if state == nil {
+		return errors.New("cursor channel: Responses stream state is required")
+	}
+	results, err := relayconvert.FinalizeStreamResponse(c, info, state)
+	if err != nil {
+		return err
+	}
+	for _, result := range results {
+		event, ok := result.Value.(relayconvert.ChatToResponsesStreamEvent)
+		if !ok {
+			return fmt.Errorf("cursor channel: expected Responses stream event, got %T", result.Value)
+		}
+		normalizeCursorResponsesStreamEvent(&event.Payload, cursorExternalToolSpecs(c))
+		data, err := common.Marshal(event.Payload)
+		if err != nil {
+			return err
+		}
+		if err := helper.ResponseChunkData(c, dto.ResponsesStreamResponse{Type: event.Type}, string(data)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func cursorExternalToolSpecs(c *gin.Context) map[string]cursorExternalToolSpec {
+	if c == nil {
+		return nil
+	}
+	value, exists := c.Get(cursorExternalToolsContextKey)
+	if !exists {
+		return nil
+	}
+	specs, _ := value.(map[string]cursorExternalToolSpec)
+	return specs
+}
+
+func normalizeCursorResponsesStreamEvent(event *dto.ResponsesStreamResponse, specs map[string]cursorExternalToolSpec) {
+	if event == nil || len(specs) == 0 {
+		return
+	}
+	if event.Item != nil {
+		if spec, ok := specs[event.Item.Name]; ok && spec.Namespace != "" {
+			event.Item.Name = spec.Name
+			event.Item.Namespace = spec.Namespace
+		}
+	}
+	if event.Response != nil {
+		normalizeCursorResponsesOutput(event.Response.Output, specs)
+	}
+}
+
+func normalizeCursorResponsesOutput(output []dto.ResponsesOutput, specs map[string]cursorExternalToolSpec) {
+	for index := range output {
+		spec, ok := specs[output[index].Name]
+		if !ok || spec.Namespace == "" {
+			continue
+		}
+		output[index].Name = spec.Name
+		output[index].Namespace = spec.Namespace
+	}
 }
 
 func setCursorAgentResponseHeaders(c *gin.Context, info *relaycommon.RelayInfo, agentID string) {
@@ -402,6 +657,18 @@ func writeCursorAgentDeletedResponse(c *gin.Context, info *relaycommon.RelayInfo
 	clientStream, _ := strconv.ParseBool(resp.Header.Get(cursorClientStreamHeader))
 	if clientStream {
 		helper.SetEventStreamHeaders(c)
+		var responsesStreamState *relayconvert.ResponseStreamState
+		if info.RelayFormat == types.RelayFormatOpenAIResponses {
+			var err error
+			responsesStreamState, err = relayconvert.NewResponseStreamState(types.RelayFormatOpenAI, types.RelayFormatOpenAIResponses, relayconvert.ResponseStreamOptions{
+				ID:      responseID,
+				Model:   model,
+				Created: createdAt,
+			})
+			if err != nil {
+				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError)
+			}
+		}
 		chunk := &dto.ChatCompletionsStreamResponse{
 			Id:      responseID,
 			Object:  "chat.completion.chunk",
@@ -415,15 +682,20 @@ func writeCursorAgentDeletedResponse(c *gin.Context, info *relaycommon.RelayInfo
 				},
 			}},
 		}
-		if err := writeCursorStreamChunk(c, info, chunk); err != nil {
+		if err := writeCursorStreamChunk(c, info, responsesStreamState, chunk); err != nil {
 			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 		}
 		stopChunk := helper.GenerateStopResponse(responseID, createdAt, model, "stop")
-		if info.RelayFormat == types.RelayFormatClaude {
+		if info.RelayFormat == types.RelayFormatClaude || info.RelayFormat == types.RelayFormatOpenAIResponses {
 			stopChunk.Usage = usage
 		}
-		if err := writeCursorStreamChunk(c, info, stopChunk); err != nil {
+		if err := writeCursorStreamChunk(c, info, responsesStreamState, stopChunk); err != nil {
 			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+		}
+		if info.RelayFormat == types.RelayFormatOpenAIResponses {
+			if err := finalizeCursorResponseStream(c, info, responsesStreamState); err != nil {
+				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+			}
 		}
 		if info.RelayFormat == types.RelayFormatOpenAI && info.ShouldIncludeUsage {
 			if err := helper.ObjectData(c, helper.GenerateFinalUsageResponse(responseID, createdAt, model, *usage)); err != nil {
@@ -451,8 +723,8 @@ func writeCursorAgentDeletedResponse(c *gin.Context, info *relaycommon.RelayInfo
 		}},
 		Usage: *usage,
 	}
-	if info.RelayFormat == types.RelayFormatClaude {
-		converted, err := relayconvert.ConvertResponse(c, info, types.RelayFormatClaude, response)
+	if info.RelayFormat == types.RelayFormatClaude || info.RelayFormat == types.RelayFormatOpenAIResponses {
+		converted, err := relayconvert.ConvertResponse(c, info, info.RelayFormat, response)
 		if err != nil {
 			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 		}

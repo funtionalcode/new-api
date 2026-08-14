@@ -335,13 +335,21 @@ type ResponsesOutput struct {
 	Result    string                   `json:"result,omitempty"`
 	CallId    string                   `json:"call_id,omitempty"`
 	Name      string                   `json:"name,omitempty"`
+	Namespace string                   `json:"namespace,omitempty"`
 	Arguments json.RawMessage          `json:"arguments,omitempty"`
+	Input     *string                  `json:"input,omitempty"`
 }
 
 // ArgumentsString returns function call arguments in the string form expected by Chat Completions.
 func (r *ResponsesOutput) ArgumentsString() string {
 	if r == nil {
 		return ""
+	}
+	if r.Type == "custom_tool_call" {
+		if r.Input == nil {
+			return ""
+		}
+		return *r.Input
 	}
 	return ResponsesArgumentsString(r.Arguments)
 }
@@ -395,6 +403,7 @@ type ResponsesStreamResponse struct {
 	SummaryIndex *int                           `json:"summary_index,omitempty"`
 	ItemID       string                         `json:"item_id,omitempty"`
 	Part         *ResponsesReasoningSummaryPart `json:"part,omitempty"`
+	Input        *string                        `json:"input,omitempty"`
 }
 
 // GetOpenAIError 从动态错误类型中提取OpenAIError结构

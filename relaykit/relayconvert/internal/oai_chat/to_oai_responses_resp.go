@@ -22,9 +22,12 @@ const (
 	responsesEventOutputItemDone           = "response.output_item.done"
 	responsesEventFunctionArgsDelta        = "response.function_call_arguments.delta"
 	responsesEventFunctionArgsDone         = "response.function_call_arguments.done"
+	responsesEventCustomToolInputDelta     = "response.custom_tool_call_input.delta"
+	responsesEventCustomToolInputDone      = "response.custom_tool_call_input.done"
 	responsesEventReasoningSummaryDelta    = "response.reasoning_summary_text.delta"
 	responsesEventReasoningSummaryDone     = "response.reasoning_summary_text.done"
 	responsesOutputTypeFunctionCall        = "function_call"
+	responsesOutputTypeCustomToolCall      = "custom_tool_call"
 	responsesOutputTypeMessage             = "message"
 	responsesOutputTypeReasoning           = "reasoning"
 	responsesIncompleteReasonContentFilter = "content_filter"
@@ -182,6 +185,16 @@ func chatToolCallToResponsesOutput(toolCall dto.ToolCallRequest, responseID stri
 			CallId:    callID,
 			Name:      toolCall.Function.Name,
 			Arguments: chatArgumentsRawMessage(toolCall.Function.Arguments),
+		}, nil
+	}
+	if toolCall.Type == dto.CustomType {
+		return dto.ResponsesOutput{
+			Type:   responsesOutputTypeCustomToolCall,
+			ID:     callID,
+			Status: status,
+			CallId: callID,
+			Name:   toolCall.Function.Name,
+			Input:  &toolCall.Function.Arguments,
 		}, nil
 	}
 	return dto.ResponsesOutput{

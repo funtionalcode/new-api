@@ -80,16 +80,27 @@ func TestCursorAdaptorUsesCloudAgentsEndpointForClaudeMessages(t *testing.T) {
 	assert.Equal(t, "https://api.cursor.com/v1/agents", requestURL)
 }
 
-func TestCursorAdaptorRejectsNonChatEndpoint(t *testing.T) {
-	_, err := (&Adaptor{}).GetRequestURL(&relaycommon.RelayInfo{
-		RelayMode: relayconstant.RelayModeResponses,
+func TestCursorAdaptorUsesCloudAgentsEndpointForResponses(t *testing.T) {
+	requestURL, err := (&Adaptor{}).GetRequestURL(&relaycommon.RelayInfo{
+		RelayMode:   relayconstant.RelayModeResponses,
+		RelayFormat: types.RelayFormatOpenAIResponses,
 		ChannelMeta: &relaycommon.ChannelMeta{
 			ChannelType:    constant.ChannelTypeCursor,
 			ChannelBaseUrl: "https://api.cursor.com",
 		},
 	})
 
-	require.ErrorContains(t, err, "only /v1/chat/completions and /v1/messages are supported")
+	require.NoError(t, err)
+	assert.Equal(t, "https://api.cursor.com/v1/agents", requestURL)
+
+	_, err = (&Adaptor{}).GetRequestURL(&relaycommon.RelayInfo{
+		RelayMode: relayconstant.RelayModeResponsesCompact,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType:    constant.ChannelTypeCursor,
+			ChannelBaseUrl: "https://api.cursor.com",
+		},
+	})
+	require.ErrorContains(t, err, "/v1/responses/compact endpoint not supported")
 }
 
 func TestConvertOpenAIRequestPreservesFullConversation(t *testing.T) {
@@ -285,7 +296,7 @@ func TestConvertOpenAIRequestRejectsInvalidPersistentMetadataTypes(t *testing.T)
 	require.ErrorContains(t, err, "metadata.cursor_persistent must be a boolean")
 }
 
-func TestConvertOpenAIRequestRejectsNonTextAndTools(t *testing.T) {
+func TestConvertOpenAIRequestRejectsNonTextAndAcceptsTools(t *testing.T) {
 	adaptor := &Adaptor{}
 	c := newCursorTestContext(t)
 
@@ -295,12 +306,23 @@ func TestConvertOpenAIRequestRejectsNonTextAndTools(t *testing.T) {
 	})
 	require.ErrorContains(t, err, "text-only")
 
-	_, err = adaptor.ConvertOpenAIRequest(c, nil, &dto.GeneralOpenAIRequest{
+	converted, err := adaptor.ConvertOpenAIRequest(c, nil, &dto.GeneralOpenAIRequest{
 		Model:    "composer-2",
 		Messages: []dto.Message{{Role: "user", Content: "hello"}},
-		Tools:    []dto.ToolCallRequest{{}},
+		Tools: []dto.ToolCallRequest{{
+			Type: "function",
+			Function: dto.FunctionRequest{
+				Name:        "lookup_weather",
+				Description: "Look up weather",
+				Parameters:  map[string]any{"type": "object"},
+			},
+		}},
 	})
-	require.ErrorContains(t, err, "tools are not supported")
+	require.NoError(t, err)
+	createRequest := converted.(*createAgentRequest)
+	assert.Contains(t, createRequest.Prompt.Text, `"cursor_external_tool_calls"`)
+	assert.Contains(t, createRequest.Prompt.Text, `"name":"lookup_weather"`)
+	assert.Contains(t, createRequest.Prompt.Text, `"description":"Look up weather"`)
 }
 
 func TestConvertOpenAIRequestAcceptsTextContentParts(t *testing.T) {
@@ -368,6 +390,42 @@ func TestConvertClaudeRequestContinuesPersistentAgent(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "What did I ask?", runRequest.Prompt.Text)
 	assert.Equal(t, agentID, c.GetString(cursorAgentIDContextKey))
+}
+
+func TestConvertClaudeRequestPreservesToolHistoryForPersistentAgent(t *testing.T) {
+	c := newCursorTestContext(t)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	agentID := "bc-00000000-0000-0000-0000-000000000001"
+	setCursorTestAgentHeaders(c, agentID)
+
+	converted, err := (&Adaptor{}).ConvertClaudeRequest(c, &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{
+		ChannelId: 42,
+		ApiKey:    "cursor-secret",
+	}}, &dto.ClaudeRequest{
+		Model: "claude-opus-5",
+		Messages: []dto.ClaudeMessage{
+			{Role: "user", Content: "What is the weather?"},
+			{Role: "assistant", Content: []any{map[string]any{
+				"type": "tool_use", "id": "toolu_1", "name": "lookup_weather", "input": map[string]any{"city": "Paris"},
+			}}},
+			{Role: "user", Content: []any{map[string]any{
+				"type": "tool_result", "tool_use_id": "toolu_1", "content": "15 C",
+			}}},
+		},
+		Tools: []any{map[string]any{
+			"name":         "lookup_weather",
+			"description":  "Look up weather",
+			"input_schema": map[string]any{"type": "object", "properties": map[string]any{"city": map[string]any{"type": "string"}}},
+		}},
+	})
+
+	require.NoError(t, err)
+	runRequest, ok := converted.(*createRunRequest)
+	require.True(t, ok)
+	assert.Contains(t, runRequest.Prompt.Text, `"role":"tool"`)
+	assert.Contains(t, runRequest.Prompt.Text, `"tool_call_id":"toolu_1"`)
+	assert.Contains(t, runRequest.Prompt.Text, `"content":"15 C"`)
+	assert.Contains(t, runRequest.Prompt.Text, `"name":"lookup_weather"`)
 }
 
 func TestScanCursorEvents(t *testing.T) {
@@ -563,6 +621,119 @@ func TestCursorStreamResponseUsesClaudeMessagesEvents(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(body, "event: message_stop\n"))
 	assert.NotContains(t, body, "[DONE]")
 	assert.Less(t, strings.Index(body, "event: message_start\n"), strings.Index(body, "event: message_stop\n"))
+}
+
+func TestCursorNonStreamResponseConvertsExternalToolCallToClaude(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	c.Set(cursorExternalToolsContextKey, map[string]cursorExternalToolSpec{"lookup_weather": {Kind: "function", Name: "lookup_weather"}})
+	common.SetContextKey(c, common.RequestIdKey, "req-cursor-claude-tool")
+
+	toolEnvelope := `{"cursor_external_tool_calls":[{"id":"toolu_cursor_1","name":"lookup_weather","arguments":{"city":"Paris"}}]}`
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			cursorClientStreamHeader:    []string{"false"},
+			cursorSkipRemoteUsageHeader: []string{"true"},
+		},
+		Body: io.NopCloser(strings.NewReader("event: assistant\ndata: {\"text\":\"" + strings.ReplaceAll(toolEnvelope, `"`, `\"`) + "\"}\n\nevent: result\ndata: {\"runId\":\"run-1\",\"status\":\"FINISHED\",\"text\":\"" + strings.ReplaceAll(toolEnvelope, `"`, `\"`) + "\"}\n\n")),
+	}
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatClaude,
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "claude-opus-5"},
+	}
+
+	usage, apiErr := (&Adaptor{}).DoResponse(c, resp, info)
+	require.Nil(t, apiErr)
+	require.NotNil(t, usage)
+	var response dto.ClaudeResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.Equal(t, "tool_use", response.StopReason)
+	require.Len(t, response.Content, 1)
+	assert.Equal(t, "tool_use", response.Content[0].Type)
+	assert.Equal(t, "toolu_cursor_1", response.Content[0].Id)
+	assert.Equal(t, "lookup_weather", response.Content[0].Name)
+	toolInput, ok := response.Content[0].Input.(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "Paris", toolInput["city"])
+	assert.NotContains(t, recorder.Body.String(), "cursor_external_tool_calls")
+}
+
+func TestCursorStreamResponseConvertsExternalToolCallToClaudeEvents(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	c.Set(cursorExternalToolsContextKey, map[string]cursorExternalToolSpec{"lookup_weather": {Kind: "function", Name: "lookup_weather"}})
+	common.SetContextKey(c, common.RequestIdKey, "req-cursor-claude-tool-stream")
+
+	toolEnvelope := `{"cursor_external_tool_calls":[{"id":"toolu_cursor_1","name":"lookup_weather","arguments":{"city":"Paris"}}]}`
+	responseHeader := make(http.Header)
+	responseHeader.Set(cursorClientStreamHeader, "true")
+	responseHeader.Set(cursorSkipRemoteUsageHeader, "true")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     responseHeader,
+		Body:       io.NopCloser(strings.NewReader("event: assistant\ndata: {\"text\":\"" + strings.ReplaceAll(toolEnvelope, `"`, `\"`) + "\"}\n\nevent: result\ndata: {\"runId\":\"run-1\",\"status\":\"FINISHED\",\"text\":\"" + strings.ReplaceAll(toolEnvelope, `"`, `\"`) + "\"}\n\n")),
+	}
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatClaude,
+		IsStream:    true,
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "claude-opus-5"},
+	}
+
+	usage, apiErr := (&Adaptor{}).DoResponse(c, resp, info)
+	require.Nil(t, apiErr)
+	require.NotNil(t, usage)
+	body := recorder.Body.String()
+	assert.Contains(t, body, `"type":"tool_use","id":"toolu_cursor_1","name":"lookup_weather"`)
+	assert.Contains(t, body, `"type":"input_json_delta","partial_json":"{\"city\":\"Paris\"}"`)
+	assert.Contains(t, body, `"stop_reason":"tool_use"`)
+	assert.Equal(t, 1, strings.Count(body, "event: message_stop\n"))
+	assert.NotContains(t, body, "cursor_external_tool_calls")
+}
+
+func TestCursorStreamResponseKeepsNormalTextStreamingWhenToolsAreAvailable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	c.Set(cursorExternalToolsContextKey, map[string]cursorExternalToolSpec{"lookup_weather": {Kind: "function", Name: "lookup_weather"}})
+	common.SetContextKey(c, common.RequestIdKey, "req-cursor-claude-text-with-tools")
+
+	responseHeader := make(http.Header)
+	responseHeader.Set(cursorClientStreamHeader, "true")
+	responseHeader.Set(cursorSkipRemoteUsageHeader, "true")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     responseHeader,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			"event: assistant",
+			`data: {"text":"Hello "}`,
+			"",
+			"event: assistant",
+			`data: {"text":"without a tool"}`,
+			"",
+			"event: result",
+			`data: {"runId":"run-1","status":"FINISHED","text":"Hello without a tool"}`,
+			"",
+		}, "\n"))),
+	}
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatClaude,
+		IsStream:    true,
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "claude-opus-5"},
+	}
+
+	usage, apiErr := (&Adaptor{}).DoResponse(c, resp, info)
+	require.Nil(t, apiErr)
+	require.NotNil(t, usage)
+	body := recorder.Body.String()
+	assert.Contains(t, body, `"type":"text_delta","text":"Hello "`)
+	assert.Contains(t, body, `"type":"text_delta","text":"without a tool"`)
+	assert.Equal(t, 1, strings.Count(body, "event: message_stop\n"))
 }
 
 func TestCursorAdaptorRunsCloudAgentAndDeletesEphemeralSession(t *testing.T) {
@@ -859,11 +1030,207 @@ func TestCursorResponseFallsBackWhenStreamEmitsUnavailableError(t *testing.T) {
 	assert.Equal(t, agentID, recorder.Header().Get(constant.CursorAgentIDHeader))
 }
 
-func TestCursorAdaptorRejectsUnsupportedTextEndpoints(t *testing.T) {
+func TestConvertOpenAIResponsesRequestPreservesCodexCustomToolsAndHistory(t *testing.T) {
+	c := newCursorTestContext(t)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	converted, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(c, &relaycommon.RelayInfo{RelayMode: relayconstant.RelayModeResponses}, dto.OpenAIResponsesRequest{
+		Model: "composer-2",
+		Input: []byte(`[
+			{"role":"user","content":[{"type":"input_text","text":"Update the file"}]},
+			{"type":"custom_tool_call","call_id":"call_patch","name":"apply_patch","input":"*** Begin Patch"},
+			{"type":"custom_tool_call_output","call_id":"call_patch","output":"Done!"}
+		]`),
+		Tools: []byte(`[
+			{"type":"custom","name":"apply_patch","description":"Apply a patch","format":{"type":"grammar","syntax":"lark","definition":"start: /.+/s"}},
+			{"type":"function","name":"exec_command","description":"Run a command","parameters":{"type":"object"}}
+		]`),
+	})
+	require.NoError(t, err)
+
+	createRequest, ok := converted.(*createAgentRequest)
+	require.True(t, ok)
+	assert.Contains(t, createRequest.Prompt.Text, `"type":"custom"`)
+	assert.Contains(t, createRequest.Prompt.Text, `"name":"apply_patch"`)
+	assert.Contains(t, createRequest.Prompt.Text, `"role":"tool"`)
+	assert.Contains(t, createRequest.Prompt.Text, `"tool_call_id":"call_patch"`)
+	toolKinds, ok := c.Get(cursorExternalToolsContextKey)
+	require.True(t, ok)
+	assert.Equal(t, map[string]cursorExternalToolSpec{
+		"apply_patch":  {Kind: dto.CustomType, Name: "apply_patch"},
+		"exec_command": {Kind: "function", Name: "exec_command"},
+	}, toolKinds)
+}
+
+func TestCursorNonStreamResponseConvertsCustomToolCallToResponses(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Set(cursorExternalToolsContextKey, map[string]cursorExternalToolSpec{"apply_patch": {Kind: dto.CustomType, Name: "apply_patch"}})
+	common.SetContextKey(c, common.RequestIdKey, "req-cursor-responses-tool")
+
+	toolEnvelope := `{"cursor_external_tool_calls":[{"id":"call_patch","name":"apply_patch","input":"*** Begin Patch"}]}`
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			cursorClientStreamHeader:    []string{"false"},
+			cursorSkipRemoteUsageHeader: []string{"true"},
+		},
+		Body: io.NopCloser(strings.NewReader("event: assistant\ndata: {\"text\":\"" + strings.ReplaceAll(toolEnvelope, `"`, `\"`) + "\"}\n\nevent: result\ndata: {\"runId\":\"run-1\",\"status\":\"FINISHED\",\"text\":\"" + strings.ReplaceAll(toolEnvelope, `"`, `\"`) + "\"}\n\n")),
+	}
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatOpenAIResponses,
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "composer-2"},
+	}
+
+	usage, apiErr := (&Adaptor{}).DoResponse(c, resp, info)
+	require.Nil(t, apiErr)
+	require.NotNil(t, usage)
+	var response dto.OpenAIResponsesResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.Len(t, response.Output, 1)
+	assert.Equal(t, "custom_tool_call", response.Output[0].Type)
+	assert.Equal(t, "call_patch", response.Output[0].CallId)
+	assert.Equal(t, "apply_patch", response.Output[0].Name)
+	require.NotNil(t, response.Output[0].Input)
+	assert.Equal(t, "*** Begin Patch", *response.Output[0].Input)
+	assert.NotContains(t, recorder.Body.String(), "cursor_external_tool_calls")
+}
+
+func TestCursorStreamResponseConvertsCustomToolCallToResponsesEvents(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Set(cursorExternalToolsContextKey, map[string]cursorExternalToolSpec{"apply_patch": {Kind: dto.CustomType, Name: "apply_patch"}})
+	common.SetContextKey(c, common.RequestIdKey, "req-cursor-responses-tool-stream")
+
+	toolEnvelope := `{"cursor_external_tool_calls":[{"id":"call_patch","name":"apply_patch","input":"*** Begin Patch"}]}`
+	responseHeader := make(http.Header)
+	responseHeader.Set(cursorClientStreamHeader, "true")
+	responseHeader.Set(cursorSkipRemoteUsageHeader, "true")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     responseHeader,
+		Body:       io.NopCloser(strings.NewReader("event: assistant\ndata: {\"text\":\"" + strings.ReplaceAll(toolEnvelope, `"`, `\"`) + "\"}\n\nevent: result\ndata: {\"runId\":\"run-1\",\"status\":\"FINISHED\",\"text\":\"" + strings.ReplaceAll(toolEnvelope, `"`, `\"`) + "\"}\n\n")),
+	}
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatOpenAIResponses,
+		IsStream:    true,
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "composer-2"},
+	}
+
+	usage, apiErr := (&Adaptor{}).DoResponse(c, resp, info)
+	require.Nil(t, apiErr)
+	require.NotNil(t, usage)
+	body := recorder.Body.String()
+	assert.Contains(t, body, "event: response.created\n")
+	assert.Contains(t, body, `"type":"custom_tool_call","id":"call_patch"`)
+	assert.Contains(t, body, "event: response.custom_tool_call_input.delta\n")
+	assert.Contains(t, body, `"delta":"*** Begin Patch"`)
+	assert.Contains(t, body, "event: response.custom_tool_call_input.done\n")
+	assert.Contains(t, body, `"input":"*** Begin Patch"`)
+	assert.Contains(t, body, "event: response.completed\n")
+	assert.NotContains(t, body, "cursor_external_tool_calls")
+}
+
+func TestCursorResponsesStreamKeepsNormalTextLive(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Set(cursorExternalToolsContextKey, map[string]cursorExternalToolSpec{"apply_patch": {Kind: dto.CustomType, Name: "apply_patch"}})
+	common.SetContextKey(c, common.RequestIdKey, "req-cursor-responses-text")
+
+	responseHeader := make(http.Header)
+	responseHeader.Set(cursorClientStreamHeader, "true")
+	responseHeader.Set(cursorSkipRemoteUsageHeader, "true")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     responseHeader,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			"event: assistant",
+			`data: {"text":"Hello "}`,
+			"",
+			"event: assistant",
+			`data: {"text":"from Cursor"}`,
+			"",
+			"event: result",
+			`data: {"runId":"run-1","status":"FINISHED","text":"Hello from Cursor"}`,
+			"",
+		}, "\n"))),
+	}
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatOpenAIResponses,
+		IsStream:    true,
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "composer-2"},
+	}
+
+	usage, apiErr := (&Adaptor{}).DoResponse(c, resp, info)
+	require.Nil(t, apiErr)
+	require.NotNil(t, usage)
+	body := recorder.Body.String()
+	assert.Contains(t, body, `"type":"response.output_text.delta","delta":"Hello "`)
+	assert.Contains(t, body, `"type":"response.output_text.delta","delta":"from Cursor"`)
+	assert.Contains(t, body, "event: response.completed\n")
+}
+
+func TestCursorResponsesNamespaceFunctionRoundTrip(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Set("id", 1)
+	common.SetContextKey(c, common.RequestIdKey, "req-cursor-responses-namespace")
+
+	_, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(c, &relaycommon.RelayInfo{RelayMode: relayconstant.RelayModeResponses}, dto.OpenAIResponsesRequest{
+		Model: "composer-2",
+		Input: []byte(`[
+			{"type":"additional_tools","role":"developer","tools":[
+				{"type":"namespace","name":"collaboration","tools":[
+					{"type":"function","name":"send_message","description":"Send a message","parameters":{"type":"object"}}
+				]}
+			]},
+			{"role":"user","content":"Send a message"}
+		]`),
+	})
+	require.NoError(t, err)
+	specs := cursorExternalToolSpecs(c)
+	assert.Equal(t, cursorExternalToolSpec{
+		Kind:      "function",
+		Name:      "send_message",
+		Namespace: "collaboration",
+	}, specs["collaboration__send_message"])
+
+	toolEnvelope := `{"cursor_external_tool_calls":[{"id":"call_send","name":"collaboration__send_message","arguments":{"target":"worker"}}]}`
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			cursorClientStreamHeader:    []string{"false"},
+			cursorSkipRemoteUsageHeader: []string{"true"},
+		},
+		Body: io.NopCloser(strings.NewReader("event: assistant\ndata: {\"text\":\"" + strings.ReplaceAll(toolEnvelope, `"`, `\"`) + "\"}\n\nevent: result\ndata: {\"runId\":\"run-1\",\"status\":\"FINISHED\",\"text\":\"" + strings.ReplaceAll(toolEnvelope, `"`, `\"`) + "\"}\n\n")),
+	}
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatOpenAIResponses,
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "composer-2"},
+	}
+
+	usage, apiErr := (&Adaptor{}).DoResponse(c, resp, info)
+	require.Nil(t, apiErr)
+	require.NotNil(t, usage)
+	var response dto.OpenAIResponsesResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.Len(t, response.Output, 1)
+	assert.Equal(t, "function_call", response.Output[0].Type)
+	assert.Equal(t, "send_message", response.Output[0].Name)
+	assert.Equal(t, "collaboration", response.Output[0].Namespace)
+	assert.Equal(t, "call_send", response.Output[0].CallId)
+}
+
+func TestCursorAdaptorRejectsUnsupportedGeminiEndpoint(t *testing.T) {
 	adaptor := &Adaptor{}
 
-	_, err := adaptor.ConvertOpenAIResponsesRequest(nil, nil, dto.OpenAIResponsesRequest{})
-	require.ErrorContains(t, err, "/v1/responses endpoint not supported")
-	_, err = adaptor.ConvertGeminiRequest(nil, nil, &dto.GeminiChatRequest{})
+	_, err := adaptor.ConvertGeminiRequest(nil, nil, &dto.GeminiChatRequest{})
 	require.ErrorContains(t, err, "Gemini endpoint not supported")
 }

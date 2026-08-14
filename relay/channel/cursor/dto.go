@@ -43,8 +43,35 @@ type cursorMetadata struct {
 }
 
 type cursorTranscriptMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string                     `json:"role"`
+	Content    string                     `json:"content,omitempty"`
+	Name       string                     `json:"name,omitempty"`
+	ToolCallID string                     `json:"tool_call_id,omitempty"`
+	ToolCalls  []cursorTranscriptToolCall `json:"tool_calls,omitempty"`
+}
+
+type cursorTranscriptToolCall struct {
+	ID        string `json:"id"`
+	Type      string `json:"type,omitempty"`
+	Name      string `json:"name"`
+	Arguments any    `json:"arguments"`
+}
+
+type cursorExternalToolEnvelope struct {
+	ToolCalls []cursorExternalToolCall `json:"cursor_external_tool_calls"`
+}
+
+type cursorExternalToolCall struct {
+	ID        string `json:"id,omitempty"`
+	Name      string `json:"name"`
+	Arguments any    `json:"arguments,omitempty"`
+	Input     any    `json:"input,omitempty"`
+}
+
+type cursorExternalToolSpec struct {
+	Kind      string
+	Name      string
+	Namespace string
 }
 
 type cursorEvent struct {
