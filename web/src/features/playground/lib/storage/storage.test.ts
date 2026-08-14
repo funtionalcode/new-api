@@ -141,12 +141,16 @@ describe('playground message storage', () => {
       signature: `v2.${'a'.repeat(64)}`,
       channelId: 10,
       keyIndex: 0,
+      model: 'grok-4.5',
+      group: 'default',
     }
     const secondSession = {
       agentId: 'bc-00000000-0000-0000-0000-000000000002',
       signature: `v2.${'b'.repeat(64)}`,
       channelId: 20,
       keyIndex: 1,
+      model: 'claude-sonnet-4',
+      group: 'vip',
     }
 
     saveCursorAgentSession(firstSession, 1)

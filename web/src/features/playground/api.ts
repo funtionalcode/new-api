@@ -62,7 +62,8 @@ export interface ChatCompletionResult {
 }
 
 function getCursorSessionFromHeaders(
-  headers: Record<string, unknown>
+  headers: Record<string, unknown>,
+  payload: ChatCompletionRequest
 ): CursorAgentSession | null {
   const agentId = String(headers[CURSOR_AGENT_HEADERS.ID.toLowerCase()] ?? '')
   const signature = String(
@@ -81,7 +82,14 @@ function getCursorSessionFromHeaders(
     return null
   }
   if (!Number.isInteger(keyIndex) || keyIndex < 0) return null
-  return { agentId, signature, channelId, keyIndex }
+  return {
+    agentId,
+    signature,
+    channelId,
+    keyIndex,
+    model: payload.model,
+    group: payload.group ?? '',
+  }
 }
 
 export async function sendChatCompletion(
@@ -97,19 +105,23 @@ export async function sendChatCompletion(
   const headers = res.headers as Record<string, unknown>
   return {
     data: res.data,
-    cursorSession: getCursorSessionFromHeaders(headers),
+    cursorSession: getCursorSessionFromHeaders(headers, payload),
     cursorAgentDeleted:
       String(headers[CURSOR_AGENT_HEADERS.DELETED.toLowerCase()]) === 'true',
   }
 }
 
 export function cursorAgentRequestHeaders(
-  session: CursorAgentSession | null
+  session: CursorAgentSession | null,
+  model: string,
+  group?: string
 ): Record<string, string> {
   const headers: Record<string, string> = {
     [CURSOR_AGENT_HEADERS.PERSISTENT]: 'true',
   }
-  if (!session) return headers
+  if (!session || session.model !== model || session.group !== (group ?? '')) {
+    return headers
+  }
   return {
     ...headers,
     [CURSOR_AGENT_HEADERS.ID]: session.agentId,

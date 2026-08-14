@@ -114,7 +114,11 @@ export function useChatHandler({
   )
 
   const handleCursorResponseHeaders = useCallback(
-    (headers: Record<string, string[]>) => {
+    (
+      headers: Record<string, string[]>,
+      model: string,
+      group: string | undefined
+    ) => {
       const firstHeader = (name: string) =>
         headers[name.toLowerCase()]?.[0]?.trim() ?? ''
       if (firstHeader(CURSOR_AGENT_HEADERS.DELETED) === 'true') {
@@ -133,7 +137,14 @@ export function useChatHandler({
         Number.isInteger(keyIndex) &&
         keyIndex >= 0
       ) {
-        updateCursorAgentSession({ agentId, signature, channelId, keyIndex })
+        updateCursorAgentSession({
+          agentId,
+          signature,
+          channelId,
+          keyIndex,
+          model,
+          group: group ?? '',
+        })
       }
     },
     [updateCursorAgentSession]
@@ -312,8 +323,13 @@ export function useChatHandler({
       )
       void sendStreamRequest(
         payload,
-        cursorAgentRequestHeaders(cursorAgentSessionRef.current),
-        handleCursorResponseHeaders,
+        cursorAgentRequestHeaders(
+          cursorAgentSessionRef.current,
+          payload.model,
+          payload.group
+        ),
+        (headers) =>
+          handleCursorResponseHeaders(headers, payload.model, payload.group),
         (type, chunk) => handleStreamUpdate(generation, type, chunk),
         () => handleStreamComplete(generation),
         (error, errorCode) => handleStreamError(generation, error, errorCode)
@@ -352,7 +368,11 @@ export function useChatHandler({
         setIsRequesting(true)
         const result = await sendChatCompletion(
           payload,
-          cursorAgentRequestHeaders(cursorAgentSessionRef.current),
+          cursorAgentRequestHeaders(
+            cursorAgentSessionRef.current,
+            payload.model,
+            payload.group
+          ),
           abortController.signal
         )
         if (

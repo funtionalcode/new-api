@@ -99,6 +99,8 @@ export interface CursorAgentSession {
   signature: string
   channelId: number
   keyIndex: number
+  model: string
+  group: string
 }
 
 export interface ChatCompletionChunk {

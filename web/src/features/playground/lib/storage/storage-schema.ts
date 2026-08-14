@@ -50,6 +50,8 @@ export const cursorAgentSessionSchema = z.object({
   signature: z.string().regex(/^v2\.[0-9a-f]+$/i),
   channelId: z.number().int().positive(),
   keyIndex: z.number().int().nonnegative(),
+  model: z.string().trim().min(1),
+  group: z.string(),
 })
 
 const messageRoleSchema = z.enum(['user', 'assistant', 'system'])
