@@ -78,6 +78,11 @@ func Distribute() func(c *gin.Context) {
 				abortWithOpenAiMessage(c, http.StatusForbidden, "该渠道未开放给当前用户")
 				return
 			}
+			if shouldSelectChannel && !channelSupportsRequestPath(channel, c.Request.URL.Path, modelRequest.Model) {
+				message := i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": fmt.Sprintf("channel does not support request path %s", c.Request.URL.Path)})
+				abortWithOpenAiMessage(c, http.StatusBadRequest, message, types.ErrorCodeInvalidRequest)
+				return
+			}
 		} else {
 			// Select a channel for the user
 			// check token model mapping
@@ -119,7 +124,7 @@ func Distribute() func(c *gin.Context) {
 					usingGroup = modelRequest.Group
 					common.SetContextKey(c, constant.ContextKeyUsingGroup, usingGroup)
 				}
-				if normalizePlaygroundRequestPath(c.Request.URL.Path) == "/v1/chat/completions" && strings.TrimSpace(c.GetHeader(constant.CursorAgentIDHeader)) != "" {
+				if isCursorPersistentRequestPath(c.Request.URL.Path) && strings.TrimSpace(c.GetHeader(constant.CursorAgentIDHeader)) != "" {
 					persistentChannelID, channelErr := strconv.Atoi(strings.TrimSpace(c.GetHeader(constant.CursorAgentChannelIDHeader)))
 					persistentKeyIndex, keyErr := strconv.Atoi(strings.TrimSpace(c.GetHeader(constant.CursorAgentKeyIndexHeader)))
 					if channelErr != nil || persistentChannelID <= 0 || keyErr != nil || persistentKeyIndex < 0 {
@@ -230,7 +235,7 @@ func Distribute() func(c *gin.Context) {
 			}
 		}
 		common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
-		if normalizePlaygroundRequestPath(c.Request.URL.Path) == "/v1/chat/completions" && strings.TrimSpace(c.GetHeader(constant.CursorAgentIDHeader)) != "" {
+		if isCursorPersistentRequestPath(c.Request.URL.Path) && strings.TrimSpace(c.GetHeader(constant.CursorAgentIDHeader)) != "" {
 			savedChannelID := strings.TrimSpace(c.GetHeader(constant.CursorAgentChannelIDHeader))
 			savedKeyIndex := strings.TrimSpace(c.GetHeader(constant.CursorAgentKeyIndexHeader))
 			persistentChannelID, channelErr := strconv.Atoi(savedChannelID)
@@ -460,20 +465,19 @@ func SelectChannelForWebsocketRequest(c *gin.Context, modelName string) (*model.
 }
 
 // channelSupportsRequestPath reports whether a channel can serve the request path.
-// Advanced Custom channels use their configured routes. Cursor exposes only
-// the OpenAI Chat Completions relay surface.
+// Advanced Custom channels use their configured routes. Cursor exposes text
+// chat through both the OpenAI Chat Completions and Anthropic Messages surfaces.
 func channelSupportsRequestPath(channel *model.Channel, requestPath string, requestModel string) bool {
-	if channel == nil {
+	return channel.SupportsRequestPath(requestPath, requestModel)
+}
+
+func isCursorPersistentRequestPath(requestPath string) bool {
+	switch normalizePlaygroundRequestPath(requestPath) {
+	case "/v1/chat/completions", "/v1/messages":
+		return true
+	default:
 		return false
 	}
-	if channel.Type == constant.ChannelTypeCursor {
-		return normalizePlaygroundRequestPath(requestPath) == "/v1/chat/completions"
-	}
-	if channel.Type != constant.ChannelTypeAdvancedCustom {
-		return true
-	}
-	config := channel.GetOtherSettings().AdvancedCustom
-	return config != nil && config.SupportsPathForModel(normalizePlaygroundRequestPath(requestPath), requestModel)
 }
 
 func normalizePlaygroundRequestPath(requestPath string) string {

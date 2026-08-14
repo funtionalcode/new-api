@@ -18,6 +18,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
@@ -150,6 +151,7 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	createdAt := common.GetTimestamp()
 	model := info.UpstreamModelName
 	var streamedText strings.Builder
+	var streamedThinking strings.Builder
 	finalText := ""
 	resultStatus := ""
 	upstreamError := cursorErrorEvent{}
@@ -193,7 +195,37 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 					},
 				}},
 			}
-			return helper.ObjectData(c, chunk)
+			return writeCursorStreamChunk(c, info, chunk)
+		case "thinking":
+			var textEvent cursorTextEvent
+			if err := common.Unmarshal(event.Data, &textEvent); err != nil {
+				return fmt.Errorf("cursor channel: decode thinking event: %w", err)
+			}
+			if textEvent.Text == "" {
+				return nil
+			}
+			streamedThinking.WriteString(textEvent.Text)
+			if !clientStream {
+				return nil
+			}
+			if firstChunk {
+				info.FirstResponseTime = time.Now()
+				firstChunk = false
+			}
+			chunk := &dto.ChatCompletionsStreamResponse{
+				Id:      responseID,
+				Object:  "chat.completion.chunk",
+				Created: createdAt,
+				Model:   model,
+				Choices: []dto.ChatCompletionsStreamResponseChoice{{
+					Index: 0,
+					Delta: dto.ChatCompletionsStreamResponseChoiceDelta{
+						Role:             "assistant",
+						ReasoningContent: &textEvent.Text,
+					},
+				}},
+			}
+			return writeCursorStreamChunk(c, info, chunk)
 		case "result":
 			var result cursorResultEvent
 			if err := common.Unmarshal(event.Data, &result); err != nil {
@@ -269,19 +301,25 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 					},
 				}},
 			}
-			if err := helper.ObjectData(c, chunk); err != nil {
+			if err := writeCursorStreamChunk(c, info, chunk); err != nil {
 				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 			}
 		}
-		if err := helper.ObjectData(c, helper.GenerateStopResponse(responseID, createdAt, model, "stop")); err != nil {
+		stopChunk := helper.GenerateStopResponse(responseID, createdAt, model, "stop")
+		if info.RelayFormat == types.RelayFormatClaude {
+			stopChunk.Usage = usage
+		}
+		if err := writeCursorStreamChunk(c, info, stopChunk); err != nil {
 			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 		}
-		if info.ShouldIncludeUsage {
+		if info.RelayFormat == types.RelayFormatOpenAI && info.ShouldIncludeUsage {
 			if err := helper.ObjectData(c, helper.GenerateFinalUsageResponse(responseID, createdAt, model, *usage)); err != nil {
 				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 			}
 		}
-		helper.Done(c)
+		if info.RelayFormat == types.RelayFormatOpenAI {
+			helper.Done(c)
+		}
 		return usage, nil
 	}
 
@@ -300,8 +338,43 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 		}},
 		Usage: *usage,
 	}
-	c.JSON(http.StatusOK, response)
+	if streamedThinking.Len() > 0 {
+		response.Choices[0].Message.ReasoningContent = common.GetPointer(streamedThinking.String())
+	}
+	if info.RelayFormat == types.RelayFormatClaude {
+		converted, err := relayconvert.ConvertResponse(c, info, types.RelayFormatClaude, response)
+		if err != nil {
+			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+		}
+		c.JSON(http.StatusOK, converted.Value)
+	} else {
+		c.JSON(http.StatusOK, response)
+	}
 	return usage, nil
+}
+
+func writeCursorStreamChunk(c *gin.Context, info *relaycommon.RelayInfo, chunk *dto.ChatCompletionsStreamResponse) error {
+	if info.RelayFormat != types.RelayFormatClaude {
+		return helper.ObjectData(c, chunk)
+	}
+	info.IncrSendResponseCount()
+	converted, err := relayconvert.ConvertStreamResponse(c, info, types.RelayFormatClaude, chunk)
+	if err != nil {
+		return err
+	}
+	responses, ok := converted.Value.([]*dto.ClaudeResponse)
+	if !ok {
+		return fmt.Errorf("cursor channel: expected Claude stream responses, got %T", converted.Value)
+	}
+	for _, response := range responses {
+		if response == nil {
+			continue
+		}
+		if err := helper.ClaudeData(c, *response); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func setCursorAgentResponseHeaders(c *gin.Context, info *relaycommon.RelayInfo, agentID string) {
@@ -342,22 +415,28 @@ func writeCursorAgentDeletedResponse(c *gin.Context, info *relaycommon.RelayInfo
 				},
 			}},
 		}
-		if err := helper.ObjectData(c, chunk); err != nil {
+		if err := writeCursorStreamChunk(c, info, chunk); err != nil {
 			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 		}
-		if err := helper.ObjectData(c, helper.GenerateStopResponse(responseID, createdAt, model, "stop")); err != nil {
+		stopChunk := helper.GenerateStopResponse(responseID, createdAt, model, "stop")
+		if info.RelayFormat == types.RelayFormatClaude {
+			stopChunk.Usage = usage
+		}
+		if err := writeCursorStreamChunk(c, info, stopChunk); err != nil {
 			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 		}
-		if info.ShouldIncludeUsage {
+		if info.RelayFormat == types.RelayFormatOpenAI && info.ShouldIncludeUsage {
 			if err := helper.ObjectData(c, helper.GenerateFinalUsageResponse(responseID, createdAt, model, *usage)); err != nil {
 				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 			}
 		}
-		helper.Done(c)
+		if info.RelayFormat == types.RelayFormatOpenAI {
+			helper.Done(c)
+		}
 		return usage, nil
 	}
 
-	c.JSON(http.StatusOK, &dto.OpenAITextResponse{
+	response := &dto.OpenAITextResponse{
 		Id:      responseID,
 		Object:  "chat.completion",
 		Created: createdAt,
@@ -371,7 +450,16 @@ func writeCursorAgentDeletedResponse(c *gin.Context, info *relaycommon.RelayInfo
 			FinishReason: "stop",
 		}},
 		Usage: *usage,
-	})
+	}
+	if info.RelayFormat == types.RelayFormatClaude {
+		converted, err := relayconvert.ConvertResponse(c, info, types.RelayFormatClaude, response)
+		if err != nil {
+			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+		}
+		c.JSON(http.StatusOK, converted.Value)
+	} else {
+		c.JSON(http.StatusOK, response)
+	}
 	return usage, nil
 }
 

@@ -20,6 +20,7 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -33,8 +34,8 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	if info == nil {
 		return "", errors.New("cursor channel: relay info is required")
 	}
-	if info.RelayMode != 0 && info.RelayMode != relayconstant.RelayModeChatCompletions {
-		return "", errors.New("cursor channel: only /v1/chat/completions is supported")
+	if info.RelayFormat != types.RelayFormatClaude && info.RelayMode != 0 && info.RelayMode != relayconstant.RelayModeChatCompletions {
+		return "", errors.New("cursor channel: only /v1/chat/completions and /v1/messages are supported")
 	}
 	return relaycommon.GetFullRequestURL(strings.TrimRight(info.ChannelBaseUrl, "/"), "/v1/agents", info.ChannelType), nil
 }
@@ -580,8 +581,17 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(*gin.Context, *relaycommon.Relay
 	return nil, errors.New("cursor channel: /v1/responses endpoint not supported")
 }
 
-func (a *Adaptor) ConvertClaudeRequest(*gin.Context, *relaycommon.RelayInfo, *dto.ClaudeRequest) (any, error) {
-	return nil, errors.New("cursor channel: /v1/messages endpoint not supported")
+func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.ClaudeRequest) (any, error) {
+	result, err := service.ConvertRequest(c, info, types.RelayFormatOpenAI, request)
+	if err != nil {
+		return nil, err
+	}
+	openAIRequest, ok := result.Value.(*dto.GeneralOpenAIRequest)
+	if !ok {
+		return nil, fmt.Errorf("cursor channel: expected OpenAI chat completions request, got %T", result.Value)
+	}
+	openAIRequest.Metadata = request.Metadata
+	return a.ConvertOpenAIRequest(c, info, openAIRequest)
 }
 
 func (a *Adaptor) ConvertGeminiRequest(*gin.Context, *relaycommon.RelayInfo, *dto.GeminiChatRequest) (any, error) {

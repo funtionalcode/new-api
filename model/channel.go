@@ -88,6 +88,37 @@ type ChannelSortOptions struct {
 	IDSort    bool
 }
 
+// SupportsRequestPath reports whether the channel can serve an API request
+// surface. Most channels support every relay path. Advanced Custom channels
+// use their configured routes, while Cursor exposes only text chat surfaces.
+func (channel *Channel) SupportsRequestPath(requestPath string, requestModel string) bool {
+	if channel == nil {
+		return false
+	}
+	requestPath = normalizeChannelRequestPath(requestPath)
+	if channel.Type == constant.ChannelTypeCursor {
+		return requestPath == "/v1/chat/completions" || requestPath == "/v1/messages"
+	}
+	if channel.Type != constant.ChannelTypeAdvancedCustom {
+		return true
+	}
+	config := channel.GetOtherSettings().AdvancedCustom
+	return config != nil && config.SupportsPathForModel(requestPath, requestModel)
+}
+
+func normalizeChannelRequestPath(requestPath string) string {
+	if strings.HasPrefix(requestPath, "/pg/chat/completions") {
+		return "/v1/chat/completions"
+	}
+	if strings.HasPrefix(requestPath, "/pg/images/generations") {
+		return "/v1/images/generations"
+	}
+	if strings.HasPrefix(requestPath, "/pg/audio/transcriptions") {
+		return "/v1/audio/transcriptions"
+	}
+	return requestPath
+}
+
 var channelSortColumns = map[string]string{
 	"id":            "id",
 	"name":          "name",

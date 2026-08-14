@@ -15,6 +15,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -66,6 +67,19 @@ func TestCursorAdaptorNormalizesTrailingSlashInBaseURL(t *testing.T) {
 	assert.Equal(t, "https://api.cursor.com/v1/agents", requestURL)
 }
 
+func TestCursorAdaptorUsesCloudAgentsEndpointForClaudeMessages(t *testing.T) {
+	requestURL, err := (&Adaptor{}).GetRequestURL(&relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatClaude,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType:    constant.ChannelTypeCursor,
+			ChannelBaseUrl: "https://api.cursor.com",
+		},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "https://api.cursor.com/v1/agents", requestURL)
+}
+
 func TestCursorAdaptorRejectsNonChatEndpoint(t *testing.T) {
 	_, err := (&Adaptor{}).GetRequestURL(&relaycommon.RelayInfo{
 		RelayMode: relayconstant.RelayModeResponses,
@@ -75,7 +89,7 @@ func TestCursorAdaptorRejectsNonChatEndpoint(t *testing.T) {
 		},
 	})
 
-	require.ErrorContains(t, err, "only /v1/chat/completions is supported")
+	require.ErrorContains(t, err, "only /v1/chat/completions and /v1/messages are supported")
 }
 
 func TestConvertOpenAIRequestPreservesFullConversation(t *testing.T) {
@@ -306,6 +320,56 @@ func TestConvertOpenAIRequestAcceptsTextContentParts(t *testing.T) {
 	assert.Contains(t, createRequest.Prompt.Text, `{"role":"user","content":"Hello Cursor"}`)
 }
 
+func TestConvertClaudeRequestBuildsCursorAgentConversation(t *testing.T) {
+	persistent := true
+	c := newCursorTestContext(t)
+	converted, err := (&Adaptor{}).ConvertClaudeRequest(c, nil, &dto.ClaudeRequest{
+		Model:  "claude-opus-5",
+		System: "Answer concisely.",
+		Messages: []dto.ClaudeMessage{
+			{Role: "user", Content: "My name is Ada."},
+			{Role: "assistant", Content: "Hello Ada."},
+			{Role: "user", Content: "What is my name?"},
+		},
+		Stream:   &persistent,
+		Metadata: []byte(`{"cursor_persistent":true}`),
+	})
+
+	require.NoError(t, err)
+	createRequest, ok := converted.(*createAgentRequest)
+	require.True(t, ok)
+	assert.Equal(t, "claude-opus-5", createRequest.Model.ID)
+	assert.Contains(t, createRequest.Prompt.Text, `{"role":"system","content":"Answer concisely."}`)
+	assert.Contains(t, createRequest.Prompt.Text, `{"role":"assistant","content":"Hello Ada."}`)
+	assert.Contains(t, createRequest.Prompt.Text, `{"role":"user","content":"What is my name?"}`)
+	assert.True(t, c.GetBool(cursorPersistentContextKey))
+}
+
+func TestConvertClaudeRequestContinuesPersistentAgent(t *testing.T) {
+	c := newCursorTestContext(t)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	agentID := "bc-00000000-0000-0000-0000-000000000001"
+	setCursorTestAgentHeaders(c, agentID)
+
+	converted, err := (&Adaptor{}).ConvertClaudeRequest(c, &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{
+		ChannelId: 42,
+		ApiKey:    "cursor-secret",
+	}}, &dto.ClaudeRequest{
+		Model: "claude-opus-5",
+		Messages: []dto.ClaudeMessage{
+			{Role: "user", Content: "Remember this."},
+			{Role: "assistant", Content: "I will."},
+			{Role: "user", Content: "What did I ask?"},
+		},
+	})
+
+	require.NoError(t, err)
+	runRequest, ok := converted.(*createRunRequest)
+	require.True(t, ok)
+	assert.Equal(t, "What did I ask?", runRequest.Prompt.Text)
+	assert.Equal(t, agentID, c.GetString(cursorAgentIDContextKey))
+}
+
 func TestScanCursorEvents(t *testing.T) {
 	input := strings.Join([]string{
 		"event: status",
@@ -408,6 +472,97 @@ func TestCursorNonStreamResponseUsesFinalResult(t *testing.T) {
 	assert.Equal(t, "stop", response.Choices[0].FinishReason)
 	assert.Positive(t, response.Usage.CompletionTokens)
 	assert.Equal(t, response.Usage.CompletionTokens, response.Usage.TotalTokens)
+}
+
+func TestCursorNonStreamResponseUsesClaudeMessagesFormat(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	common.SetContextKey(c, common.RequestIdKey, "req-cursor-claude")
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			cursorClientStreamHeader:    []string{"false"},
+			cursorSkipRemoteUsageHeader: []string{"true"},
+		},
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			"event: assistant",
+			`data: {"text":"Hello from Cursor"}`,
+			"",
+			"event: result",
+			`data: {"runId":"run-1","status":"FINISHED","text":"Hello from Cursor"}`,
+			"",
+		}, "\n"))),
+	}
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatClaude,
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "claude-opus-5"},
+	}
+
+	usage, apiErr := (&Adaptor{}).DoResponse(c, resp, info)
+	require.Nil(t, apiErr)
+	require.NotNil(t, usage)
+	var response dto.ClaudeResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.Equal(t, "message", response.Type)
+	assert.Equal(t, "assistant", response.Role)
+	assert.Equal(t, "claude-opus-5", response.Model)
+	require.Len(t, response.Content, 1)
+	assert.Equal(t, "Hello from Cursor", response.Content[0].GetText())
+	assert.Equal(t, "end_turn", response.StopReason)
+	require.NotNil(t, response.Usage)
+	assert.Positive(t, response.Usage.OutputTokens)
+}
+
+func TestCursorStreamResponseUsesClaudeMessagesEvents(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	common.SetContextKey(c, common.RequestIdKey, "req-cursor-claude-stream")
+
+	responseHeader := make(http.Header)
+	responseHeader.Set(cursorClientStreamHeader, "true")
+	responseHeader.Set(cursorSkipRemoteUsageHeader, "true")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     responseHeader,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			"event: thinking",
+			`data: {"text":"Check context. "}`,
+			"",
+			"event: assistant",
+			`data: {"text":"Hello "}`,
+			"",
+			"event: assistant",
+			`data: {"text":"from Cursor"}`,
+			"",
+			"event: result",
+			`data: {"runId":"run-1","status":"FINISHED","text":"Hello from Cursor"}`,
+			"",
+		}, "\n"))),
+	}
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatClaude,
+		IsStream:    true,
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "claude-opus-5"},
+	}
+
+	usage, apiErr := (&Adaptor{}).DoResponse(c, resp, info)
+	require.Nil(t, apiErr)
+	require.NotNil(t, usage)
+	body := recorder.Body.String()
+	assert.Equal(t, "text/event-stream", recorder.Header().Get("Content-Type"))
+	assert.Equal(t, 1, strings.Count(body, "event: message_start\n"))
+	assert.Contains(t, body, `"type":"thinking_delta","thinking":"Check context. "`)
+	assert.Contains(t, body, `"type":"text_delta","text":"Hello "`)
+	assert.Contains(t, body, `"type":"text_delta","text":"from Cursor"`)
+	assert.Equal(t, 1, strings.Count(body, "event: message_delta\n"))
+	assert.Equal(t, 1, strings.Count(body, "event: message_stop\n"))
+	assert.NotContains(t, body, "[DONE]")
+	assert.Less(t, strings.Index(body, "event: message_start\n"), strings.Index(body, "event: message_stop\n"))
 }
 
 func TestCursorAdaptorRunsCloudAgentAndDeletesEphemeralSession(t *testing.T) {
@@ -704,13 +859,11 @@ func TestCursorResponseFallsBackWhenStreamEmitsUnavailableError(t *testing.T) {
 	assert.Equal(t, agentID, recorder.Header().Get(constant.CursorAgentIDHeader))
 }
 
-func TestCursorAdaptorOnlyAcceptsOpenAITextRequests(t *testing.T) {
+func TestCursorAdaptorRejectsUnsupportedTextEndpoints(t *testing.T) {
 	adaptor := &Adaptor{}
 
 	_, err := adaptor.ConvertOpenAIResponsesRequest(nil, nil, dto.OpenAIResponsesRequest{})
 	require.ErrorContains(t, err, "/v1/responses endpoint not supported")
-	_, err = adaptor.ConvertClaudeRequest(nil, nil, &dto.ClaudeRequest{})
-	require.ErrorContains(t, err, "/v1/messages endpoint not supported")
 	_, err = adaptor.ConvertGeminiRequest(nil, nil, &dto.GeminiChatRequest{})
 	require.ErrorContains(t, err, "Gemini endpoint not supported")
 }
