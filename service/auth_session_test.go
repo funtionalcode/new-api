@@ -23,6 +23,7 @@ func setupAuthSessionTestDB(t *testing.T) *model.User {
 	t.Helper()
 	previousDB, previousRedis := model.DB, common.RedisEnabled
 	previousActiveLimit := common.UserSessionActiveLimit
+	previousMultiDeviceLoginEnabled := common.IsMultiDeviceLoginEnabled()
 	previousIssuanceLimit := common.UserSessionIssuanceLimit
 	previousIssuanceWindow := common.UserSessionIssuanceWindowSeconds
 	previousRevokedRetention := common.UserSessionRevokedRetentionDays
@@ -36,6 +37,7 @@ func setupAuthSessionTestDB(t *testing.T) *model.User {
 	model.DB = db
 	common.RedisEnabled = false
 	common.UserSessionActiveLimit = common.DefaultUserSessionActiveLimit
+	common.SetMultiDeviceLoginEnabled(false)
 	common.UserSessionIssuanceLimit = common.DefaultUserSessionIssuanceLimit
 	common.UserSessionIssuanceWindowSeconds = int64(common.DefaultUserSessionIssuanceWindowSeconds)
 	common.UserSessionRevokedRetentionDays = common.DefaultUserSessionRevokedRetentionDays
@@ -44,6 +46,7 @@ func setupAuthSessionTestDB(t *testing.T) *model.User {
 		model.DB = previousDB
 		common.RedisEnabled = previousRedis
 		common.UserSessionActiveLimit = previousActiveLimit
+		common.SetMultiDeviceLoginEnabled(previousMultiDeviceLoginEnabled)
 		common.UserSessionIssuanceLimit = previousIssuanceLimit
 		common.UserSessionIssuanceWindowSeconds = previousIssuanceWindow
 		common.UserSessionRevokedRetentionDays = previousRevokedRetention
@@ -130,6 +133,26 @@ func TestCreateLoginSessionEnforcesActiveLimitAcrossAuthVersions(t *testing.T) {
 	var count int64
 	require.NoError(t, model.DB.Model(&model.UserSession{}).Count(&count).Error)
 	assert.Equal(t, int64(50), count)
+}
+
+func TestCreateLoginSessionAllowsMultipleDevicesWithoutDisablingIssuanceLimit(t *testing.T) {
+	useTestSessionSecret(t)
+	user := setupAuthSessionTestDB(t)
+	common.UserSessionActiveLimit = 1
+	common.UserSessionIssuanceLimit = 2
+
+	_, err := CreateLoginSession(user.Id, "password", "127.0.0.1", "first-device")
+	require.NoError(t, err)
+
+	_, err = CreateLoginSession(user.Id, "password", "127.0.0.1", "second-device")
+	assert.ErrorIs(t, err, model.ErrUserSessionLimit)
+
+	common.SetMultiDeviceLoginEnabled(true)
+	_, err = CreateLoginSession(user.Id, "password", "127.0.0.1", "second-device")
+	require.NoError(t, err)
+
+	_, err = CreateLoginSession(user.Id, "password", "127.0.0.1", "third-device")
+	assert.ErrorIs(t, err, model.ErrUserSessionIssuanceLimit)
 }
 
 func TestCreateLoginSessionEnforcesIssuanceLimitAcrossAllStatuses(t *testing.T) {

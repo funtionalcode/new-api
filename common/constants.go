@@ -85,7 +85,16 @@ var (
 	UserSessionIssuanceWindowSeconds = int64(DefaultUserSessionIssuanceWindowSeconds)
 	UserSessionRevokedRetentionDays  = DefaultUserSessionRevokedRetentionDays
 	UserSessionHourlyAlertThreshold  = DefaultUserSessionHourlyAlertThreshold
+	multiDeviceLoginEnabled          atomic.Bool
 )
+
+func IsMultiDeviceLoginEnabled() bool {
+	return multiDeviceLoginEnabled.Load()
+}
+
+func SetMultiDeviceLoginEnabled(enabled bool) {
+	multiDeviceLoginEnabled.Store(enabled)
+}
 
 var OptionMap map[string]string
 var OptionMapRWMutex sync.RWMutex
