@@ -5,7 +5,13 @@ type cursorPrompt struct {
 }
 
 type cursorModelSelection struct {
-	ID string `json:"id"`
+	ID     string             `json:"id"`
+	Params []cursorModelParam `json:"params,omitempty"`
+}
+
+type cursorModelParam struct {
+	ID    string `json:"id"`
+	Value string `json:"value"`
 }
 
 type createAgentRequest struct {

@@ -1,6 +1,6 @@
 # 二开功能记录
 
-更新时间：2026-08-06
+更新时间：2026-08-14
 
 本文记录当前项目已做的二开功能，便于后续升级、排查和继续开发时快速确认改动范围。后续新增或调整二开功能时，需要同步更新本文。
 
@@ -81,6 +81,7 @@
 | 上游 Request ID 回写 | 上游响应优先取 `X-Oneapi-Request-Id`，否则取 `X-CPA-TRACE-ID`，写入 `UpstreamRequestIdKey` 供管理日志/详情展示；`ShouldCopyUpstreamHeader` 对 `X-CPA-TRACE-ID` 同步捕获 | `relay/channel/api_request.go`、`service/http.go` | 本次同步 |
 | 上游 Request ID 契约 | 与 CPA 约定：CPA 日志 request id 优先采用上述入站头；可用 new-api request id 调 CPA `request-log-by-id` | 跨仓：`CLIProxyAPIPlus/internal/logging` | 本次同步 |
 | Claude Desktop | 支持 `/v1/messages/count_tokens` 原生计数；兼容客户端回退为 `content: "count"`、输出上限为 1 且携带工具列表的 `/v1/messages`、`/v1/chat/completions` 或 `/v1/responses` 探针，本地返回对应协议的完整工具上下文 token 用量并跳过生成与计费 | `controller/relay.go`、`relay/claude_count_tokens_handler.go`、`relay/token_count_probe_handler.go`、`relaykit/dto/claude.go`、`service/token_counter.go` | `b838d8177`、本次同步 |
+| Cursor 渠道 | Claude Code `/v1/messages` 与 Codex `/v1/responses` 按客户端会话复用并固定 Cursor Agent、渠道和密钥；Codex Responses 纳入持久会话分发，客户端 `output_config.effort` / `reasoning.effort` 转为 Cursor `model.params` 的 `thinking` 参数，切换推理强度时隔离 Agent 会话 | `middleware/distributor.go`、`relay/channel/cursor`、`service/cursor_agent_session.go` | `2fe01db91`、本次同步 |
 
 ## 同步上游后的检查清单（增量）
 

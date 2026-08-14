@@ -354,14 +354,16 @@ func TestConvertClaudeRequestBuildsCursorAgentConversation(t *testing.T) {
 			{Role: "assistant", Content: "Hello Ada."},
 			{Role: "user", Content: "What is my name?"},
 		},
-		Stream:   &persistent,
-		Metadata: []byte(`{"cursor_persistent":true}`),
+		Stream:       &persistent,
+		Metadata:     []byte(`{"cursor_persistent":true}`),
+		OutputConfig: []byte(`{"effort":"high"}`),
 	})
 
 	require.NoError(t, err)
 	createRequest, ok := converted.(*createAgentRequest)
 	require.True(t, ok)
 	assert.Equal(t, "claude-opus-5", createRequest.Model.ID)
+	assert.Equal(t, []cursorModelParam{{ID: "thinking", Value: "high"}}, createRequest.Model.Params)
 	assert.Contains(t, createRequest.Prompt.Text, `{"role":"system","content":"Answer concisely."}`)
 	assert.Contains(t, createRequest.Prompt.Text, `{"role":"assistant","content":"Hello Ada."}`)
 	assert.Contains(t, createRequest.Prompt.Text, `{"role":"user","content":"What is my name?"}`)
@@ -751,6 +753,7 @@ func TestCursorAdaptorRunsCloudAgentAndDeletesEphemeralSession(t *testing.T) {
 			var request createAgentRequest
 			assert.NoError(t, common.DecodeJson(r.Body, &request))
 			assert.Equal(t, "composer-2", request.Model.ID)
+			assert.Equal(t, []cursorModelParam{{ID: "thinking", Value: "high"}}, request.Model.Params)
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"agent":{"id":"bc-00000000-0000-0000-0000-000000000001"},"run":{"id":"run-1"}}`))
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/stream"):
@@ -782,8 +785,9 @@ func TestCursorAdaptorRunsCloudAgentAndDeletesEphemeralSession(t *testing.T) {
 	}
 	adaptor := &Adaptor{}
 	converted, err := adaptor.ConvertOpenAIRequest(c, info, &dto.GeneralOpenAIRequest{
-		Model:    "composer-2",
-		Messages: []dto.Message{{Role: "user", Content: "Hello"}},
+		Model:           "composer-2",
+		Messages:        []dto.Message{{Role: "user", Content: "Hello"}},
+		ReasoningEffort: "high",
 	})
 	require.NoError(t, err)
 	body, err := common.Marshal(converted)
@@ -1201,11 +1205,13 @@ func TestConvertOpenAIResponsesRequestPreservesCodexCustomToolsAndHistory(t *tes
 			{"type":"custom","name":"apply_patch","description":"Apply a patch","format":{"type":"grammar","syntax":"lark","definition":"start: /.+/s"}},
 			{"type":"function","name":"exec_command","description":"Run a command","parameters":{"type":"object"}}
 		]`),
+		Reasoning: &dto.Reasoning{Effort: "xhigh"},
 	})
 	require.NoError(t, err)
 
 	createRequest, ok := converted.(*createAgentRequest)
 	require.True(t, ok)
+	assert.Equal(t, []cursorModelParam{{ID: "thinking", Value: "xhigh"}}, createRequest.Model.Params)
 	assert.Contains(t, createRequest.Prompt.Text, `"type":"custom"`)
 	assert.Contains(t, createRequest.Prompt.Text, `"name":"apply_patch"`)
 	assert.Contains(t, createRequest.Prompt.Text, `"role":"tool"`)

@@ -77,6 +77,15 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		return nil, errors.New("cursor channel: legacy functions are not supported; use tools instead")
 	}
 
+	modelSelection := cursorModelSelection{ID: request.Model}
+	reasoningEffort := strings.TrimSpace(request.ReasoningEffort)
+	if reasoningEffort != "" {
+		modelSelection.Params = []cursorModelParam{{ID: "thinking", Value: reasoningEffort}}
+		if info != nil {
+			info.SetReasoningEffort(reasoningEffort)
+		}
+	}
+
 	externalToolSpecs := make(map[string]cursorExternalToolSpec, len(request.Tools))
 	externalToolsPrompt := ""
 	if len(request.Tools) > 0 {
@@ -271,7 +280,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if info != nil && info.IsChannelTest {
 		return &createAgentRequest{
 			Prompt: cursorPrompt{Text: "Reply exactly with OK. Do not use tools or inspect any repository."},
-			Model:  cursorModelSelection{ID: request.Model},
+			Model:  modelSelection,
 			Name:   "new-api channel test",
 		}, nil
 	}
@@ -292,7 +301,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 
 	return &createAgentRequest{
 		Prompt: cursorPrompt{Text: transcript.String()},
-		Model:  cursorModelSelection{ID: request.Model},
+		Model:  modelSelection,
 		Name:   "new-api text chat",
 	}, nil
 }
@@ -806,6 +815,7 @@ func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayIn
 	if !ok {
 		return nil, fmt.Errorf("cursor channel: expected OpenAI chat completions request, got %T", result.Value)
 	}
+	openAIRequest.ReasoningEffort = request.GetEfforts()
 	openAIRequest.Metadata = request.Metadata
 	openAIRequest.ToolChoice = request.ToolChoice
 	return a.ConvertOpenAIRequest(c, info, openAIRequest)

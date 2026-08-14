@@ -135,3 +135,49 @@ func TestPrepareCursorAgentSessionUsesCodexSessionHeaderFallback(t *testing.T) {
 	assert.Equal(t, "true", ctx.GetHeader(constant.CursorPersistentHeader))
 	assert.NotEmpty(t, common.GetContextKeyString(ctx, constant.ContextKeyCursorAgentSession))
 }
+
+func TestCursorAgentSessionIsIsolatedByReasoningEffort(t *testing.T) {
+	tests := []struct {
+		name        string
+		path        string
+		model       string
+		firstBody   string
+		changedBody string
+		userID      int
+	}{
+		{
+			name:        "Claude Code output config",
+			path:        "/v1/messages",
+			model:       "claude-opus-5",
+			firstBody:   `{"metadata":{"user_id":"effort-session"},"output_config":{"effort":"high"}}`,
+			changedBody: `{"metadata":{"user_id":"effort-session"},"output_config":{"effort":"max"}}`,
+			userID:      31,
+		},
+		{
+			name:        "Codex reasoning config",
+			path:        "/v1/responses",
+			model:       "gpt-5.6-sol",
+			firstBody:   `{"prompt_cache_key":"effort-session","reasoning":{"effort":"high"}}`,
+			changedBody: `{"prompt_cache_key":"effort-session","reasoning":{"effort":"xhigh"}}`,
+			userID:      32,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			first := newCursorAgentSessionTestContext(t, tt.path, tt.firstBody, tt.userID, tt.model)
+			require.NoError(t, SaveCursorAgentSession(first, CursorAgentSession{
+				AgentID:   "bc-00000000-0000-0000-0000-000000000099",
+				Signature: "v2.reasoning-signature",
+				ChannelID: 33,
+				KeyIndex:  0,
+			}))
+
+			sameEffort := newCursorAgentSessionTestContext(t, tt.path, tt.firstBody, tt.userID, tt.model)
+			assert.Equal(t, "bc-00000000-0000-0000-0000-000000000099", sameEffort.GetHeader(constant.CursorAgentIDHeader))
+
+			changedEffort := newCursorAgentSessionTestContext(t, tt.path, tt.changedBody, tt.userID, tt.model)
+			assert.Empty(t, changedEffort.GetHeader(constant.CursorAgentIDHeader))
+		})
+	}
+}

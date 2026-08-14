@@ -65,7 +65,7 @@ func PrepareCursorAgentSession(c *gin.Context, modelName string) {
 		return
 	}
 
-	clientKind, clientSessionID := cursorAgentClientSession(c)
+	clientKind, clientSessionID, reasoningEffort := cursorAgentClientSession(c)
 	if clientSessionID == "" {
 		return
 	}
@@ -76,6 +76,7 @@ func PrepareCursorAgentSession(c *gin.Context, modelName string) {
 		common.Sha1([]byte(modelName)),
 		common.Sha1([]byte(usingGroup)),
 		common.Sha1([]byte(clientSessionID)),
+		common.Sha1([]byte(reasoningEffort)),
 	}, ":")
 	common.SetContextKey(c, constant.ContextKeyCursorAgentSession, cacheKey)
 	c.Request.Header.Set(constant.CursorPersistentHeader, "true")
@@ -101,15 +102,15 @@ func PrepareCursorAgentSession(c *gin.Context, modelName string) {
 	c.Request.Header.Set(constant.CursorAgentKeyIndexHeader, strconv.Itoa(session.KeyIndex))
 }
 
-func cursorAgentClientSession(c *gin.Context) (string, string) {
+func cursorAgentClientSession(c *gin.Context) (string, string, string) {
 	path := c.Request.URL.Path
 	storage, err := common.GetBodyStorage(c)
 	if err != nil {
-		return "", ""
+		return "", "", ""
 	}
 	body, err := storage.Bytes()
 	if err != nil || len(body) == 0 {
-		return "", ""
+		return "", "", ""
 	}
 
 	switch path {
@@ -119,12 +120,13 @@ func cursorAgentClientSession(c *gin.Context) (string, string) {
 			sessionID = strings.TrimSpace(c.GetHeader("X-Claude-Remote-Session-ID"))
 		}
 		if sessionID == "" {
-			return "", ""
+			return "", "", ""
 		}
 		if agentID := strings.TrimSpace(c.GetHeader("X-Claude-Code-Agent-ID")); agentID != "" {
 			sessionID += ":agent:" + agentID
 		}
-		return "claude-code", sessionID
+		reasoningEffort := strings.TrimSpace(gjson.GetBytes(body, "output_config.effort").String())
+		return "claude-code", sessionID, reasoningEffort
 	case "/v1/responses":
 		sessionID := strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
 		if sessionID == "" {
@@ -136,11 +138,12 @@ func cursorAgentClientSession(c *gin.Context) (string, string) {
 			}
 		}
 		if sessionID == "" {
-			return "", ""
+			return "", "", ""
 		}
-		return "codex", sessionID
+		reasoningEffort := strings.TrimSpace(gjson.GetBytes(body, "reasoning.effort").String())
+		return "codex", sessionID, reasoningEffort
 	default:
-		return "", ""
+		return "", "", ""
 	}
 }
 

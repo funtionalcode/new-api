@@ -476,7 +476,7 @@ func channelSupportsRequestPath(channel *model.Channel, requestPath string, requ
 
 func isCursorPersistentRequestPath(requestPath string) bool {
 	switch normalizePlaygroundRequestPath(requestPath) {
-	case "/v1/chat/completions", "/v1/messages":
+	case "/v1/chat/completions", "/v1/messages", "/v1/responses":
 		return true
 	default:
 		return false
