@@ -25,6 +25,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/tidwall/sjson"
 )
 
 type Adaptor struct{}
@@ -80,7 +81,6 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	modelSelection := cursorModelSelection{ID: request.Model}
 	reasoningEffort := strings.TrimSpace(request.ReasoningEffort)
 	if reasoningEffort != "" {
-		modelSelection.Params = []cursorModelParam{{ID: "thinking", Value: reasoningEffort}}
 		if info != nil {
 			info.SetReasoningEffort(reasoningEffort)
 		}
@@ -446,6 +446,11 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 	requestPath := "/v1/agents"
 	if agentID != "" {
 		requestPath = "/v1/agents/" + url.PathEscape(agentID) + "/runs"
+	} else {
+		body, err = a.resolveCursorCreateAgentModel(c, info, body)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	response, err := a.doCursorAPIRequest(c.Request.Context(), c, info, http.MethodPost, requestPath, bytes.NewReader(body), false)
@@ -659,6 +664,158 @@ func (a *Adaptor) DeletePersistentAgent(c *gin.Context, info *relaycommon.RelayI
 		return fmt.Errorf("cursor channel: delete agent returned status %d", response.StatusCode)
 	}
 	return nil
+}
+
+func (a *Adaptor) resolveCursorCreateAgentModel(c *gin.Context, info *relaycommon.RelayInfo, body []byte) ([]byte, error) {
+	requestedEffort := ""
+	if info != nil {
+		requestedEffort = info.GetReasoningEffort()
+	}
+	if requestedEffort == "" {
+		return body, nil
+	}
+
+	var request struct {
+		Model cursorModelSelection `json:"model"`
+	}
+	if err := common.Unmarshal(body, &request); err != nil {
+		return nil, fmt.Errorf("cursor channel: decode create agent model: %w", err)
+	}
+
+	selection, applied, err := a.resolveCursorModelSelection(c.Request.Context(), c, info, request.Model, requestedEffort)
+	if err != nil {
+		return nil, err
+	}
+	if !applied && info != nil {
+		info.SetReasoningEffort("")
+	}
+	modelJSON, err := common.Marshal(selection)
+	if err != nil {
+		return nil, fmt.Errorf("cursor channel: encode resolved model selection: %w", err)
+	}
+	resolvedBody, err := sjson.SetRawBytes(body, "model", modelJSON)
+	if err != nil {
+		return nil, fmt.Errorf("cursor channel: replace resolved model selection: %w", err)
+	}
+	return resolvedBody, nil
+}
+
+func (a *Adaptor) resolveCursorModelSelection(
+	ctx context.Context,
+	c *gin.Context,
+	info *relaycommon.RelayInfo,
+	selection cursorModelSelection,
+	requestedEffort string,
+) (cursorModelSelection, bool, error) {
+	response, err := a.doCursorAPIRequest(ctx, c, info, http.MethodGet, "/v1/models", nil, false)
+	if err != nil {
+		if ctx.Err() != nil {
+			return cursorModelSelection{}, false, err
+		}
+		logger.LogWarn(c, "cursor channel: model catalog unavailable; omit unsupported reasoning params: "+err.Error())
+		return selection, false, nil
+	}
+	defer service.CloseResponseBodyGracefully(response)
+	if response.StatusCode != http.StatusOK {
+		logger.LogWarn(c, fmt.Sprintf("cursor channel: model catalog returned status %d; omit unsupported reasoning params", response.StatusCode))
+		return selection, false, nil
+	}
+
+	responseBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		if ctx.Err() != nil {
+			return cursorModelSelection{}, false, fmt.Errorf("cursor channel: read model catalog: %w", err)
+		}
+		logger.LogWarn(c, "cursor channel: cannot read model catalog; omit unsupported reasoning params: "+err.Error())
+		return selection, false, nil
+	}
+	var catalog cursorModelCatalogResponse
+	if err := common.Unmarshal(responseBody, &catalog); err != nil {
+		logger.LogWarn(c, "cursor channel: invalid model catalog; omit unsupported reasoning params: "+err.Error())
+		return selection, false, nil
+	}
+
+	var item *cursorModelCatalogItem
+	requestedModel := strings.TrimSpace(selection.ID)
+	for index := range catalog.Items {
+		candidate := &catalog.Items[index]
+		if strings.EqualFold(strings.TrimSpace(candidate.ID), requestedModel) {
+			item = candidate
+			break
+		}
+		for _, alias := range candidate.Aliases {
+			if strings.EqualFold(strings.TrimSpace(alias), requestedModel) {
+				item = candidate
+				break
+			}
+		}
+		if item != nil {
+			break
+		}
+	}
+	if item == nil {
+		logger.LogWarn(c, fmt.Sprintf("cursor channel: model %q is absent from the model catalog; omit unsupported reasoning params", requestedModel))
+		return selection, false, nil
+	}
+
+	defaultSelection := cursorModelSelection{ID: strings.TrimSpace(item.ID)}
+	reasoningParamValues := make(map[string]string)
+	for _, parameter := range item.Parameters {
+		identity := strings.ToLower(strings.TrimSpace(parameter.ID + " " + parameter.DisplayName))
+		if !strings.Contains(identity, "think") && !strings.Contains(identity, "reason") && !strings.Contains(identity, "effort") {
+			continue
+		}
+		for _, value := range parameter.Values {
+			if strings.EqualFold(strings.TrimSpace(value.Value), requestedEffort) {
+				reasoningParamValues[strings.ToLower(strings.TrimSpace(parameter.ID))] = strings.TrimSpace(value.Value)
+				break
+			}
+		}
+	}
+
+	var matchedVariant *cursorModelVariant
+	for index := range item.Variants {
+		variant := &item.Variants[index]
+		matchesEffort := false
+		for _, param := range variant.Params {
+			paramID := strings.ToLower(strings.TrimSpace(param.ID))
+			catalogValue, ok := reasoningParamValues[paramID]
+			if ok && strings.EqualFold(strings.TrimSpace(param.Value), catalogValue) {
+				matchesEffort = true
+				break
+			}
+			if !ok && (strings.Contains(paramID, "think") || strings.Contains(paramID, "reason") || strings.Contains(paramID, "effort")) &&
+				strings.EqualFold(strings.TrimSpace(param.Value), requestedEffort) {
+				matchesEffort = true
+				break
+			}
+		}
+		if !matchesEffort {
+			continue
+		}
+		if matchedVariant == nil || len(variant.Params) < len(matchedVariant.Params) ||
+			(len(variant.Params) == len(matchedVariant.Params) && variant.IsDefault && !matchedVariant.IsDefault) {
+			matchedVariant = variant
+		}
+	}
+	if matchedVariant != nil {
+		return cursorModelSelection{ID: defaultSelection.ID, Params: matchedVariant.Params}, true, nil
+	}
+
+	if len(item.Variants) == 0 {
+		for _, parameter := range item.Parameters {
+			catalogValue, ok := reasoningParamValues[strings.ToLower(strings.TrimSpace(parameter.ID))]
+			if ok {
+				return cursorModelSelection{
+					ID:     defaultSelection.ID,
+					Params: []cursorModelParam{{ID: strings.TrimSpace(parameter.ID), Value: catalogValue}},
+				}, true, nil
+			}
+		}
+	}
+
+	logger.LogWarn(c, fmt.Sprintf("cursor channel: model %q has no exact reasoning effort %q variant; use its catalog default", defaultSelection.ID, requestedEffort))
+	return defaultSelection, false, nil
 }
 
 func (a *Adaptor) doCursorAPIRequest(ctx context.Context, c *gin.Context, info *relaycommon.RelayInfo, method string, path string, body io.Reader, stream bool) (*http.Response, error) {

@@ -14,6 +14,32 @@ type cursorModelParam struct {
 	Value string `json:"value"`
 }
 
+type cursorModelCatalogResponse struct {
+	Items []cursorModelCatalogItem `json:"items"`
+}
+
+type cursorModelCatalogItem struct {
+	ID         string                           `json:"id"`
+	Aliases    []string                         `json:"aliases,omitempty"`
+	Parameters []cursorModelParameterDefinition `json:"parameters,omitempty"`
+	Variants   []cursorModelVariant             `json:"variants,omitempty"`
+}
+
+type cursorModelParameterDefinition struct {
+	ID          string                      `json:"id"`
+	DisplayName string                      `json:"displayName,omitempty"`
+	Values      []cursorModelParameterValue `json:"values,omitempty"`
+}
+
+type cursorModelParameterValue struct {
+	Value string `json:"value"`
+}
+
+type cursorModelVariant struct {
+	Params    []cursorModelParam `json:"params"`
+	IsDefault bool               `json:"isDefault,omitempty"`
+}
+
 type createAgentRequest struct {
 	Prompt cursorPrompt         `json:"prompt"`
 	Model  cursorModelSelection `json:"model"`

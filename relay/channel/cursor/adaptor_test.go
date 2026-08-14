@@ -346,7 +346,8 @@ func TestConvertOpenAIRequestAcceptsTextContentParts(t *testing.T) {
 func TestConvertClaudeRequestBuildsCursorAgentConversation(t *testing.T) {
 	persistent := true
 	c := newCursorTestContext(t)
-	converted, err := (&Adaptor{}).ConvertClaudeRequest(c, nil, &dto.ClaudeRequest{
+	info := &relaycommon.RelayInfo{}
+	converted, err := (&Adaptor{}).ConvertClaudeRequest(c, info, &dto.ClaudeRequest{
 		Model:  "claude-opus-5",
 		System: "Answer concisely.",
 		Messages: []dto.ClaudeMessage{
@@ -363,7 +364,8 @@ func TestConvertClaudeRequestBuildsCursorAgentConversation(t *testing.T) {
 	createRequest, ok := converted.(*createAgentRequest)
 	require.True(t, ok)
 	assert.Equal(t, "claude-opus-5", createRequest.Model.ID)
-	assert.Equal(t, []cursorModelParam{{ID: "thinking", Value: "high"}}, createRequest.Model.Params)
+	assert.Empty(t, createRequest.Model.Params)
+	assert.Equal(t, "high", info.ReasoningEffort)
 	assert.Contains(t, createRequest.Prompt.Text, `{"role":"system","content":"Answer concisely."}`)
 	assert.Contains(t, createRequest.Prompt.Text, `{"role":"assistant","content":"Hello Ada."}`)
 	assert.Contains(t, createRequest.Prompt.Text, `{"role":"user","content":"What is my name?"}`)
@@ -749,6 +751,14 @@ func TestCursorAdaptorRunsCloudAgentAndDeletesEphemeralSession(t *testing.T) {
 		assert.Equal(t, "Bearer cursor-secret", r.Header.Get("Authorization"))
 
 		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/models":
+			_, _ = w.Write([]byte(`{
+				"items":[{
+					"id":"composer-2",
+					"parameters":[{"id":"thinking","displayName":"Thinking","values":[{"value":"high"}]}],
+					"variants":[{"params":[{"id":"thinking","value":"high"}],"displayName":"High"}]
+				}]
+			}`))
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/agents":
 			var request createAgentRequest
 			assert.NoError(t, common.DecodeJson(r.Body, &request))
@@ -807,11 +817,108 @@ func TestCursorAdaptorRunsCloudAgentAndDeletesEphemeralSession(t *testing.T) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	assert.Equal(t, []string{
+		"GET /v1/models",
 		"POST /v1/agents",
 		"GET /v1/agents/bc-00000000-0000-0000-0000-000000000001/runs/run-1/stream",
 		"GET /v1/agents/bc-00000000-0000-0000-0000-000000000001/usage?runId=run-1",
 		"DELETE /v1/agents/bc-00000000-0000-0000-0000-000000000001",
 	}, requests)
+}
+
+func TestCursorAdaptorResolvesReasoningEffortToCatalogVariant(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/v1/models", r.URL.Path)
+		assert.Equal(t, "Bearer cursor-secret", r.Header.Get("Authorization"))
+		_, _ = w.Write([]byte(`{
+			"items":[{
+				"id":"claude-5-sonnet",
+				"aliases":["claude-sonnet-5"],
+				"parameters":[{
+					"id":"reasoning_effort",
+					"displayName":"Reasoning effort",
+					"values":[{"value":"high"}]
+				}],
+				"variants":[{
+					"params":[
+						{"id":"reasoning_effort","value":"high"},
+						{"id":"context_window","value":"standard"}
+					],
+					"displayName":"High"
+				}]
+			}]
+		}`))
+	}))
+	t.Cleanup(server.Close)
+
+	c := newCursorTestContext(t)
+	info := &relaycommon.RelayInfo{
+		ReasoningEffort: "high",
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType:    constant.ChannelTypeCursor,
+			ChannelBaseUrl: server.URL,
+			ApiKey:         "cursor-secret",
+		},
+	}
+	body := []byte(`{
+		"prompt":{"text":"hello"},
+		"model":{"id":"claude-sonnet-5"},
+		"name":"new-api text chat",
+		"future":{"keep":true}
+	}`)
+
+	resolved, err := (&Adaptor{}).resolveCursorCreateAgentModel(c, info, body)
+
+	require.NoError(t, err)
+	assert.JSONEq(t, `{
+		"prompt":{"text":"hello"},
+		"model":{
+			"id":"claude-5-sonnet",
+			"params":[
+				{"id":"reasoning_effort","value":"high"},
+				{"id":"context_window","value":"standard"}
+			]
+		},
+		"name":"new-api text chat",
+		"future":{"keep":true}
+	}`, string(resolved))
+	assert.Equal(t, "high", info.ReasoningEffort)
+}
+
+func TestCursorAdaptorOmitsUnsupportedReasoningParamsForDefaultVariant(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/v1/models", r.URL.Path)
+		_, _ = w.Write([]byte(`{
+			"items":[{
+				"id":"claude-sonnet-5",
+				"variants":[{"params":[],"displayName":"Default","isDefault":true}]
+			}]
+		}`))
+	}))
+	t.Cleanup(server.Close)
+
+	c := newCursorTestContext(t)
+	info := &relaycommon.RelayInfo{
+		ReasoningEffort: "high",
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType:    constant.ChannelTypeCursor,
+			ChannelBaseUrl: server.URL,
+			ApiKey:         "cursor-secret",
+		},
+	}
+	body := []byte(`{
+		"prompt":{"text":"hello"},
+		"model":{"id":"claude-sonnet-5"}
+	}`)
+
+	resolved, err := (&Adaptor{}).resolveCursorCreateAgentModel(c, info, body)
+
+	require.NoError(t, err)
+	assert.JSONEq(t, `{
+		"prompt":{"text":"hello"},
+		"model":{"id":"claude-sonnet-5"}
+	}`, string(resolved))
+	assert.Empty(t, info.ReasoningEffort)
 }
 
 func TestCursorAdaptorContinuesPersistentAgentWithoutDeletingSession(t *testing.T) {
@@ -1194,7 +1301,8 @@ func TestCursorResponseFallsBackWhenStreamEmitsUnavailableError(t *testing.T) {
 func TestConvertOpenAIResponsesRequestPreservesCodexCustomToolsAndHistory(t *testing.T) {
 	c := newCursorTestContext(t)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	converted, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(c, &relaycommon.RelayInfo{RelayMode: relayconstant.RelayModeResponses}, dto.OpenAIResponsesRequest{
+	info := &relaycommon.RelayInfo{RelayMode: relayconstant.RelayModeResponses}
+	converted, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(c, info, dto.OpenAIResponsesRequest{
 		Model: "composer-2",
 		Input: []byte(`[
 			{"role":"user","content":[{"type":"input_text","text":"Update the file"}]},
@@ -1211,7 +1319,8 @@ func TestConvertOpenAIResponsesRequestPreservesCodexCustomToolsAndHistory(t *tes
 
 	createRequest, ok := converted.(*createAgentRequest)
 	require.True(t, ok)
-	assert.Equal(t, []cursorModelParam{{ID: "thinking", Value: "xhigh"}}, createRequest.Model.Params)
+	assert.Empty(t, createRequest.Model.Params)
+	assert.Equal(t, "xhigh", info.ReasoningEffort)
 	assert.Contains(t, createRequest.Prompt.Text, `"type":"custom"`)
 	assert.Contains(t, createRequest.Prompt.Text, `"name":"apply_patch"`)
 	assert.Contains(t, createRequest.Prompt.Text, `"role":"tool"`)
