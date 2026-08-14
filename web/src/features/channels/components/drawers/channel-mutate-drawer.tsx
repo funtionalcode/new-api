@@ -36,6 +36,7 @@ import {
   Eraser,
   Plus,
   Eye,
+  Pencil,
   RefreshCw,
   Code,
   Route,
@@ -155,6 +156,7 @@ import {
   channelFormSchema,
   channelsQueryKeys,
   getAdvancedCustomStats,
+  prepareRevealedChannelKeyForEditing,
   transformChannelToFormDefaults,
   type ChannelFormValues,
   deduplicateKeys,
@@ -1453,6 +1455,27 @@ export function ChannelMutateDrawer({
       }
     }
   }, [channelId, withVerification, fetchChannelKey, t])
+
+  const handleEditRevealedKey = useCallback(() => {
+    if (channelKey === null) return
+
+    const editValues = prepareRevealedChannelKeyForEditing(
+      channelKey,
+      isMultiKeyChannel
+    )
+    form.setValue('key', editValues.key, {
+      shouldDirty: true,
+      shouldTouch: true,
+      shouldValidate: true,
+    })
+    if (editValues.keyMode) {
+      form.setValue('key_mode', editValues.keyMode, {
+        shouldDirty: true,
+        shouldTouch: true,
+      })
+    }
+    form.setFocus('key')
+  }, [channelKey, form, isMultiKeyChannel])
 
   const handleRefreshCodexCredential = useCallback(async () => {
     if (!channelId) return
@@ -2983,14 +3006,19 @@ export function ChannelMutateDrawer({
                                       <FormControl>
                                         <Textarea
                                           placeholder={keyPlaceholder}
-                                          rows={isBatchMode ? 8 : 4}
+                                          rows={
+                                            isBatchMode || isMultiKeyChannel
+                                              ? 8
+                                              : 4
+                                          }
                                           {...field}
                                         />
                                       </FormControl>
                                       <FormDescription>
                                         <div className='flex flex-col gap-2'>
                                           <span>{keyDescription}</span>
-                                          {isBatchMode && (
+                                          {(isBatchMode ||
+                                            isMultiKeyChannel) && (
                                             <Button
                                               type='button'
                                               variant='outline'
@@ -3017,7 +3045,7 @@ export function ChannelMutateDrawer({
                                                 )}
                                               </p>
                                             </div>
-                                            <div className='flex items-center gap-2'>
+                                            <div className='flex flex-wrap items-center gap-2'>
                                               <Button
                                                 type='button'
                                                 variant='outline'
@@ -3051,6 +3079,16 @@ export function ChannelMutateDrawer({
                                               >
                                                 <Copy className='mr-2 h-4 w-4' />
                                                 {t('Copy')}
+                                              </Button>
+                                              <Button
+                                                type='button'
+                                                variant='outline'
+                                                size='sm'
+                                                onClick={handleEditRevealedKey}
+                                                disabled={channelKey === null}
+                                              >
+                                                <Pencil className='mr-2 h-4 w-4' />
+                                                {t('Edit')}
                                               </Button>
                                             </div>
                                           </div>

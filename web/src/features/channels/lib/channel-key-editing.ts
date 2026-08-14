@@ -16,15 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-// Re-export all library functions
-export * from './channel-actions'
-export * from './channel-field-update'
-export * from './channel-key-editing'
-export * from './advanced-custom'
-export * from './channel-form-errors'
-export * from './channel-form'
-export * from './channel-type-config'
-export * from './channel-utils'
-export * from './multi-key-utils'
-export * from './model-mapping-validation'
-export * from './model-categories'
+export function prepareRevealedChannelKeyForEditing(
+  key: string,
+  isMultiKey: boolean
+): { key: string; keyMode: 'replace' | undefined } {
+  return {
+    key,
+    keyMode: isMultiKey ? 'replace' : undefined,
+  }
+}
