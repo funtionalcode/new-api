@@ -370,8 +370,12 @@ func TestConvertOpenAIRequestRejectsNonTextAndAcceptsTools(t *testing.T) {
 	require.NoError(t, err)
 	createRequest := converted.(*createAgentRequest)
 	assert.Contains(t, createRequest.Prompt.Text, `"cursor_external_tool_calls"`)
-	assert.Contains(t, createRequest.Prompt.Text, `"name":"lookup_weather"`)
+	assert.Contains(t, createRequest.Prompt.Text, `"name":"client_external_tool_1"`)
+	assert.NotContains(t, createRequest.Prompt.Text, `"name":"lookup_weather"`)
 	assert.Contains(t, createRequest.Prompt.Text, `"description":"Look up weather"`)
+	assert.Contains(t, createRequest.Prompt.Text, "Never invoke Cursor's internal Agent")
+	assert.Contains(t, createRequest.Prompt.Text, "can access its files")
+	assert.Equal(t, cursorExternalToolSpec{Kind: "function", Name: "lookup_weather"}, cursorExternalToolSpecs(c)["client_external_tool_1"])
 }
 
 func TestConvertOpenAIRequestAcceptsTextContentParts(t *testing.T) {
@@ -745,6 +749,61 @@ func TestCursorStreamResponseConvertsExternalToolCallToClaudeEvents(t *testing.T
 	assert.Contains(t, body, `"type":"input_json_delta","partial_json":"{\"city\":\"Paris\"}"`)
 	assert.Contains(t, body, `"stop_reason":"tool_use"`)
 	assert.Equal(t, 1, strings.Count(body, "event: message_stop\n"))
+	assert.NotContains(t, body, "cursor_external_tool_calls")
+}
+
+func TestCursorStreamResponseRecoversCorrectedMalformedExternalToolEnvelope(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	c.Set(cursorExternalToolsContextKey, map[string]cursorExternalToolSpec{
+		"client_external_tool_1": {Kind: "function", Name: "Agent"},
+		"Agent":                  {Kind: "function", Name: "Agent"},
+	})
+	common.SetContextKey(c, common.RequestIdKey, "req-cursor-claude-corrected-tool-stream")
+
+	preamble := "I made an error by invoking the Agent tool through the internal tool system instead of returning the proper external tool call envelope. Let me correct that.\n\n"
+	envelope := `{"cursor_external_tool_calls":[{"id":"call_explore","name":"client_external_tool_1","arguments":{"description":"Explore remote config","prompt":"Read "project-control-center" on the client Mac"}}]}`
+	assistantPreamble, err := common.Marshal(cursorTextEvent{Text: preamble})
+	require.NoError(t, err)
+	assistantEnvelope, err := common.Marshal(cursorTextEvent{Text: envelope})
+	require.NoError(t, err)
+	result, err := common.Marshal(cursorResultEvent{RunID: "run-1", Status: "FINISHED", Text: preamble + envelope})
+	require.NoError(t, err)
+
+	responseHeader := make(http.Header)
+	responseHeader.Set(cursorClientStreamHeader, "true")
+	responseHeader.Set(cursorSkipRemoteUsageHeader, "true")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     responseHeader,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			"event: assistant",
+			"data: " + string(assistantPreamble),
+			"",
+			"event: assistant",
+			"data: " + string(assistantEnvelope),
+			"",
+			"event: result",
+			"data: " + string(result),
+			"",
+		}, "\n"))),
+	}
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatClaude,
+		IsStream:    true,
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "claude-opus-5"},
+	}
+
+	usage, apiErr := (&Adaptor{}).DoResponse(c, resp, info)
+	require.Nil(t, apiErr)
+	require.NotNil(t, usage)
+	body := recorder.Body.String()
+	assert.Contains(t, body, `"type":"tool_use","id":"call_explore","name":"Agent"`)
+	assert.Contains(t, body, `"partial_json":"{\"description\":\"Explore remote config\",\"prompt\":\"Read \\\"project-control-center\\\" on the client Mac\"}"`)
+	assert.Contains(t, body, `"stop_reason":"tool_use"`)
+	assert.NotContains(t, body, "I made an error")
 	assert.NotContains(t, body, "cursor_external_tool_calls")
 }
 
@@ -1376,8 +1435,10 @@ func TestConvertOpenAIResponsesRequestPreservesCodexCustomToolsAndHistory(t *tes
 	toolKinds, ok := c.Get(cursorExternalToolsContextKey)
 	require.True(t, ok)
 	assert.Equal(t, map[string]cursorExternalToolSpec{
-		"apply_patch":  {Kind: dto.CustomType, Name: "apply_patch"},
-		"exec_command": {Kind: "function", Name: "exec_command"},
+		"apply_patch":            {Kind: dto.CustomType, Name: "apply_patch"},
+		"client_external_tool_1": {Kind: dto.CustomType, Name: "apply_patch"},
+		"client_external_tool_2": {Kind: "function", Name: "exec_command"},
+		"exec_command":           {Kind: "function", Name: "exec_command"},
 	}, toolKinds)
 }
 
@@ -1570,13 +1631,15 @@ func TestCursorResponsesNamespaceFunctionRoundTrip(t *testing.T) {
 	})
 	require.NoError(t, err)
 	specs := cursorExternalToolSpecs(c)
-	assert.Equal(t, cursorExternalToolSpec{
+	expectedSpec := cursorExternalToolSpec{
 		Kind:      "function",
 		Name:      "send_message",
 		Namespace: "collaboration",
-	}, specs["collaboration__send_message"])
+	}
+	assert.Equal(t, expectedSpec, specs["collaboration__send_message"])
+	assert.Equal(t, expectedSpec, specs["client_external_tool_1"])
 
-	toolEnvelope := `{"cursor_external_tool_calls":[{"id":"call_send","name":"collaboration__send_message","arguments":{"target":"worker"}}]}`
+	toolEnvelope := `{"cursor_external_tool_calls":[{"id":"call_send","name":"client_external_tool_1","arguments":{"target":"worker"}}]}`
 	resp := &http.Response{
 		StatusCode: http.StatusOK,
 		Header: http.Header{

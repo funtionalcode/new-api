@@ -107,9 +107,12 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 				toolType = "function"
 			}
 			name := strings.TrimSpace(tool.Function.Name)
+			alias := cursorExternalToolAliasPrefix + strconv.Itoa(len(externalTools)+1)
 			switch toolType {
 			case "function":
-				externalTools = append(externalTools, tool)
+				toolCopy := *tool
+				toolCopy.Function.Name = alias
+				externalTools = append(externalTools, toolCopy)
 			case dto.CustomType:
 				var customTool map[string]any
 				if err := common.Unmarshal(tool.Custom, &customTool); err != nil {
@@ -118,7 +121,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 				if customName, ok := customTool["name"].(string); ok {
 					name = strings.TrimSpace(customName)
 				}
-				tool.Function.Name = name
+				customTool["name"] = alias
 				externalTools = append(externalTools, customTool)
 			default:
 				continue
@@ -126,7 +129,13 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 			if name == "" {
 				return nil, errors.New("cursor channel: tool name is required")
 			}
-			externalToolSpecs[name] = cursorExternalToolSpec{Kind: toolType, Name: name}
+			spec := cursorExternalToolSpec{Kind: toolType, Name: name}
+			externalToolSpecs[alias] = spec
+			// Accept the original name as a compatibility fallback for models that
+			// remember it from the conversation, but only advertise the alias.
+			if _, exists := externalToolSpecs[name]; !exists {
+				externalToolSpecs[name] = spec
+			}
 		}
 		toolsJSON, err := common.Marshal(externalTools)
 		if err != nil {
@@ -140,12 +149,15 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 			}
 		}
 		var protocol strings.Builder
-		protocol.WriteString("\nThe client exposes external tools. Do not execute these tools with Cursor's internal tools. ")
-		protocol.WriteString("When an external tool is needed, return only one JSON object. For function tools use this exact shape: ")
+		protocol.WriteString("\nThe client exposes external tools that run in the client's own environment and can access its files. ")
+		protocol.WriteString("The listed tool names are client-only aliases. Never invoke Cursor's internal Agent, subagent, repository, shell, file, or artifact tools, even when they appear equivalent. ")
+		protocol.WriteString("Do not claim that client-local files are unavailable before requesting the relevant external tools. ")
+		protocol.WriteString("When an external tool is needed, return only one valid JSON object with no preamble, apology, explanation, Markdown fence, or trailing text. JSON-escape all quotes, newlines, and other string characters. For function tools use this exact shape: ")
 		protocol.WriteString(`{"cursor_external_tool_calls":[{"id":"call_unique","name":"tool_name","arguments":{}}]}`)
 		protocol.WriteString(". For custom tools use this exact shape with free-form string input: ")
 		protocol.WriteString(`{"cursor_external_tool_calls":[{"id":"call_unique","name":"tool_name","input":"free-form tool input"}]}`)
-		protocol.WriteString(". The name must match an available tool. Multiple calls may be returned in the array, using arguments only for function tools and input only for custom tools. ")
+		protocol.WriteString(". The name must match an advertised client-only alias exactly. Multiple calls may be returned in the array, using arguments only for function tools and input only for custom tools. ")
+		protocol.WriteString("If you accidentally used a Cursor internal tool, do not report its result or apologize; request the intended client external tool with this JSON envelope instead. ")
 		protocol.WriteString("If no external tool is needed, return the normal assistant answer without this JSON envelope.\nAvailable external tools: ")
 		protocol.Write(toolsJSON)
 		if len(toolChoiceJSON) > 0 {
@@ -896,7 +908,20 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	}
 	converted, err := a.ConvertOpenAIRequest(c, info, openAIRequest)
 	if err == nil && c != nil && len(externalToolSpecs) > 0 {
-		c.Set(cursorExternalToolsContextKey, externalToolSpecs)
+		convertedSpecs := cursorExternalToolSpecs(c)
+		if convertedSpecs == nil {
+			convertedSpecs = make(map[string]cursorExternalToolSpec, len(externalToolSpecs))
+		}
+		for key, spec := range convertedSpecs {
+			qualifiedName := cursorQualifiedToolName(spec.Namespace, spec.Name)
+			if responseSpec, exists := externalToolSpecs[qualifiedName]; exists {
+				convertedSpecs[key] = responseSpec
+			}
+		}
+		for key, spec := range externalToolSpecs {
+			convertedSpecs[key] = spec
+		}
+		c.Set(cursorExternalToolsContextKey, convertedSpecs)
 	}
 	return converted, err
 }

@@ -24,6 +24,7 @@ const (
 	cursorAgentLifecycleHeader    = "X-New-API-Cursor-Agent-Lifecycle"
 	cursorEventStreamContentType  = "application/x-cursor-event-stream"
 	cursorAgentSignatureVersion   = "v2"
+	cursorExternalToolAliasPrefix = "client_external_tool_"
 	cursorCleanupCommand          = "清理会话agent"
 	cursorRunPollInterval         = time.Second
 	cursorRunPollTimeout          = 10 * time.Minute

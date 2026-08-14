@@ -440,8 +440,35 @@ func parseCursorExternalToolCalls(text string, allowedTools map[string]cursorExt
 		payload = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(payload, "```"), "```"))
 	}
 
+	payloads := []string{payload}
+	if markerIndex := strings.Index(payload, `"cursor_external_tool_calls"`); markerIndex >= 0 {
+		start := strings.LastIndex(payload[:markerIndex], "{")
+		end := strings.LastIndex(payload[markerIndex:], "}")
+		if start >= 0 && end >= 0 {
+			extracted := strings.TrimSpace(payload[start : markerIndex+end+1])
+			if extracted != "" && extracted != payload {
+				payloads = append(payloads, extracted)
+			}
+		}
+	}
+
 	var envelope cursorExternalToolEnvelope
-	if err := common.UnmarshalJsonStr(payload, &envelope); err != nil || len(envelope.ToolCalls) == 0 {
+	parsed := false
+	for _, candidate := range payloads {
+		envelope = cursorExternalToolEnvelope{}
+		err := common.UnmarshalJsonStr(candidate, &envelope)
+		if err != nil {
+			repaired := repairCursorExternalToolJSON(candidate)
+			if repaired != candidate {
+				err = common.UnmarshalJsonStr(repaired, &envelope)
+			}
+		}
+		if err == nil && len(envelope.ToolCalls) > 0 {
+			parsed = true
+			break
+		}
+	}
+	if !parsed {
 		return nil, false
 	}
 	toolCalls := make([]dto.ToolCallRequest, 0, len(envelope.ToolCalls))
@@ -455,6 +482,7 @@ func parseCursorExternalToolCalls(text string, allowedTools map[string]cursorExt
 		if id == "" {
 			id = "call_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 		}
+		outputName := cursorQualifiedToolName(toolSpec.Namespace, toolSpec.Name)
 		switch toolSpec.Kind {
 		case "function":
 			arguments := []byte("{}")
@@ -473,7 +501,7 @@ func parseCursorExternalToolCalls(text string, allowedTools map[string]cursorExt
 				ID:   id,
 				Type: "function",
 				Function: dto.FunctionRequest{
-					Name:      name,
+					Name:      outputName,
 					Arguments: string(arguments),
 				},
 			})
@@ -498,7 +526,7 @@ func parseCursorExternalToolCalls(text string, allowedTools map[string]cursorExt
 				ID:   id,
 				Type: dto.CustomType,
 				Function: dto.FunctionRequest{
-					Name:      name,
+					Name:      outputName,
 					Arguments: inputText,
 				},
 			})
@@ -509,11 +537,77 @@ func parseCursorExternalToolCalls(text string, allowedTools map[string]cursorExt
 	return toolCalls, true
 }
 
+func repairCursorExternalToolJSON(payload string) string {
+	var repaired strings.Builder
+	repaired.Grow(len(payload))
+	inString := false
+	escaped := false
+	for index := 0; index < len(payload); index++ {
+		character := payload[index]
+		if !inString {
+			repaired.WriteByte(character)
+			if character == '"' {
+				inString = true
+			}
+			continue
+		}
+		if escaped {
+			repaired.WriteByte(character)
+			escaped = false
+			continue
+		}
+		if character == '\\' {
+			repaired.WriteByte(character)
+			escaped = true
+			continue
+		}
+		switch character {
+		case '\n':
+			repaired.WriteString(`\n`)
+			continue
+		case '\r':
+			repaired.WriteString(`\r`)
+			continue
+		case '\t':
+			repaired.WriteString(`\t`)
+			continue
+		case '"':
+			next := index + 1
+			for next < len(payload) && strings.ContainsRune(" \t\r\n", rune(payload[next])) {
+				next++
+			}
+			if next >= len(payload) || strings.ContainsRune(":,}]", rune(payload[next])) {
+				repaired.WriteByte(character)
+				inString = false
+				continue
+			}
+			repaired.WriteString(`\"`)
+			continue
+		default:
+			repaired.WriteByte(character)
+		}
+	}
+	return repaired.String()
+}
+
 func cursorExternalToolStreamCandidate(text string) bool {
 	payload := strings.ReplaceAll(strings.TrimLeft(text, " \t\r\n"), "\r\n", "\n")
 	marker := `{"cursor_external_tool_calls"`
 	for _, prefix := range []string{marker, "```json\n" + marker, "```\n" + marker} {
 		if strings.HasPrefix(prefix, payload) || strings.HasPrefix(payload, prefix) {
+			return true
+		}
+	}
+	if strings.Contains(payload, marker) {
+		return true
+	}
+	lowerPayload := strings.ToLower(payload)
+	for _, correctionPrefix := range []string{
+		"i made an error by invoking",
+		"i mistakenly invoked",
+		"i accidentally invoked",
+	} {
+		if strings.HasPrefix(correctionPrefix, lowerPayload) || strings.HasPrefix(lowerPayload, correctionPrefix) {
 			return true
 		}
 	}
