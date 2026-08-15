@@ -383,6 +383,19 @@ func SetApiRouter(router *gin.Engine) {
 			}
 		}
 
+		cursorQuotaRoute := apiRouter.Group("/cursor-quota")
+		{
+			cursorQuotaRoute.GET("/bindings", middleware.UserAuth(), controller.GetCursorQuotaBindings)
+			cursorQuotaRoute.POST("/bindings/:id/refresh-usage", middleware.UserAuth(), controller.RefreshCursorQuotaBindingUsage)
+			cursorQuotaAdminRoute := cursorQuotaRoute.Group("")
+			cursorQuotaAdminRoute.Use(middleware.AdminAuth())
+			{
+				cursorQuotaAdminRoute.POST("/bindings", controller.CreateCursorQuotaBinding)
+				cursorQuotaAdminRoute.PUT("/bindings/:id", controller.UpdateCursorQuotaBinding)
+				cursorQuotaAdminRoute.DELETE("/bindings/:id", controller.DeleteCursorQuotaBinding)
+			}
+		}
+
 		codexResetsRoute := apiRouter.Group("/codex-resets")
 		{
 			codexResetsRoute.GET("", middleware.UserAuth(), controller.GetCodexResets)

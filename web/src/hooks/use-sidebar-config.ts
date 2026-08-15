@@ -54,6 +54,7 @@ const DEFAULT_SIDEBAR_MODULES: SidebarModulesAdminConfig = {
     deepseekQuota: true,
     kimiQuota: true,
     volcengineQuota: true,
+    cursorQuota: true,
     codexResets: true,
   },
   personal: {
@@ -125,6 +126,7 @@ const URL_TO_CONFIG_MAP: Record<string, { section: string; module: string }> = {
   '/deepseek-quota': { section: 'console', module: 'deepseekQuota' },
   '/kimi-quota': { section: 'console', module: 'kimiQuota' },
   '/volcengine-quota': { section: 'console', module: 'volcengineQuota' },
+  '/cursor-quota': { section: 'console', module: 'cursorQuota' },
   '/codex-resets': { section: 'console', module: 'codexResets' },
   '/user-consumption': { section: 'admin', module: 'userConsumption' },
   '/redemption-codes': { section: 'admin', module: 'redemption' },

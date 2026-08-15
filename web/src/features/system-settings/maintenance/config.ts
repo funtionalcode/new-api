@@ -76,6 +76,7 @@ export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
     deepseekQuota: true,
     kimiQuota: true,
     volcengineQuota: true,
+    cursorQuota: true,
     codexResets: true,
   },
   personal: {

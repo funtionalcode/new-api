@@ -88,7 +88,9 @@ import {
   refreshQuotaBindingUsage,
   updateQuotaBinding,
 } from './api'
+import { CursorCurlFields } from './components/cursor-curl-fields'
 import { DeepSeekCurlFields } from './components/deepseek-curl-fields'
+import { buildCursorQuotaUsageSummary } from './lib/cursor-usage'
 import { buildDeepSeekMoneyUsage } from './lib/deepseek-usage'
 import {
   buildQuotaBindingSavePayload,
@@ -108,6 +110,7 @@ import {
   type VolcengineQuotaWindowKey,
 } from './lib/volcengine-usage'
 import type {
+  CursorQuotaBinding,
   DeepSeekQuotaBinding,
   GLMQuotaBinding,
   KimiQuotaBinding,
@@ -152,6 +155,13 @@ const providerConfigs: Record<QuotaProvider, ProviderConfig> = {
     descriptionKey:
       'Track VolcEngine Agent Plan AFP quota usage and refresh it from saved curl requests.',
     curlPlaceholderKey: 'Paste the VolcEngine Agent Plan usage curl command',
+  },
+  cursor: {
+    provider: 'cursor',
+    titleKey: 'Cursor Quota',
+    descriptionKey:
+      'Track Cursor billing cycles, included usage, and model token usage from saved curl requests.',
+    curlPlaceholderKey: 'Paste the Cursor current period usage curl command',
   },
 }
 
@@ -215,6 +225,20 @@ function isVolcengineBinding(
   return 'last_five_hour_used_afp' in binding
 }
 
+function isCursorBinding(binding: QuotaBinding): binding is CursorQuotaBinding {
+  return 'last_plan_api_percent' in binding
+}
+
+function isThreeCurlBinding(
+  binding: QuotaBinding
+): binding is DeepSeekQuotaBinding | CursorQuotaBinding {
+  return isDeepSeekBinding(binding) || isCursorBinding(binding)
+}
+
+function isThreeCurlProvider(provider: QuotaProvider): boolean {
+  return provider === 'deepseek' || provider === 'cursor'
+}
+
 function buildForm(binding?: QuotaBinding): QuotaBindingFormState {
   if (!binding) return emptyForm
   return {
@@ -222,19 +246,19 @@ function buildForm(binding?: QuotaBinding): QuotaBindingFormState {
     name: binding.name || '',
     note: binding.note || '',
     request_curl: binding.request_curl || '',
-    usage_amount_curl: isDeepSeekBinding(binding)
+    usage_amount_curl: isThreeCurlBinding(binding)
       ? binding.usage_amount_curl || ''
       : '',
-    usage_cost_curl: isDeepSeekBinding(binding)
+    usage_cost_curl: isThreeCurlBinding(binding)
       ? binding.usage_cost_curl || ''
       : '',
     refresh_token: isKimiBinding(binding) ? binding.refresh_token || '' : '',
     proxy: binding.proxy || '',
     has_curl: binding.has_curl,
-    has_usage_amount_curl: isDeepSeekBinding(binding)
+    has_usage_amount_curl: isThreeCurlBinding(binding)
       ? binding.has_usage_amount_curl
       : false,
-    has_usage_cost_curl: isDeepSeekBinding(binding)
+    has_usage_cost_curl: isThreeCurlBinding(binding)
       ? binding.has_usage_cost_curl
       : false,
     has_refresh_token: isKimiBinding(binding)
@@ -504,6 +528,177 @@ function DeepSeekUsageCells({ binding }: { binding: DeepSeekQuotaBinding }) {
   )
 }
 
+const cursorMoneyFormatter = new Intl.NumberFormat(undefined, {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+})
+
+function CursorUsageCells({ binding }: { binding: CursorQuotaBinding }) {
+  const { t } = useTranslation()
+  const usage = buildCursorQuotaUsageSummary(binding)
+  const apiPercentLabel = `${usage.apiPercent.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`
+  const totalPercentLabel = `${usage.totalPercent.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`
+  const cursorModelCount = usage.models.filter(
+    (model) => model.tier >= 2
+  ).length
+  const otherModelCount = usage.models.length - cursorModelCount
+
+  return (
+    <>
+      <TableCell>
+        <TooltipProvider delay={150}>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <div className='min-w-[220px] cursor-help' tabIndex={0} />
+              }
+            >
+              <div className='space-y-2'>
+                <div className='space-y-1'>
+                  <div className='flex justify-between gap-2 text-xs'>
+                    <span className='text-muted-foreground'>
+                      {t('API Usage')}
+                    </span>
+                    <span className='font-mono font-medium'>
+                      {apiPercentLabel}
+                    </span>
+                  </div>
+                  <Progress
+                    value={usage.apiPercent}
+                    className={cn(
+                      'h-1.5',
+                      progressColor(normalizePercent(usage.apiPercent))
+                    )}
+                  />
+                </div>
+                <div className='space-y-1'>
+                  <div className='flex justify-between gap-2 text-xs'>
+                    <span className='text-muted-foreground'>
+                      {t('Total Usage')}
+                    </span>
+                    <span className='font-mono font-medium'>
+                      {totalPercentLabel}
+                    </span>
+                  </div>
+                  <Progress
+                    value={usage.totalPercent}
+                    className={cn(
+                      'h-1.5',
+                      progressColor(normalizePercent(usage.totalPercent))
+                    )}
+                  />
+                </div>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent
+              side='top'
+              align='start'
+              className='max-w-[min(28rem,calc(100vw-2rem))] p-3 whitespace-normal'
+            >
+              <div className='grid gap-1 text-xs'>
+                <span>
+                  {t('Billing Cycle')}:{' '}
+                  {formatTimestampToDate(binding.last_billing_cycle_start_at)} –{' '}
+                  {formatTimestampToDate(binding.last_billing_cycle_end_at)}
+                </span>
+                <span>
+                  {t('Plan Spend')}:{' '}
+                  {cursorMoneyFormatter.format(usage.planUsedDollars)} /{' '}
+                  {cursorMoneyFormatter.format(usage.planLimitDollars)}
+                </span>
+                <span>
+                  {t('On-Demand Spend')}:{' '}
+                  {cursorMoneyFormatter.format(usage.onDemandUsedDollars)} /{' '}
+                  {cursorMoneyFormatter.format(usage.onDemandLimitDollars)}
+                </span>
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </TableCell>
+      <TableCell>
+        {usage.totalTokens > 0 ? (
+          <TooltipProvider delay={100}>
+            <Tooltip>
+              <TooltipTrigger
+                render={<span className='cursor-default font-mono' />}
+              >
+                {formatTokens(usage.totalTokens)}
+              </TooltipTrigger>
+              <TooltipContent className='grid gap-1 text-xs'>
+                <span>
+                  {t('Input')}: {formatTokenDetails(usage.inputTokens)}
+                </span>
+                <span>
+                  {t('Output')}: {formatTokenDetails(usage.outputTokens)}
+                </span>
+                <span>
+                  {t('Cache Write')}:{' '}
+                  {formatTokenDetails(usage.cacheWriteTokens)}
+                </span>
+                <span>
+                  {t('Cache Read')}: {formatTokenDetails(usage.cacheReadTokens)}
+                </span>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : (
+          <span className='text-muted-foreground'>-</span>
+        )}
+      </TableCell>
+      <TableCell>
+        {usage.models.length > 0 ? (
+          <TooltipProvider delay={150}>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <div
+                    className='flex min-w-[150px] cursor-help flex-col gap-1 text-xs'
+                    tabIndex={0}
+                  />
+                }
+              >
+                <span>
+                  {t('Cursor Models')}: {cursorModelCount}
+                </span>
+                <span className='text-muted-foreground'>
+                  {t('Other Models')}: {otherModelCount}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent
+                side='top'
+                align='start'
+                className='max-h-72 max-w-[min(38rem,calc(100vw-2rem))] overflow-y-auto p-3 whitespace-normal'
+              >
+                <div className='grid gap-2'>
+                  {usage.models.map((model) => (
+                    <div
+                      key={`${model.tier}-${model.model}`}
+                      className='grid grid-cols-[minmax(12rem,1fr)_auto_auto] items-center gap-3 text-xs'
+                    >
+                      <span className='break-all'>{model.model}</span>
+                      <span className='font-mono'>
+                        {formatTokens(model.total_tokens)}
+                      </span>
+                      <span className='font-mono'>
+                        {cursorMoneyFormatter.format(model.total_cents / 100)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : (
+          <span className='text-muted-foreground'>-</span>
+        )}
+      </TableCell>
+    </>
+  )
+}
+
 function KimiUsageCells({ binding }: { binding: KimiQuotaBinding }) {
   const remainingQuota = Number(binding.last_remaining_quota || 0)
   const usedQuota = Number(binding.last_used_quota || 0)
@@ -656,6 +851,9 @@ function QuotaUsageCells({ binding }: { binding: QuotaBinding }) {
   if (isDeepSeekBinding(binding)) {
     return <DeepSeekUsageCells binding={binding} />
   }
+  if (isCursorBinding(binding)) {
+    return <CursorUsageCells binding={binding} />
+  }
   if (isKimiBinding(binding)) {
     return <KimiUsageCells binding={binding} />
   }
@@ -689,6 +887,16 @@ function QuotaUsageHeaderCells({ provider }: { provider: QuotaProvider }) {
     )
   }
 
+  if (provider === 'cursor') {
+    return (
+      <>
+        <TableHead>{t('Included Usage')}</TableHead>
+        <TableHead>{t('Total Tokens')}</TableHead>
+        <TableHead>{t('Model Usage')}</TableHead>
+      </>
+    )
+  }
+
   if (provider === 'volcengine') {
     return <TableHead>{t('Usage')}</TableHead>
   }
@@ -706,6 +914,7 @@ function quotaTableColumnCount(provider: QuotaProvider): number {
   if (provider === 'glm') return 7
   if (provider === 'volcengine') return 6
   if (provider === 'deepseek') return 10
+  if (provider === 'cursor') return 8
   return 8
 }
 
@@ -748,6 +957,16 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
   const isAdmin = useIsAdmin()
   const queryClient = useQueryClient()
   const config = providerConfigs[provider]
+  let curlDialogDescriptionKey =
+    'Save the curl command and optional proxy used to refresh quota usage.'
+  if (provider === 'deepseek') {
+    curlDialogDescriptionKey =
+      'Save the three DeepSeek curl commands and optional proxy used to refresh usage.'
+  }
+  if (provider === 'cursor') {
+    curlDialogDescriptionKey =
+      'Save the three Cursor curl commands and optional proxy used to refresh usage.'
+  }
   const [keyword, setKeyword] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [form, setForm] = useState<QuotaBindingFormState>(emptyForm)
@@ -894,7 +1113,7 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
       toast.error(t('Name is required'))
       return
     }
-    if (provider === 'deepseek') {
+    if (isThreeCurlProvider(provider)) {
       const hasSummaryCurl = Boolean(form.request_curl.trim() || form.has_curl)
       const hasUsageAmountCurl = Boolean(
         form.usage_amount_curl.trim() || form.has_usage_amount_curl
@@ -905,9 +1124,15 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
       if (
         (!form.id &&
           (!hasSummaryCurl || !hasUsageAmountCurl || !hasUsageCostCurl)) ||
-        (form.id && hasUsageAmountCurl !== hasUsageCostCurl)
+        (form.id &&
+          (hasSummaryCurl !== hasUsageAmountCurl ||
+            hasSummaryCurl !== hasUsageCostCurl))
       ) {
-        toast.error(t('All three DeepSeek curl commands are required'))
+        const errorKey =
+          provider === 'cursor'
+            ? 'All three Cursor curl commands are required'
+            : 'All three DeepSeek curl commands are required'
+        toast.error(t(errorKey))
         return
       }
     }
@@ -1018,6 +1243,12 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
                               {binding.last_plan_type}
                             </Badge>
                           ) : null}
+                          {isCursorBinding(binding) &&
+                          binding.last_plan_name ? (
+                            <Badge variant='outline' className='w-fit'>
+                              {binding.last_plan_name}
+                            </Badge>
+                          ) : null}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -1104,15 +1335,7 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
             <DialogTitle>
               {form.id ? t('Edit Quota Binding') : t('Create Quota Binding')}
             </DialogTitle>
-            <DialogDescription>
-              {provider === 'deepseek'
-                ? t(
-                    'Save the three DeepSeek curl commands and optional proxy used to refresh usage.'
-                  )
-                : t(
-                    'Save the curl command and optional proxy used to refresh quota usage.'
-                  )}
-            </DialogDescription>
+            <DialogDescription>{t(curlDialogDescriptionKey)}</DialogDescription>
           </DialogHeader>
           <div className='grid max-h-[70vh] gap-4 overflow-y-auto pr-1'>
             <div className='grid gap-4'>
@@ -1170,9 +1393,15 @@ export function QuotaBindingsPage({ provider }: { provider: QuotaProvider }) {
               </div>
             )}
 
-            {provider === 'deepseek' ? (
+            {provider === 'deepseek' && (
               <DeepSeekCurlFields form={form} onChange={updateForm} />
-            ) : (
+            )}
+
+            {provider === 'cursor' && (
+              <CursorCurlFields form={form} onChange={updateForm} />
+            )}
+
+            {!isThreeCurlProvider(provider) && (
               <div className='space-y-2'>
                 <Label>{t('Curl Command')}</Label>
                 <Textarea

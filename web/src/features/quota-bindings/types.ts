@@ -17,7 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-export type QuotaProvider = 'glm' | 'deepseek' | 'kimi' | 'volcengine'
+export type QuotaProvider =
+  | 'glm'
+  | 'deepseek'
+  | 'kimi'
+  | 'volcengine'
+  | 'cursor'
 
 export type QuotaBindingBase = {
   id: number
@@ -105,11 +110,47 @@ export type VolcengineQuotaBinding = QuotaBindingBase & {
   last_monthly_reset_at: number
 }
 
+export type CursorQuotaModelUsage = {
+  model: string
+  input_tokens: number
+  output_tokens: number
+  cache_write_tokens: number
+  cache_read_tokens: number
+  total_tokens: number
+  total_cents: number
+  tier: number
+}
+
+export type CursorQuotaBinding = QuotaBindingBase & {
+  usage_amount_curl?: string
+  usage_cost_curl?: string
+  has_usage_amount_curl: boolean
+  has_usage_cost_curl: boolean
+  last_plan_name: string
+  last_billing_cycle_start_at: number
+  last_billing_cycle_end_at: number
+  last_plan_used_cents: number
+  last_plan_limit_cents: number
+  last_plan_remaining_cents: number
+  last_plan_api_percent: number
+  last_plan_total_percent: number
+  last_on_demand_used_cents: number
+  last_on_demand_limit_cents: number
+  last_on_demand_remaining_cents: number
+  last_total_input_tokens: number
+  last_total_output_tokens: number
+  last_total_cache_write_tokens: number
+  last_total_cache_read_tokens: number
+  last_total_cost_cents: number
+  last_model_usage: string
+}
+
 export type QuotaBinding =
   | GLMQuotaBinding
   | DeepSeekQuotaBinding
   | KimiQuotaBinding
   | VolcengineQuotaBinding
+  | CursorQuotaBinding
 
 export type QuotaBindingFormData = {
   id?: number

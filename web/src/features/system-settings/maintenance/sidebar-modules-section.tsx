@@ -138,6 +138,10 @@ export function SidebarModulesSection({
         title: t('VolcEngine Quota'),
         description: t('Track VolcEngine Agent Plan AFP quota usage.'),
       },
+      cursorQuota: {
+        title: t('Cursor Quota'),
+        description: t('Track Cursor billing and model token usage.'),
+      },
       codexResets: {
         title: t('Codex Resets'),
         description: t(

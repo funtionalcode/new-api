@@ -39,6 +39,7 @@ import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authen
 import { Route as AuthenticatedChatChatIdRouteImport } from './routes/_authenticated/chat/$chatId'
 import { Route as AuthenticatedCliproxyAuthFilesIndexRouteImport } from './routes/_authenticated/cliproxy-auth-files/index'
 import { Route as AuthenticatedCodexResetsIndexRouteImport } from './routes/_authenticated/codex-resets/index'
+import { Route as AuthenticatedCursorQuotaIndexRouteImport } from './routes/_authenticated/cursor-quota/index'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
 import { Route as AuthenticatedDashboardSectionRouteImport } from './routes/_authenticated/dashboard/$section'
 import { Route as AuthenticatedDeepseekQuotaIndexRouteImport } from './routes/_authenticated/deepseek-quota/index'
@@ -226,6 +227,12 @@ const AuthenticatedCodexResetsIndexRoute =
   AuthenticatedCodexResetsIndexRouteImport.update({
     id: '/codex-resets/',
     path: '/codex-resets/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedCursorQuotaIndexRoute =
+  AuthenticatedCursorQuotaIndexRouteImport.update({
+    id: '/cursor-quota/',
+    path: '/cursor-quota/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedDashboardIndexRoute =
@@ -475,6 +482,7 @@ export interface FileRoutesByFullPath {
   '/channels/': typeof AuthenticatedChannelsIndexRoute
   '/cliproxy-auth-files/': typeof AuthenticatedCliproxyAuthFilesIndexRoute
   '/codex-resets/': typeof AuthenticatedCodexResetsIndexRoute
+  '/cursor-quota/': typeof AuthenticatedCursorQuotaIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/deepseek-quota/': typeof AuthenticatedDeepseekQuotaIndexRoute
   '/glm-quota/': typeof AuthenticatedGlmQuotaIndexRoute
@@ -540,6 +548,7 @@ export interface FileRoutesByTo {
   '/channels': typeof AuthenticatedChannelsIndexRoute
   '/cliproxy-auth-files': typeof AuthenticatedCliproxyAuthFilesIndexRoute
   '/codex-resets': typeof AuthenticatedCodexResetsIndexRoute
+  '/cursor-quota': typeof AuthenticatedCursorQuotaIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
   '/deepseek-quota': typeof AuthenticatedDeepseekQuotaIndexRoute
   '/glm-quota': typeof AuthenticatedGlmQuotaIndexRoute
@@ -609,6 +618,7 @@ export interface FileRoutesById {
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
   '/_authenticated/cliproxy-auth-files/': typeof AuthenticatedCliproxyAuthFilesIndexRoute
   '/_authenticated/codex-resets/': typeof AuthenticatedCodexResetsIndexRoute
+  '/_authenticated/cursor-quota/': typeof AuthenticatedCursorQuotaIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/_authenticated/deepseek-quota/': typeof AuthenticatedDeepseekQuotaIndexRoute
   '/_authenticated/glm-quota/': typeof AuthenticatedGlmQuotaIndexRoute
@@ -677,6 +687,7 @@ export interface FileRouteTypes {
     | '/channels/'
     | '/cliproxy-auth-files/'
     | '/codex-resets/'
+    | '/cursor-quota/'
     | '/dashboard/'
     | '/deepseek-quota/'
     | '/glm-quota/'
@@ -742,6 +753,7 @@ export interface FileRouteTypes {
     | '/channels'
     | '/cliproxy-auth-files'
     | '/codex-resets'
+    | '/cursor-quota'
     | '/dashboard'
     | '/deepseek-quota'
     | '/glm-quota'
@@ -810,6 +822,7 @@ export interface FileRouteTypes {
     | '/_authenticated/channels/'
     | '/_authenticated/cliproxy-auth-files/'
     | '/_authenticated/codex-resets/'
+    | '/_authenticated/cursor-quota/'
     | '/_authenticated/dashboard/'
     | '/_authenticated/deepseek-quota/'
     | '/_authenticated/glm-quota/'
@@ -1074,6 +1087,13 @@ declare module '@tanstack/react-router' {
       path: '/codex-resets'
       fullPath: '/codex-resets/'
       preLoaderRoute: typeof AuthenticatedCodexResetsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/cursor-quota/': {
+      id: '/_authenticated/cursor-quota/'
+      path: '/cursor-quota'
+      fullPath: '/cursor-quota/'
+      preLoaderRoute: typeof AuthenticatedCursorQuotaIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/dashboard/': {
@@ -1425,6 +1445,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
   AuthenticatedCliproxyAuthFilesIndexRoute: typeof AuthenticatedCliproxyAuthFilesIndexRoute
   AuthenticatedCodexResetsIndexRoute: typeof AuthenticatedCodexResetsIndexRoute
+  AuthenticatedCursorQuotaIndexRoute: typeof AuthenticatedCursorQuotaIndexRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
   AuthenticatedDeepseekQuotaIndexRoute: typeof AuthenticatedDeepseekQuotaIndexRoute
   AuthenticatedGlmQuotaIndexRoute: typeof AuthenticatedGlmQuotaIndexRoute
@@ -1456,6 +1477,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCliproxyAuthFilesIndexRoute:
     AuthenticatedCliproxyAuthFilesIndexRoute,
   AuthenticatedCodexResetsIndexRoute: AuthenticatedCodexResetsIndexRoute,
+  AuthenticatedCursorQuotaIndexRoute: AuthenticatedCursorQuotaIndexRoute,
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
   AuthenticatedDeepseekQuotaIndexRoute: AuthenticatedDeepseekQuotaIndexRoute,
   AuthenticatedGlmQuotaIndexRoute: AuthenticatedGlmQuotaIndexRoute,

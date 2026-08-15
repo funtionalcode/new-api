@@ -137,6 +137,11 @@ export function useSidebarData(): SidebarData {
             icon: Gauge,
           },
           {
+            title: t('Cursor Quota'),
+            url: '/cursor-quota',
+            icon: Gauge,
+          },
+          {
             title: t('Codex Resets'),
             url: '/codex-resets',
             icon: RotateCcw,
