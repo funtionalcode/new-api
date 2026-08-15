@@ -112,11 +112,18 @@ function Harness() {
   )
 }
 
-function getTextareaByLabel(labelText: string): HTMLTextAreaElement {
+function getTextareaByLabel(
+  labelText: string,
+  endpoint: string
+): HTMLTextAreaElement {
   const label = [...document.querySelectorAll<HTMLLabelElement>('label')].find(
-    (candidate) => candidate.textContent?.trim() === labelText
+    (candidate) => candidate.textContent?.includes(labelText)
   )
   assert.ok(label, `Expected label "${labelText}"`)
+  assert.ok(
+    label.textContent?.includes(endpoint),
+    `Expected label to include endpoint "${endpoint}"`
+  )
   assert.ok(label.control instanceof domWindow.HTMLTextAreaElement)
   return label.control as unknown as HTMLTextAreaElement
 }
@@ -152,9 +159,18 @@ describe('Cursor curl fields', () => {
     rendered = { container, root }
     await act(async () => root.render(<Harness />))
 
-    const periodCurl = getTextareaByLabel('Current Period Usage Curl')
-    const aggregatedCurl = getTextareaByLabel('Aggregated Usage Curl')
-    const planCurl = getTextareaByLabel('Plan Info Curl')
+    const periodCurl = getTextareaByLabel(
+      'Current Period Usage Curl',
+      '/api/dashboard/get-current-period-usage'
+    )
+    const aggregatedCurl = getTextareaByLabel(
+      'Aggregated Usage Curl',
+      '/api/dashboard/get-aggregated-usage-events'
+    )
+    const planCurl = getTextareaByLabel(
+      'Plan Info Curl',
+      '/api/dashboard/get-plan-info'
+    )
     assert.equal(document.querySelectorAll('textarea').length, 3)
     assert.equal(
       periodCurl.placeholder,

@@ -532,7 +532,31 @@ func extractCursorQuotaPeriod(body []byte) (cursorQuotaCurrentPeriodResponse, in
 }
 
 func parseCursorQuotaTimestamp(value string) (int64, error) {
-	parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(value))
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, fmt.Errorf("时间为空")
+	}
+	isDigits := true
+	for _, char := range value {
+		if char < '0' || char > '9' {
+			isDigits = false
+			break
+		}
+	}
+	if isDigits {
+		timestamp, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return 0, err
+		}
+		if timestamp <= 0 {
+			return 0, fmt.Errorf("时间戳必须为正数")
+		}
+		if timestamp >= 1_000_000_000_000 {
+			return timestamp / 1000, nil
+		}
+		return timestamp, nil
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, value)
 	if err != nil {
 		return 0, err
 	}

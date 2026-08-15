@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
-import { Label } from '@/components/ui/label'
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Textarea } from '@/components/ui/textarea'
 
 import type { QuotaBindingFormState } from '../lib/form-payload'
@@ -32,11 +32,17 @@ export function CursorCurlFields(props: CursorCurlFieldsProps) {
   const { t } = useTranslation()
 
   return (
-    <>
-      <div className='space-y-2'>
-        <Label htmlFor='cursor-current-period-usage-curl'>
-          {t('Current Period Usage Curl')}
-        </Label>
+    <FieldGroup className='gap-4'>
+      <Field>
+        <FieldLabel
+          htmlFor='cursor-current-period-usage-curl'
+          className='flex w-full flex-wrap items-baseline gap-x-2'
+        >
+          <span>{t('Current Period Usage Curl')}</span>
+          <code className='text-muted-foreground text-xs font-normal'>
+            /api/dashboard/get-current-period-usage
+          </code>
+        </FieldLabel>
         <Textarea
           id='cursor-current-period-usage-curl'
           value={props.form.request_curl}
@@ -52,12 +58,18 @@ export function CursorCurlFields(props: CursorCurlFieldsProps) {
             })
           }
         />
-      </div>
+      </Field>
 
-      <div className='space-y-2'>
-        <Label htmlFor='cursor-aggregated-usage-curl'>
-          {t('Aggregated Usage Curl')}
-        </Label>
+      <Field>
+        <FieldLabel
+          htmlFor='cursor-aggregated-usage-curl'
+          className='flex w-full flex-wrap items-baseline gap-x-2'
+        >
+          <span>{t('Aggregated Usage Curl')}</span>
+          <code className='text-muted-foreground text-xs font-normal'>
+            /api/dashboard/get-aggregated-usage-events
+          </code>
+        </FieldLabel>
         <Textarea
           id='cursor-aggregated-usage-curl'
           value={props.form.usage_amount_curl}
@@ -73,10 +85,18 @@ export function CursorCurlFields(props: CursorCurlFieldsProps) {
             })
           }
         />
-      </div>
+      </Field>
 
-      <div className='space-y-2'>
-        <Label htmlFor='cursor-plan-info-curl'>{t('Plan Info Curl')}</Label>
+      <Field>
+        <FieldLabel
+          htmlFor='cursor-plan-info-curl'
+          className='flex w-full flex-wrap items-baseline gap-x-2'
+        >
+          <span>{t('Plan Info Curl')}</span>
+          <code className='text-muted-foreground text-xs font-normal'>
+            /api/dashboard/get-plan-info
+          </code>
+        </FieldLabel>
         <Textarea
           id='cursor-plan-info-curl'
           value={props.form.usage_cost_curl}
@@ -92,7 +112,7 @@ export function CursorCurlFields(props: CursorCurlFieldsProps) {
             })
           }
         />
-      </div>
-    </>
+      </Field>
+    </FieldGroup>
   )
 }

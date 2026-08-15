@@ -11,8 +11,8 @@ import (
 
 func TestExtractCursorQuotaUsageParsesBillingResponses(t *testing.T) {
 	periodBody := []byte(`{
-		"billingCycleStart":"2026-08-13T00:00:00.000Z",
-		"billingCycleEnd":"2026-09-13T00:00:00.000Z",
+		"billingCycleStart":"1786609998000",
+		"billingCycleEnd":"1789288398000",
 		"planUsage":{
 			"totalSpend":5288,
 			"limit":40000,
@@ -39,13 +39,9 @@ func TestExtractCursorQuotaUsageParsesBillingResponses(t *testing.T) {
 	usage, err := extractCursorQuotaUsage(periodBody, aggregatedBody, planBody)
 	require.NoError(t, err)
 
-	cycleStart, err := time.Parse(time.RFC3339Nano, "2026-08-13T00:00:00.000Z")
-	require.NoError(t, err)
-	cycleEnd, err := time.Parse(time.RFC3339Nano, "2026-09-13T00:00:00.000Z")
-	require.NoError(t, err)
 	assert.Equal(t, "Ultra", usage.PlanName)
-	assert.Equal(t, cycleStart.Unix(), usage.BillingCycleStartAt)
-	assert.Equal(t, cycleEnd.Unix(), usage.BillingCycleEndAt)
+	assert.Equal(t, int64(1_786_609_998), usage.BillingCycleStartAt)
+	assert.Equal(t, int64(1_789_288_398), usage.BillingCycleEndAt)
 	assert.InDelta(t, 5288, usage.PlanUsedCents, 0.000001)
 	assert.InDelta(t, 40000, usage.PlanLimitCents, 0.000001)
 	assert.InDelta(t, 34712, usage.PlanRemainingCents, 0.000001)
@@ -62,6 +58,29 @@ func TestExtractCursorQuotaUsageParsesBillingResponses(t *testing.T) {
 	assert.Equal(t, 1, usage.ModelUsages[0].Tier)
 	assert.Equal(t, int64(238), usage.ModelUsages[1].TotalTokens)
 	assert.Equal(t, 2, usage.ModelUsages[1].Tier)
+}
+
+func TestParseCursorQuotaTimestampAcceptsISOAndEpochValues(t *testing.T) {
+	isoTime, err := time.Parse(time.RFC3339Nano, "2026-08-13T00:00:00.000Z")
+	require.NoError(t, err)
+
+	tests := []struct {
+		name     string
+		value    string
+		expected int64
+	}{
+		{name: "ISO timestamp", value: "2026-08-13T00:00:00.000Z", expected: isoTime.Unix()},
+		{name: "epoch seconds", value: "1786609998", expected: 1_786_609_998},
+		{name: "epoch milliseconds", value: "1786609998000", expected: 1_786_609_998},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			actual, err := parseCursorQuotaTimestamp(test.value)
+			require.NoError(t, err)
+			assert.Equal(t, test.expected, actual)
+		})
+	}
 }
 
 func TestUpdateCursorAggregatedUsageRequestBodyUsesCurrentBillingCycle(t *testing.T) {
