@@ -22,6 +22,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const cursorTestPNGBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z3z8AAAAASUVORK5CYII="
+
 func newCursorTestContext(t *testing.T) *gin.Context {
 	t.Helper()
 	recorder := httptest.NewRecorder()
@@ -345,15 +347,19 @@ func TestConvertOpenAIRequestRejectsInvalidPersistentMetadataTypes(t *testing.T)
 	require.ErrorContains(t, err, "metadata.cursor_persistent must be a boolean")
 }
 
-func TestConvertOpenAIRequestRejectsNonTextAndAcceptsTools(t *testing.T) {
+func TestConvertOpenAIRequestRejectsUnsupportedMediaAndAcceptsTools(t *testing.T) {
 	adaptor := &Adaptor{}
 	c := newCursorTestContext(t)
 
 	_, err := adaptor.ConvertOpenAIRequest(c, nil, &dto.GeneralOpenAIRequest{
 		Model:    "composer-2",
-		Messages: []dto.Message{{Role: "user", Content: []any{map[string]any{"type": "image_url"}}}},
+		Messages: []dto.Message{{Role: "user", Content: []any{map[string]any{"type": "input_audio"}}}},
 	})
-	require.ErrorContains(t, err, "text-only")
+	require.ErrorContains(t, err, `message content type "input_audio" is not supported`)
+	var apiErr *types.NewAPIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, http.StatusBadRequest, apiErr.StatusCode)
+	assert.Equal(t, types.ErrorCodeInvalidRequest, apiErr.GetErrorCode())
 
 	converted, err := adaptor.ConvertOpenAIRequest(c, nil, &dto.GeneralOpenAIRequest{
 		Model:    "composer-2",
@@ -395,6 +401,50 @@ func TestConvertOpenAIRequestAcceptsTextContentParts(t *testing.T) {
 	assert.Contains(t, createRequest.Prompt.Text, `{"role":"user","content":"Hello Cursor"}`)
 }
 
+func TestConvertOpenAIRequestForwardsImagesToCursorPrompt(t *testing.T) {
+	converted, err := (&Adaptor{}).ConvertOpenAIRequest(newCursorTestContext(t), nil, &dto.GeneralOpenAIRequest{
+		Model: "composer-2",
+		Messages: []dto.Message{{
+			Role: "user",
+			Content: []any{
+				map[string]any{"type": "input_text", "text": "Compare these images."},
+				map[string]any{"type": "input_image", "image_url": "data:image/png;base64," + cursorTestPNGBase64},
+				map[string]any{"type": "image_url", "image_url": map[string]any{"url": "https://example.com/reference.webp"}},
+			},
+		}},
+	})
+
+	require.NoError(t, err)
+	createRequest, ok := converted.(*createAgentRequest)
+	require.True(t, ok)
+	assert.Contains(t, createRequest.Prompt.Text, "Compare these images.")
+	assert.Contains(t, createRequest.Prompt.Text, "[Image attached to this message]")
+	require.Len(t, createRequest.Prompt.Images, 2)
+	assert.Equal(t, cursorPromptImage{Data: cursorTestPNGBase64, MimeType: "image/png"}, createRequest.Prompt.Images[0])
+	assert.Equal(t, cursorPromptImage{URL: "https://example.com/reference.webp"}, createRequest.Prompt.Images[1])
+
+	body, err := common.Marshal(createRequest)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `"images":[{"data":"`+cursorTestPNGBase64+`","mimeType":"image/png"},{"url":"https://example.com/reference.webp"}]`)
+}
+
+func TestConvertOpenAIRequestRejectsMoreThanCursorImageLimit(t *testing.T) {
+	parts := make([]any, 0, cursorMaxPromptImages+1)
+	for index := 0; index <= cursorMaxPromptImages; index++ {
+		parts = append(parts, map[string]any{
+			"type":      "image_url",
+			"image_url": "https://example.com/image.png",
+		})
+	}
+
+	_, err := (&Adaptor{}).ConvertOpenAIRequest(newCursorTestContext(t), nil, &dto.GeneralOpenAIRequest{
+		Model:    "composer-2",
+		Messages: []dto.Message{{Role: "user", Content: parts}},
+	})
+
+	require.ErrorContains(t, err, "Cursor accepts at most 5 images per prompt")
+}
+
 func TestConvertClaudeRequestBuildsCursorAgentConversation(t *testing.T) {
 	persistent := true
 	c := newCursorTestContext(t)
@@ -422,6 +472,32 @@ func TestConvertClaudeRequestBuildsCursorAgentConversation(t *testing.T) {
 	assert.Contains(t, createRequest.Prompt.Text, `{"role":"assistant","content":"Hello Ada."}`)
 	assert.Contains(t, createRequest.Prompt.Text, `{"role":"user","content":"What is my name?"}`)
 	assert.True(t, c.GetBool(cursorPersistentContextKey))
+}
+
+func TestConvertClaudeRequestForwardsImageBlocksToCursorPrompt(t *testing.T) {
+	converted, err := (&Adaptor{}).ConvertClaudeRequest(newCursorTestContext(t), &relaycommon.RelayInfo{}, &dto.ClaudeRequest{
+		Model: "claude-opus-5",
+		Messages: []dto.ClaudeMessage{{
+			Role: "user",
+			Content: []any{
+				map[string]any{"type": "text", "text": "Describe this image."},
+				map[string]any{
+					"type": "image",
+					"source": map[string]any{
+						"type":       "base64",
+						"media_type": "image/png",
+						"data":       cursorTestPNGBase64,
+					},
+				},
+			},
+		}},
+	})
+
+	require.NoError(t, err)
+	createRequest, ok := converted.(*createAgentRequest)
+	require.True(t, ok)
+	assert.Contains(t, createRequest.Prompt.Text, "Describe this image.")
+	assert.Equal(t, []cursorPromptImage{{Data: cursorTestPNGBase64, MimeType: "image/png"}}, createRequest.Prompt.Images)
 }
 
 func TestConvertClaudeRequestContinuesPersistentAgent(t *testing.T) {
@@ -928,7 +1004,7 @@ func TestCursorResponseFetchesTerminalRunResultForErrorDetail(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		_, _ = w.Write([]byte(`{"id":"` + runID + `","agentId":"` + agentID + `","status":"ERROR","result":"Model provider temporarily unavailable","durationMs":60000}`))
+		_, _ = w.Write([]byte(`{"id":"` + runID + `","agentId":"` + agentID + `","status":"ERROR","error":{"code":"model_provider_error","message":"Model provider temporarily unavailable"},"durationMs":60000}`))
 	}))
 	t.Cleanup(server.Close)
 
@@ -958,7 +1034,39 @@ func TestCursorResponseFetchesTerminalRunResultForErrorDetail(t *testing.T) {
 	require.NotNil(t, apiErr)
 	assert.Equal(t, http.StatusBadGateway, apiErr.StatusCode)
 	assert.Contains(t, apiErr.Error(), "run ended with status ERROR")
+	assert.Contains(t, apiErr.Error(), "model_provider_error")
 	assert.Contains(t, apiErr.Error(), "Model provider temporarily unavailable")
+}
+
+func TestCursorResponseUsesFailedToolResultWhenRunHasNoErrorDetail(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	common.SetContextKey(c, common.RequestIdKey, "req-cursor-tool-error-detail")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			cursorClientStreamHeader:    []string{"false"},
+			cursorSkipRemoteUsageHeader: []string{"true"},
+		},
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			"event: tool_call",
+			`data: {"callId":"call-shell","name":"run_terminal_cmd","status":"completed","result":{"error":{"message":"permission denied"}}}`,
+			"",
+			"event: result",
+			`data: {"runId":"run-1","status":"ERROR","durationMs":1000}`,
+			"",
+		}, "\n"))),
+	}
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "claude-opus-5"}}
+
+	usage, apiErr := (&Adaptor{}).DoResponse(c, resp, info)
+
+	require.Nil(t, usage)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusBadGateway, apiErr.StatusCode)
+	assert.Contains(t, apiErr.Error(), `Cursor tool "run_terminal_cmd" failed`)
+	assert.Contains(t, apiErr.Error(), `{"message":"permission denied"}`)
 }
 
 func TestCursorStreamResponseKeepsNormalTextStreamingWhenToolsAreAvailable(t *testing.T) {
@@ -1594,6 +1702,28 @@ func TestConvertOpenAIResponsesRequestPreservesCodexCustomToolsAndHistory(t *tes
 		"client_external_tool_2": {Kind: "function", Name: "exec_command"},
 		"exec_command":           {Kind: "function", Name: "exec_command"},
 	}, toolKinds)
+}
+
+func TestConvertOpenAIResponsesRequestForwardsInputImagesToCursorPrompt(t *testing.T) {
+	c := newCursorTestContext(t)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	converted, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(c, &relaycommon.RelayInfo{
+		RelayMode: relayconstant.RelayModeResponses,
+	}, dto.OpenAIResponsesRequest{
+		Model: "composer-2",
+		Input: []byte(`[
+			{"role":"user","content":[
+				{"type":"input_text","text":"Read the screenshot."},
+				{"type":"input_image","image_url":"data:image/png;base64,` + cursorTestPNGBase64 + `"}
+			]}
+		]`),
+	})
+
+	require.NoError(t, err)
+	createRequest, ok := converted.(*createAgentRequest)
+	require.True(t, ok)
+	assert.Contains(t, createRequest.Prompt.Text, "Read the screenshot.")
+	assert.Equal(t, []cursorPromptImage{{Data: cursorTestPNGBase64, MimeType: "image/png"}}, createRequest.Prompt.Images)
 }
 
 func TestConvertOpenAIResponsesRequestReusesServerManagedCodexAgent(t *testing.T) {

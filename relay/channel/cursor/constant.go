@@ -26,6 +26,8 @@ const (
 	cursorAgentSignatureVersion   = "v2"
 	cursorExternalToolAliasPrefix = "client_external_tool_"
 	cursorCleanupCommand          = "清理会话agent"
+	cursorMaxPromptImages         = 5
+	cursorMaxImageBytes           = 15 * 1024 * 1024
 	cursorRunPollInterval         = time.Second
 	cursorRunPollTimeout          = 10 * time.Minute
 )

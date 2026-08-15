@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/hmac"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -226,11 +227,12 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 			transcriptMessage.Name = *message.Name
 		}
 		if message.Content != nil {
-			content, err := textContentForCursor(message)
+			content, images, err := contentForCursor(message)
 			if err != nil {
-				return nil, err
+				return nil, cursorInvalidRequest(err)
 			}
 			transcriptMessage.Content = content
+			transcriptMessage.Images = images
 		}
 		for _, toolCall := range message.ParseToolCalls() {
 			arguments := any(map[string]any{})
@@ -276,8 +278,15 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		if len(continuation) == 0 {
 			return nil, errors.New("cursor channel: persistent agent continuation has no new client message")
 		}
+		promptImages, err := cursorPromptImages(continuation)
+		if err != nil {
+			return nil, cursorInvalidRequest(err)
+		}
 		if len(continuation) == 1 && continuation[0].Role == "user" && len(continuation[0].ToolCalls) == 0 && continuation[0].ToolCallID == "" {
-			return &createRunRequest{Prompt: cursorPrompt{Text: continuation[0].Content + externalToolsPrompt}}, nil
+			return &createRunRequest{Prompt: cursorPrompt{
+				Text:   continuation[0].Content + externalToolsPrompt,
+				Images: promptImages,
+			}}, nil
 		}
 		var prompt strings.Builder
 		prompt.WriteString("Continue the conversation using these new client events as JSON Lines:\n")
@@ -291,7 +300,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		}
 		prompt.WriteString("Respond to the new events.")
 		prompt.WriteString(externalToolsPrompt)
-		return &createRunRequest{Prompt: cursorPrompt{Text: prompt.String()}}, nil
+		return &createRunRequest{Prompt: cursorPrompt{Text: prompt.String(), Images: promptImages}}, nil
 	}
 	latest := transcriptMessages[len(transcriptMessages)-1]
 	if latest.Role == "user" && strings.TrimSpace(latest.Content) == cursorCleanupCommand {
@@ -304,9 +313,13 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 			Name:   "new-api channel test",
 		}, nil
 	}
+	promptImages, err := cursorPromptImages(transcriptMessages)
+	if err != nil {
+		return nil, cursorInvalidRequest(err)
+	}
 
 	var transcript strings.Builder
-	transcript.WriteString("You are continuing a text-only chat. Do not use Cursor's repository, shell, file editing, or artifact tools.\n")
+	transcript.WriteString("You are continuing a client chat. Do not use Cursor's repository, shell, file editing, or artifact tools.\n")
 	transcript.WriteString("Conversation transcript follows as JSON Lines. Respect each message role and all prior context.\n")
 	for _, message := range transcriptMessages {
 		line, err := common.Marshal(message)
@@ -320,58 +333,216 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	transcript.WriteString(externalToolsPrompt)
 
 	return &createAgentRequest{
-		Prompt: cursorPrompt{Text: transcript.String()},
+		Prompt: cursorPrompt{Text: transcript.String(), Images: promptImages},
 		Model:  modelSelection,
 		Name:   "new-api text chat",
 	}, nil
 }
 
-func textContentForCursor(message *dto.Message) (string, error) {
+func cursorInvalidRequest(err error) error {
+	return types.NewErrorWithStatusCode(
+		err,
+		types.ErrorCodeInvalidRequest,
+		http.StatusBadRequest,
+		types.ErrOptionWithSkipRetry(),
+	)
+}
+
+func contentForCursor(message *dto.Message) (string, []cursorPromptImage, error) {
 	if message == nil || message.Content == nil {
-		return "", errors.New("cursor channel: text-only message content is required")
+		return "", nil, errors.New("cursor channel: message content is required")
 	}
 	if content, ok := message.Content.(string); ok {
-		return content, nil
+		return content, nil, nil
 	}
 
 	var content strings.Builder
-	appendPart := func(part dto.MediaContent) error {
-		if part.Type != dto.ContentTypeText {
-			return errors.New("cursor channel: text-only message content is required")
-		}
-		content.WriteString(part.Text)
-		return nil
-	}
+	images := make([]cursorPromptImage, 0)
 
 	switch parts := message.Content.(type) {
 	case []dto.MediaContent:
 		for _, part := range parts {
-			if err := appendPart(part); err != nil {
-				return "", err
+			var err error
+			images, err = appendCursorContentPart(&content, images, part)
+			if err != nil {
+				return "", nil, err
 			}
 		}
 	case []any:
 		for _, rawPart := range parts {
-			if part, ok := rawPart.(dto.MediaContent); ok {
-				if err := appendPart(part); err != nil {
-					return "", err
-				}
-				continue
+			var err error
+			images, err = appendCursorContentPart(&content, images, rawPart)
+			if err != nil {
+				return "", nil, err
 			}
-			part, ok := rawPart.(map[string]any)
-			if !ok || part["type"] != dto.ContentTypeText {
-				return "", errors.New("cursor channel: text-only message content is required")
+		}
+	case []map[string]any:
+		for _, part := range parts {
+			var err error
+			images, err = appendCursorContentPart(&content, images, part)
+			if err != nil {
+				return "", nil, err
 			}
-			text, ok := part["text"].(string)
-			if !ok {
-				return "", errors.New("cursor channel: text-only message content is required")
-			}
-			content.WriteString(text)
+		}
+	case dto.MediaContent, *dto.MediaContent, map[string]any:
+		var err error
+		images, err = appendCursorContentPart(&content, images, parts)
+		if err != nil {
+			return "", nil, err
 		}
 	default:
-		return "", errors.New("cursor channel: text-only message content is required")
+		return "", nil, fmt.Errorf("cursor channel: message content type %T is not supported", message.Content)
 	}
-	return content.String(), nil
+	return content.String(), images, nil
+}
+
+func appendCursorContentPart(content *strings.Builder, images []cursorPromptImage, rawPart any) ([]cursorPromptImage, error) {
+	switch part := rawPart.(type) {
+	case dto.MediaContent:
+		partType := strings.TrimSpace(part.Type)
+		switch partType {
+		case dto.ContentTypeText, "input_text", "output_text":
+			content.WriteString(part.Text)
+			return images, nil
+		case dto.ContentTypeImageURL, "input_image":
+			image, err := cursorPromptImageFromValue(part.ImageUrl, "")
+			if err != nil {
+				return nil, err
+			}
+			content.WriteString("\n[Image attached to this message]\n")
+			return append(images, image), nil
+		default:
+			return nil, fmt.Errorf("cursor channel: message content type %q is not supported", partType)
+		}
+	case *dto.MediaContent:
+		if part == nil {
+			return nil, errors.New("cursor channel: message content part is empty")
+		}
+		return appendCursorContentPart(content, images, *part)
+	case map[string]any:
+		partType, _ := part["type"].(string)
+		partType = strings.TrimSpace(partType)
+		switch partType {
+		case dto.ContentTypeText, "input_text", "output_text":
+			text, ok := part["text"].(string)
+			if !ok {
+				return nil, fmt.Errorf("cursor channel: %s content requires a text string", partType)
+			}
+			content.WriteString(text)
+			return images, nil
+		case "refusal":
+			refusal, ok := part["refusal"].(string)
+			if !ok {
+				return nil, errors.New("cursor channel: refusal content requires a refusal string")
+			}
+			content.WriteString(refusal)
+			return images, nil
+		case dto.ContentTypeImageURL, "input_image":
+			imageValue := part["image_url"]
+			if imageValue == nil {
+				imageValue = part["url"]
+			}
+			image, err := cursorPromptImageFromValue(imageValue, "")
+			if err != nil {
+				return nil, err
+			}
+			content.WriteString("\n[Image attached to this message]\n")
+			return append(images, image), nil
+		default:
+			return nil, fmt.Errorf("cursor channel: message content type %q is not supported", partType)
+		}
+	default:
+		return nil, fmt.Errorf("cursor channel: message content part type %T is not supported", rawPart)
+	}
+}
+
+func cursorPromptImageFromValue(value any, mimeType string) (cursorPromptImage, error) {
+	switch image := value.(type) {
+	case string:
+		return cursorPromptImageFromSource(image, mimeType)
+	case dto.MessageImageUrl:
+		return cursorPromptImageFromSource(image.Url, image.MimeType)
+	case *dto.MessageImageUrl:
+		if image == nil {
+			return cursorPromptImage{}, errors.New("cursor channel: image content is empty")
+		}
+		return cursorPromptImageFromSource(image.Url, image.MimeType)
+	case map[string]any:
+		if data, ok := image["data"].(string); ok && strings.TrimSpace(data) != "" {
+			resolvedMimeType, _ := image["mimeType"].(string)
+			if resolvedMimeType == "" {
+				resolvedMimeType, _ = image["mime_type"].(string)
+			}
+			return cursorPromptImageFromSource(data, resolvedMimeType)
+		}
+		urlValue, _ := image["url"].(string)
+		resolvedMimeType, _ := image["mime_type"].(string)
+		return cursorPromptImageFromSource(urlValue, resolvedMimeType)
+	default:
+		return cursorPromptImage{}, fmt.Errorf("cursor channel: image content type %T is not supported", value)
+	}
+}
+
+func cursorPromptImageFromSource(source string, mimeType string) (cursorPromptImage, error) {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return cursorPromptImage{}, errors.New("cursor channel: image URL or data is required")
+	}
+	parsedURL, err := url.Parse(source)
+	if err == nil && (parsedURL.Scheme == "http" || parsedURL.Scheme == "https") && parsedURL.Host != "" {
+		return cursorPromptImage{URL: source}, nil
+	}
+
+	data := source
+	if strings.HasPrefix(strings.ToLower(source), "data:") {
+		header, encoded, found := strings.Cut(source, ",")
+		if !found {
+			return cursorPromptImage{}, errors.New("cursor channel: image data URL is invalid")
+		}
+		headerParts := strings.Split(header[len("data:"):], ";")
+		mimeType = headerParts[0]
+		base64Encoded := false
+		for _, parameter := range headerParts[1:] {
+			if strings.EqualFold(strings.TrimSpace(parameter), "base64") {
+				base64Encoded = true
+				break
+			}
+		}
+		if !base64Encoded {
+			return cursorPromptImage{}, errors.New("cursor channel: image data URL must be base64 encoded")
+		}
+		data = encoded
+	}
+
+	mimeType = strings.ToLower(strings.TrimSpace(mimeType))
+	if mimeType == "image/jpg" {
+		mimeType = "image/jpeg"
+	}
+	switch mimeType {
+	case "image/png", "image/jpeg", "image/gif", "image/webp":
+	default:
+		return cursorPromptImage{}, fmt.Errorf("cursor channel: image MIME type %q is not supported", mimeType)
+	}
+	data = strings.NewReplacer("\r", "", "\n", "").Replace(strings.TrimSpace(data))
+	decodedSize, err := io.Copy(io.Discard, io.LimitReader(base64.NewDecoder(base64.StdEncoding, strings.NewReader(data)), cursorMaxImageBytes+1))
+	if err != nil {
+		return cursorPromptImage{}, fmt.Errorf("cursor channel: image data is not valid base64: %w", err)
+	}
+	if decodedSize > cursorMaxImageBytes {
+		return cursorPromptImage{}, fmt.Errorf("cursor channel: image exceeds the %d MB Cursor limit", cursorMaxImageBytes/(1024*1024))
+	}
+	return cursorPromptImage{Data: data, MimeType: mimeType}, nil
+}
+
+func cursorPromptImages(messages []cursorTranscriptMessage) ([]cursorPromptImage, error) {
+	images := make([]cursorPromptImage, 0)
+	for _, message := range messages {
+		images = append(images, message.Images...)
+		if len(images) > cursorMaxPromptImages {
+			return nil, fmt.Errorf("cursor channel: Cursor accepts at most %d images per prompt", cursorMaxPromptImages)
+		}
+	}
+	return images, nil
 }
 
 func validateCursorAgentID(c *gin.Context, info *relaycommon.RelayInfo, agentID string) error {
@@ -698,6 +869,7 @@ func cursorRunFallbackResponse(run *cursorRunResponse) (*http.Response, error) {
 		Status:     run.Status,
 		Text:       run.Result,
 		DurationMS: run.DurationMS,
+		Error:      run.Error,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("cursor channel: encode run fallback response: %w", err)

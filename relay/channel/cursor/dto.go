@@ -1,7 +1,14 @@
 package cursor
 
 type cursorPrompt struct {
-	Text string `json:"text"`
+	Text   string              `json:"text"`
+	Images []cursorPromptImage `json:"images,omitempty"`
+}
+
+type cursorPromptImage struct {
+	Data     string `json:"data,omitempty"`
+	URL      string `json:"url,omitempty"`
+	MimeType string `json:"mimeType,omitempty"`
 }
 
 type cursorModelSelection struct {
@@ -80,6 +87,7 @@ type cursorTranscriptMessage struct {
 	Name       string                     `json:"name,omitempty"`
 	ToolCallID string                     `json:"tool_call_id,omitempty"`
 	ToolCalls  []cursorTranscriptToolCall `json:"tool_calls,omitempty"`
+	Images     []cursorPromptImage        `json:"-"`
 }
 
 type cursorTranscriptToolCall struct {
@@ -116,10 +124,11 @@ type cursorTextEvent struct {
 }
 
 type cursorResultEvent struct {
-	RunID      string `json:"runId"`
-	Status     string `json:"status"`
-	Text       string `json:"text"`
-	DurationMS int64  `json:"durationMs"`
+	RunID      string            `json:"runId"`
+	Status     string            `json:"status"`
+	Text       string            `json:"text"`
+	DurationMS int64             `json:"durationMs"`
+	Error      *cursorErrorEvent `json:"error,omitempty"`
 }
 
 type cursorToolCallEvent struct {
@@ -139,11 +148,12 @@ type cursorAPIErrorResponse struct {
 }
 
 type cursorRunResponse struct {
-	ID         string `json:"id"`
-	AgentID    string `json:"agentId"`
-	Status     string `json:"status"`
-	Result     string `json:"result"`
-	DurationMS int64  `json:"durationMs"`
+	ID         string            `json:"id"`
+	AgentID    string            `json:"agentId"`
+	Status     string            `json:"status"`
+	Result     string            `json:"result"`
+	DurationMS int64             `json:"durationMs"`
+	Error      *cursorErrorEvent `json:"error,omitempty"`
 }
 
 type cursorUsage struct {

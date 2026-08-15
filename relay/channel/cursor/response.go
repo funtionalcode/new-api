@@ -180,8 +180,10 @@ func (a *Adaptor) doResponse(
 	var streamedThinking strings.Builder
 	finalText := ""
 	resultStatus := ""
+	runError := cursorErrorEvent{}
 	upstreamError := cursorErrorEvent{}
 	lastClientToolCollision := cursorToolCallEvent{}
+	lastToolCall := cursorToolCallEvent{}
 	firstChunk := true
 	thinkingStreamed := false
 	clientOutputStarted := false
@@ -276,6 +278,9 @@ func (a *Adaptor) doResponse(
 			}
 			resultStatus = result.Status
 			finalText = result.Text
+			if result.Error != nil {
+				runError = *result.Error
+			}
 		case "status":
 			var status cursorResultEvent
 			if err := common.Unmarshal(event.Data, &status); err != nil {
@@ -287,6 +292,7 @@ func (a *Adaptor) doResponse(
 			if err := common.Unmarshal(event.Data, &toolCall); err != nil {
 				return fmt.Errorf("cursor channel: decode tool call event: %w", err)
 			}
+			lastToolCall = toolCall
 			if cursorExternalToolAliasForName(allowedExternalTools, toolCall.Name) != "" {
 				lastClientToolCollision = toolCall
 			}
@@ -320,6 +326,9 @@ func (a *Adaptor) doResponse(
 			}
 			resultStatus = run.Status
 			finalText = run.Result
+			if run.Error != nil {
+				runError = *run.Error
+			}
 			terminal = cursorRunTerminal(resultStatus)
 			upstreamError = cursorErrorEvent{}
 		}
@@ -342,6 +351,9 @@ func (a *Adaptor) doResponse(
 			resultStatus = run.Status
 			if strings.TrimSpace(run.Result) != "" {
 				finalText = run.Result
+			}
+			if run.Error != nil {
+				runError = *run.Error
 			}
 			terminal = cursorRunTerminal(resultStatus)
 		}
@@ -378,7 +390,7 @@ func (a *Adaptor) doResponse(
 			resultStatus = "missing"
 		}
 		message := fmt.Sprintf("cursor channel: run ended with status %s", resultStatus)
-		if detail := cursorRunErrorDetail(finalText, lastClientToolCollision.Name); detail != "" {
+		if detail := cursorRunErrorDetail(finalText, runError, lastToolCall); detail != "" {
 			message += ": " + detail
 		}
 		return nil, types.NewOpenAIError(errors.New(message), types.ErrorCodeBadResponse, http.StatusBadGateway)
@@ -650,20 +662,78 @@ func cursorCloudEnvironmentRefusal(text string) bool {
 			(strings.Contains(normalized, "can't complete") || strings.Contains(normalized, "cannot complete")))
 }
 
-func cursorRunErrorDetail(text string, internalToolName string) string {
-	detail := strings.Join(strings.Fields(text), " ")
-	if detail != "" {
-		runes := []rune(detail)
-		if len(runes) > 1000 {
-			detail = string(runes[:1000]) + "…"
+func cursorRunErrorDetail(text string, runError cursorErrorEvent, toolCall cursorToolCallEvent) string {
+	detail := strings.TrimSpace(runError.Message)
+	if code := strings.TrimSpace(runError.Code); code != "" {
+		if detail == "" {
+			detail = code
+		} else {
+			detail = code + ": " + detail
 		}
-		return detail
 	}
-	internalToolName = strings.TrimSpace(internalToolName)
-	if internalToolName == "" {
+	if detail == "" {
+		detail = strings.TrimSpace(text)
+	}
+	if detail == "" {
+		detail = cursorToolCallErrorDetail(toolCall)
+	}
+	detail = strings.Join(strings.Fields(detail), " ")
+	if detail == "" {
+		toolName := strings.TrimSpace(toolCall.Name)
+		if toolName == "" {
+			return ""
+		}
+		detail = fmt.Sprintf("after Cursor tool %q", toolName)
+	}
+	runes := []rune(detail)
+	if len(runes) > 1000 {
+		detail = string(runes[:1000]) + "…"
+	}
+	return detail
+}
+
+func cursorToolCallErrorDetail(toolCall cursorToolCallEvent) string {
+	if toolCall.Result == nil {
 		return ""
 	}
-	return fmt.Sprintf("after Cursor internal tool %q", internalToolName)
+	toolName := strings.TrimSpace(toolCall.Name)
+	prefix := "Cursor tool failed"
+	if toolName != "" {
+		prefix = fmt.Sprintf("Cursor tool %q failed", toolName)
+	}
+
+	resultDetail := ""
+	switch result := toolCall.Result.(type) {
+	case string:
+		resultDetail = result
+	case map[string]any:
+		for _, key := range []string{"error", "message", "reason", "stderr", "cause"} {
+			value, exists := result[key]
+			if !exists || value == nil {
+				continue
+			}
+			if valueString, ok := value.(string); ok {
+				resultDetail = valueString
+			} else if encoded, err := common.Marshal(value); err == nil {
+				resultDetail = string(encoded)
+			}
+			if strings.TrimSpace(resultDetail) != "" {
+				break
+			}
+		}
+		if resultDetail == "" {
+			if success, exists := result["success"].(bool); exists && !success {
+				if encoded, err := common.Marshal(result); err == nil {
+					resultDetail = string(encoded)
+				}
+			}
+		}
+	}
+	resultDetail = strings.TrimSpace(resultDetail)
+	if resultDetail == "" {
+		return ""
+	}
+	return prefix + ": " + resultDetail
 }
 
 func mergeCursorUsage(info *relaycommon.RelayInfo, prior *dto.Usage, current *dto.Usage) *dto.Usage {
