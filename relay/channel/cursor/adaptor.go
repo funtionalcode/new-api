@@ -279,6 +279,13 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		if len(continuation) == 0 {
 			return nil, errors.New("cursor channel: persistent agent continuation has no new client message")
 		}
+		busyFallback, err := cursorCreateAgentRequest(transcriptMessages, externalToolsPrompt, modelSelection)
+		if err != nil {
+			return nil, err
+		}
+		if c != nil {
+			c.Set(cursorBusyFallbackContextKey, busyFallback)
+		}
 		promptImages, err := cursorPromptImages(continuation)
 		if err != nil {
 			return nil, cursorInvalidRequest(err)
@@ -314,7 +321,15 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 			Name:   "new-api channel test",
 		}, nil
 	}
-	promptImages, err := cursorPromptImages(transcriptMessages)
+	return cursorCreateAgentRequest(transcriptMessages, externalToolsPrompt, modelSelection)
+}
+
+func cursorCreateAgentRequest(
+	messages []cursorTranscriptMessage,
+	externalToolsPrompt string,
+	model cursorModelSelection,
+) (*createAgentRequest, error) {
+	promptImages, err := cursorPromptImages(messages)
 	if err != nil {
 		return nil, cursorInvalidRequest(err)
 	}
@@ -322,7 +337,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	var transcript strings.Builder
 	transcript.WriteString("You are continuing a client chat. Do not use Cursor's repository, shell, file editing, or artifact tools.\n")
 	transcript.WriteString("Conversation transcript follows as JSON Lines. Respect each message role and all prior context.\n")
-	for _, message := range transcriptMessages {
+	for _, message := range messages {
 		line, err := common.Marshal(message)
 		if err != nil {
 			return nil, fmt.Errorf("cursor channel: encode conversation: %w", err)
@@ -335,7 +350,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 
 	return &createAgentRequest{
 		Prompt: cursorPrompt{Text: transcript.String(), Images: promptImages},
-		Model:  modelSelection,
+		Model:  model,
 		Name:   "new-api text chat",
 	}, nil
 }
@@ -648,6 +663,39 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 	response, err := a.doCursorAPIRequest(c.Request.Context(), c, info, http.MethodPost, requestPath, bytes.NewReader(body), false)
 	if err != nil {
 		return nil, err
+	}
+	if agentID != "" && persistent && response.StatusCode == http.StatusConflict {
+		responseBody, readErr := io.ReadAll(response.Body)
+		service.CloseResponseBodyGracefully(response)
+		if readErr != nil {
+			return nil, fmt.Errorf("cursor channel: read create run error response: %w", readErr)
+		}
+		var errorResponse cursorAPIErrorResponse
+		unmarshalErr := common.Unmarshal(responseBody, &errorResponse)
+		busy := unmarshalErr == nil && (strings.EqualFold(strings.TrimSpace(errorResponse.Error.Code), cursorAgentBusyCode) ||
+			strings.EqualFold(strings.TrimSpace(errorResponse.Error.Message), "Agent already has an active run"))
+		fallbackValue, fallbackExists := c.Get(cursorBusyFallbackContextKey)
+		fallback, fallbackValid := fallbackValue.(*createAgentRequest)
+		if busy && fallbackExists && fallbackValid && fallback != nil {
+			body, err = common.Marshal(fallback)
+			if err != nil {
+				return nil, fmt.Errorf("cursor channel: encode busy Agent fallback: %w", err)
+			}
+			body, err = a.resolveCursorCreateAgentModel(c, info, body)
+			if err != nil {
+				return nil, err
+			}
+			logger.LogWarn(c, "cursor channel: persistent Agent already has an active run; use one ephemeral Agent for this request")
+			agentID = ""
+			persistent = false
+			creatingPersistentAgent = false
+			response, err = a.doCursorAPIRequest(c.Request.Context(), c, info, http.MethodPost, "/v1/agents", bytes.NewReader(body), false)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			response.Body = io.NopCloser(bytes.NewReader(responseBody))
+		}
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return response, nil

@@ -16,6 +16,7 @@ const (
 	cursorAgentIDContextKey       = "cursor_agent_id"
 	cursorPersistentContextKey    = "cursor_persistent"
 	cursorExternalToolsContextKey = "cursor_external_tools"
+	cursorBusyFallbackContextKey  = "cursor_busy_fallback"
 	cursorAgentIDInternalHeader   = "X-New-API-Cursor-Agent-ID"
 	cursorRunIDInternalHeader     = "X-New-API-Cursor-Run-ID"
 	cursorPersistentInternalKey   = "X-New-API-Cursor-Persistent"
@@ -26,6 +27,7 @@ const (
 	cursorAgentSignatureVersion   = "v2"
 	cursorExternalToolAliasPrefix = "client_external_tool_"
 	cursorCleanupCommand          = "清理会话agent"
+	cursorAgentBusyCode           = "agent_busy"
 	cursorMaxPromptImages         = 5
 	cursorMaxImageBytes           = 15 * 1024 * 1024
 	cursorRunPollInterval         = time.Second

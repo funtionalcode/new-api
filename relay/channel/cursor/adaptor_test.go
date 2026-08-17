@@ -1748,6 +1748,87 @@ func TestCursorAdaptorReusesServerManagedClaudeCodeAgentUntilCleanup(t *testing.
 	}, requests)
 }
 
+func TestCursorAdaptorUsesEphemeralAgentWhenPersistentAgentIsBusy(t *testing.T) {
+	persistentAgentID := "bc-00000000-0000-0000-0000-000000000001"
+	ephemeralAgentID := "bc-00000000-0000-0000-0000-000000000002"
+	requests := make([]string, 0, 5)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.RequestURI())
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/agents/"+persistentAgentID+"/runs":
+			var request createRunRequest
+			require.NoError(t, common.DecodeJson(r.Body, &request))
+			assert.Equal(t, "second question", request.Prompt.Text)
+			w.WriteHeader(http.StatusConflict)
+			_, _ = w.Write([]byte(`{"error":{"code":"agent_busy","message":"Agent already has an active run"}}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/agents":
+			var request createAgentRequest
+			require.NoError(t, common.DecodeJson(r.Body, &request))
+			assert.Equal(t, "claude-opus-5", request.Model.ID)
+			assert.Contains(t, request.Prompt.Text, "first question")
+			assert.Contains(t, request.Prompt.Text, "first reply")
+			assert.Contains(t, request.Prompt.Text, "second question")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"agent":{"id":"` + ephemeralAgentID + `"},"run":{"id":"run-ephemeral"}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agents/"+ephemeralAgentID+"/runs/run-ephemeral/stream":
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte("event: result\ndata: {\"runId\":\"run-ephemeral\",\"status\":\"FINISHED\",\"text\":\"fallback reply\"}\n\n"))
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agents/"+ephemeralAgentID+"/usage":
+			_, _ = w.Write([]byte(`{"runs":[{"id":"run-ephemeral","usage":{"inputTokens":8,"outputTokens":3,"cacheWriteTokens":0,"cacheReadTokens":2,"totalTokens":13}}]}`))
+		case r.Method == http.MethodDelete && r.URL.Path == "/v1/agents/"+ephemeralAgentID:
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	c := newCursorTestContext(t)
+	setCursorTestAgentHeaders(c, persistentAgentID)
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatClaude,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelId:            42,
+			ChannelType:          constant.ChannelTypeCursor,
+			ChannelBaseUrl:       server.URL,
+			ChannelMultiKeyIndex: 0,
+			ApiKey:               "cursor-secret",
+			UpstreamModelName:    "claude-opus-5",
+		},
+	}
+	adaptor := &Adaptor{}
+	converted, err := adaptor.ConvertOpenAIRequest(c, info, &dto.GeneralOpenAIRequest{
+		Model: "claude-opus-5",
+		Messages: []dto.Message{
+			{Role: "user", Content: "first question"},
+			{Role: "assistant", Content: "first reply"},
+			{Role: "user", Content: "second question"},
+		},
+	})
+	require.NoError(t, err)
+	assert.IsType(t, &createRunRequest{}, converted)
+	body, err := common.Marshal(converted)
+	require.NoError(t, err)
+
+	upstream, err := adaptor.DoRequest(c, info, bytes.NewReader(body))
+	require.NoError(t, err)
+	response, ok := upstream.(*http.Response)
+	require.True(t, ok)
+	assert.Equal(t, ephemeralAgentID, response.Header.Get(cursorAgentIDInternalHeader))
+	assert.Equal(t, "false", response.Header.Get(cursorPersistentInternalKey))
+	usage, apiErr := adaptor.DoResponse(c, response, info)
+	require.Nil(t, apiErr)
+	require.NotNil(t, usage)
+	assert.Equal(t, persistentAgentID, c.Writer.Header().Get(constant.CursorAgentIDHeader))
+	assert.Equal(t, []string{
+		"POST /v1/agents/" + persistentAgentID + "/runs",
+		"POST /v1/agents",
+		"GET /v1/agents/" + ephemeralAgentID + "/runs/run-ephemeral/stream",
+		"GET /v1/agents/" + ephemeralAgentID + "/usage?runId=run-ephemeral",
+		"DELETE /v1/agents/" + ephemeralAgentID,
+	}, requests)
+}
+
 func TestCursorAdaptorFallsBackToRunWhenStreamIsUnavailable(t *testing.T) {
 	agentID := "bc-00000000-0000-0000-0000-000000000001"
 	runID := "run-00000000-0000-0000-0000-000000000001"
