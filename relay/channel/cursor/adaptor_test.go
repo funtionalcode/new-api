@@ -883,6 +883,60 @@ func TestCursorStreamResponseRecoversCorrectedMalformedExternalToolEnvelope(t *t
 	assert.NotContains(t, body, "cursor_external_tool_calls")
 }
 
+func TestCursorStreamResponseConvertsToolEnvelopeAfterChineseFailureReport(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	c.Set(cursorExternalToolsContextKey, map[string]cursorExternalToolSpec{
+		"client_external_tool_3": {Kind: "function", Name: "exec_command"},
+	})
+	common.SetContextKey(c, common.RequestIdKey, "req-cursor-claude-chinese-tool-report")
+
+	preamble := "后端代理又一次因输出模式混淆（把工具调用泄漏成最终文本）导致报告丢失，但它应该已落地大量改动。与其再依赖不可靠的报告，我直接核验两仓的真实改动并跑测试。\n\n"
+	envelope := "{\"cursor_external_tool_calls\":[{\"id\":\"call_check_git\",\"name\":\"client_external_tool_3\",\"arguments\":{\"command\":\"cd /workspace && git\nstatus --short\",\"description\":\"Show uncommitted changes\"}}]}"
+	assistantPreamble, err := common.Marshal(cursorTextEvent{Text: preamble})
+	require.NoError(t, err)
+	assistantEnvelope, err := common.Marshal(cursorTextEvent{Text: envelope})
+	require.NoError(t, err)
+	result, err := common.Marshal(cursorResultEvent{RunID: "run-1", Status: "FINISHED", Text: preamble + envelope})
+	require.NoError(t, err)
+
+	responseHeader := make(http.Header)
+	responseHeader.Set(cursorClientStreamHeader, "true")
+	responseHeader.Set(cursorSkipRemoteUsageHeader, "true")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     responseHeader,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			"event: assistant",
+			"data: " + string(assistantPreamble),
+			"",
+			"event: assistant",
+			"data: " + string(assistantEnvelope),
+			"",
+			"event: result",
+			"data: " + string(result),
+			"",
+		}, "\n"))),
+	}
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatClaude,
+		IsStream:    true,
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "claude-opus-5"},
+	}
+
+	usage, apiErr := (&Adaptor{}).DoResponse(c, resp, info)
+	require.Nil(t, apiErr)
+	require.NotNil(t, usage)
+	body := recorder.Body.String()
+	assert.Contains(t, body, `"type":"tool_use","id":"call_check_git","name":"exec_command"`)
+	assert.Contains(t, body, `"stop_reason":"tool_use"`)
+	assert.Contains(t, body, `git\\nstatus --short`)
+	assert.NotContains(t, body, "后端代理又一次")
+	assert.NotContains(t, body, "cursor_external_tool_calls")
+}
+
 func TestCursorResponseRetriesInternalAgentCollisionWithClientTool(t *testing.T) {
 	agentID := "bc-00000000-0000-0000-0000-000000000071"
 	failedRunID := "run-00000000-0000-0000-0000-000000000071"

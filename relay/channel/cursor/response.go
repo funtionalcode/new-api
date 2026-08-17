@@ -932,6 +932,15 @@ func cursorExternalToolStreamCandidate(text string) bool {
 			return false
 		}
 	}))
+	toolCallMentioned := strings.Contains(lowerPayload, "tool call") || strings.Contains(lowerPayload, "工具调用")
+	if toolCallMentioned && (strings.Contains(lowerPayload, "final text") ||
+		strings.Contains(lowerPayload, "最终文本") ||
+		strings.Contains(lowerPayload, "external tool") ||
+		strings.Contains(lowerPayload, "外部工具") ||
+		strings.Contains(lowerPayload, "leak") ||
+		strings.Contains(lowerPayload, "泄漏")) {
+		return true
+	}
 	for _, correctionPrefix := range []string{
 		"i made an error by invoking",
 		"i mistakenly invoked",
