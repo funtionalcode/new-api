@@ -883,7 +883,7 @@ func TestCursorStreamResponseRecoversCorrectedMalformedExternalToolEnvelope(t *t
 	assert.NotContains(t, body, "cursor_external_tool_calls")
 }
 
-func TestCursorStreamResponseConvertsToolEnvelopeAfterChineseFailureReport(t *testing.T) {
+func TestCursorStreamResponseConvertsToolEnvelopeAfterProgressText(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -891,13 +891,17 @@ func TestCursorStreamResponseConvertsToolEnvelopeAfterChineseFailureReport(t *te
 	c.Set(cursorExternalToolsContextKey, map[string]cursorExternalToolSpec{
 		"client_external_tool_3": {Kind: "function", Name: "exec_command"},
 	})
-	common.SetContextKey(c, common.RequestIdKey, "req-cursor-claude-chinese-tool-report")
+	common.SetContextKey(c, common.RequestIdKey, "req-cursor-claude-progress-then-tool")
 
-	preamble := "后端代理又一次因输出模式混淆（把工具调用泄漏成最终文本）导致报告丢失，但它应该已落地大量改动。与其再依赖不可靠的报告，我直接核验两仓的真实改动并跑测试。\n\n"
-	envelope := "{\"cursor_external_tool_calls\":[{\"id\":\"call_check_git\",\"name\":\"client_external_tool_3\",\"arguments\":{\"command\":\"cd /workspace && git\nstatus --short\",\"description\":\"Show uncommitted changes\"}}]}"
+	preamble := "两个仓库都有可用的 .venv，直接用 venv 的 pytest 跑测试，绕过 uv 的依赖重解析。\n\n"
+	envelope := "{\"cursor_external_tool_calls\":[{\"id\":\"call_check_git\",\"name\":\"client_external_tool_3\",\"arguments\":{\"command\":\"cd /workspace && git\nstatus --short\",\"description\":\"Show uncommitted changes\"}},{\"id\":\"call_run_tests\",\"name\":\"client_external_tool_3\",\"arguments\":{\"command\":\"cd /workspace && pytest -q\",\"description\":\"Run tests\"}}]}"
 	assistantPreamble, err := common.Marshal(cursorTextEvent{Text: preamble})
 	require.NoError(t, err)
-	assistantEnvelope, err := common.Marshal(cursorTextEvent{Text: envelope})
+	splitAt := strings.Index(envelope, "external_tool_calls") + len("external_")
+	require.Greater(t, splitAt, len("external_"))
+	assistantEnvelopeStart, err := common.Marshal(cursorTextEvent{Text: envelope[:splitAt]})
+	require.NoError(t, err)
+	assistantEnvelopeEnd, err := common.Marshal(cursorTextEvent{Text: envelope[splitAt:]})
 	require.NoError(t, err)
 	result, err := common.Marshal(cursorResultEvent{RunID: "run-1", Status: "FINISHED", Text: preamble + envelope})
 	require.NoError(t, err)
@@ -913,7 +917,10 @@ func TestCursorStreamResponseConvertsToolEnvelopeAfterChineseFailureReport(t *te
 			"data: " + string(assistantPreamble),
 			"",
 			"event: assistant",
-			"data: " + string(assistantEnvelope),
+			"data: " + string(assistantEnvelopeStart),
+			"",
+			"event: assistant",
+			"data: " + string(assistantEnvelopeEnd),
 			"",
 			"event: result",
 			"data: " + string(result),
@@ -930,11 +937,12 @@ func TestCursorStreamResponseConvertsToolEnvelopeAfterChineseFailureReport(t *te
 	require.Nil(t, apiErr)
 	require.NotNil(t, usage)
 	body := recorder.Body.String()
+	assert.Contains(t, body, "两个仓库都有可用的 .venv")
 	assert.Contains(t, body, `"type":"tool_use","id":"call_check_git","name":"exec_command"`)
+	assert.Contains(t, body, `"type":"tool_use","id":"call_run_tests","name":"exec_command"`)
 	assert.Contains(t, body, `"stop_reason":"tool_use"`)
 	assert.Contains(t, body, `git\\nstatus --short`)
-	assert.NotContains(t, body, "后端代理又一次")
-	assert.NotContains(t, body, "cursor_external_tool_calls")
+	assert.NotContains(t, body, "cursor_external_")
 }
 
 func TestCursorResponseRetriesInternalAgentCollisionWithClientTool(t *testing.T) {

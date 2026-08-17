@@ -187,6 +187,8 @@ func (a *Adaptor) doResponse(
 	firstChunk := true
 	thinkingStreamed := false
 	clientOutputStarted := false
+	externalToolEnvelopeDetected := false
+	pendingAssistantText := ""
 
 	if clientStream {
 		helper.SetEventStreamHeaders(c)
@@ -213,6 +215,9 @@ func (a *Adaptor) doResponse(
 				info.FirstResponseTime = time.Now()
 				firstChunk = false
 			}
+			if externalToolEnvelopeDetected {
+				return nil
+			}
 			chunkText := textEvent.Text
 			if bufferAssistantForTools {
 				if lastClientToolCollision.Name != "" || cursorExternalToolStreamCandidate(streamedText.String()) {
@@ -220,6 +225,15 @@ func (a *Adaptor) doResponse(
 				}
 				bufferAssistantForTools = false
 				chunkText = streamedText.String()
+			}
+			visibleText, nextPendingText, detectedEnvelope := splitCursorExternalToolStreamText(pendingAssistantText, chunkText)
+			pendingAssistantText = nextPendingText
+			chunkText = visibleText
+			if detectedEnvelope {
+				externalToolEnvelopeDetected = true
+			}
+			if chunkText == "" {
+				return nil
 			}
 			if !thinkingStreamed && streamedThinking.Len() > 0 {
 				if err := writeCursorThinkingChunk(c, info, responsesStreamState, responseID, model, createdAt, streamedThinking.String()); err != nil {
@@ -400,11 +414,19 @@ func (a *Adaptor) doResponse(
 		return nil, types.NewOpenAIError(errors.New(message), types.ErrorCodeBadResponse, http.StatusBadGateway)
 	}
 	externalToolCalls, hasExternalToolCalls := parseCursorExternalToolCalls(finalText, allowedExternalTools)
-	if clientStream && !bufferAssistantForTools {
-		// Normal text has already been streamed, so a differing final result must not
-		// append a structured tool call to the same assistant turn.
-		externalToolCalls = nil
-		hasExternalToolCalls = false
+	if clientStream && !bufferAssistantForTools && !externalToolEnvelopeDetected {
+		if pendingAssistantText != "" && hasExternalToolCalls {
+			// The stream ended while the envelope marker was still split across
+			// assistant events. The terminal result is authoritative, so discard
+			// the pending protocol prefix and emit the parsed tool call.
+			pendingAssistantText = ""
+			externalToolEnvelopeDetected = true
+		} else {
+			// Normal text has already been streamed, so a differing final result
+			// must not append a structured tool call to the same assistant turn.
+			externalToolCalls = nil
+			hasExternalToolCalls = false
+		}
 	}
 	usage := a.getCursorUsage(c, info, resp, agentID, runID)
 	if usage == nil || !service.ValidUsage(usage) {
@@ -418,6 +440,25 @@ func (a *Adaptor) doResponse(
 				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 			}
 			thinkingStreamed = true
+		}
+		if pendingAssistantText != "" {
+			chunk := &dto.ChatCompletionsStreamResponse{
+				Id:      responseID,
+				Object:  "chat.completion.chunk",
+				Created: createdAt,
+				Model:   model,
+				Choices: []dto.ChatCompletionsStreamResponseChoice{{
+					Index: 0,
+					Delta: dto.ChatCompletionsStreamResponseChoiceDelta{
+						Role:    "assistant",
+						Content: &pendingAssistantText,
+					},
+				}},
+			}
+			if err := writeCursorStreamChunk(c, info, responsesStreamState, chunk); err != nil {
+				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+			}
+			pendingAssistantText = ""
 		}
 		if hasExternalToolCalls {
 			streamToolCalls := make([]dto.ToolCallResponse, 0, len(externalToolCalls))
@@ -908,6 +949,41 @@ func repairCursorExternalToolJSON(payload string) string {
 		}
 	}
 	return repaired.String()
+}
+
+func splitCursorExternalToolStreamText(pending string, incoming string) (visible string, nextPending string, detected bool) {
+	combined := pending + incoming
+	marker := `{"cursor_external_tool_calls"`
+	if markerIndex := strings.Index(combined, marker); markerIndex >= 0 {
+		visibleEnd := markerIndex
+		for _, fence := range []string{"```json\n", "```\n"} {
+			if strings.HasSuffix(combined[:visibleEnd], fence) {
+				visibleEnd -= len(fence)
+				break
+			}
+		}
+		return combined[:visibleEnd], "", true
+	}
+
+	prefixes := []string{marker, "```json\n" + marker, "```\n" + marker}
+	holdLength := 0
+	for _, prefix := range prefixes {
+		limit := len(combined)
+		if limit >= len(prefix) {
+			limit = len(prefix) - 1
+		}
+		for length := limit; length > holdLength; length-- {
+			if strings.HasSuffix(combined, prefix[:length]) {
+				holdLength = length
+				break
+			}
+		}
+	}
+	if holdLength == 0 {
+		return combined, "", false
+	}
+	splitAt := len(combined) - holdLength
+	return combined[:splitAt], combined[splitAt:], false
 }
 
 func cursorExternalToolStreamCandidate(text string) bool {
