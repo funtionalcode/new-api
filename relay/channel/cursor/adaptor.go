@@ -152,6 +152,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		var protocol strings.Builder
 		protocol.WriteString("\nThe client exposes external tools that run in the client's own environment and can access its files. ")
 		protocol.WriteString("The listed tool names are client-only aliases. Never invoke Cursor's internal Agent, subagent, repository, shell, file, or artifact tools, even when they appear equivalent. ")
+		protocol.WriteString("Cursor's /agent directory is a remote cloud workspace and is never evidence about the client's files. Any request to inspect, search, edit, build, or run the client's code must use the relevant client external tool. ")
 		protocol.WriteString("Do not claim that client-local files are unavailable before requesting the relevant external tools. ")
 		protocol.WriteString("When an external tool is needed, return only one valid JSON object with no preamble, apology, explanation, Markdown fence, or trailing text. JSON-escape all quotes, newlines, and other string characters. For function tools use this exact shape: ")
 		protocol.WriteString(`{"cursor_external_tool_calls":[{"id":"call_unique","name":"tool_name","arguments":{}}]}`)
@@ -759,11 +760,18 @@ func (a *Adaptor) startCursorExternalToolRecoveryRun(
 	if c == nil || c.Request == nil {
 		return nil, errors.New("cursor channel: request context is required for external tool recovery")
 	}
+	internalToolName = strings.TrimSpace(internalToolName)
 	recoveryPrompt := fmt.Sprintf(
-		"The previous run incorrectly invoked Cursor's internal %q tool. Do not use or retry any Cursor internal tools. Re-read the client external-tool protocol and schema from the preceding prompt, then request the matching client tool alias %q. Return only the valid cursor_external_tool_calls JSON object with fully escaped string values and no other text.",
-		strings.TrimSpace(internalToolName),
+		"The previous run inspected Cursor's remote cloud workspace instead of the client's workspace. Do not use or retry any Cursor internal tools. Re-read the client external-tool protocol and schema from the preceding prompt, then request the matching client tool alias %q. Return only the valid cursor_external_tool_calls JSON object with fully escaped string values and no other text.",
 		clientToolAlias,
 	)
+	if internalToolName != "" {
+		recoveryPrompt = fmt.Sprintf(
+			"The previous run incorrectly invoked Cursor's internal %q tool against the remote cloud workspace. Do not use or retry any Cursor internal tools. Re-read the client external-tool protocol and schema from the preceding prompt, then request the matching client tool alias %q. Return only the valid cursor_external_tool_calls JSON object with fully escaped string values and no other text.",
+			internalToolName,
+			clientToolAlias,
+		)
+	}
 	body, err := common.Marshal(createRunRequest{Prompt: cursorPrompt{Text: recoveryPrompt}})
 	if err != nil {
 		return nil, fmt.Errorf("cursor channel: encode external tool recovery run: %w", err)

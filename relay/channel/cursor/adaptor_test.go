@@ -996,6 +996,129 @@ func TestCursorResponseRetriesInternalAgentCollisionWithClientTool(t *testing.T)
 	assert.NotContains(t, body, "cursor_external_tool_calls")
 }
 
+func TestCursorStreamResponseReroutesInternalShellToClientWorkspace(t *testing.T) {
+	agentID := "bc-00000000-0000-0000-0000-000000000073"
+	initialRunID := "run-00000000-0000-0000-0000-000000000073"
+	recoveryRunID := "run-00000000-0000-0000-0000-000000000074"
+	toolEnvelope := `{"cursor_external_tool_calls":[{"id":"call_exec","name":"client_external_tool_1","arguments":{"cmd":"pwd && git status","workdir":"/client/workspace"}}]}`
+	recoveryRequest := make(chan createRunRequest, 1)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/agents/"+agentID+"/runs":
+			var request createRunRequest
+			if err := common.DecodeJson(r.Body, &request); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			recoveryRequest <- request
+			_, _ = w.Write([]byte(`{"run":{"id":"` + recoveryRunID + `"}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agents/"+agentID+"/runs/"+recoveryRunID+"/stream":
+			_, _ = w.Write([]byte("event: assistant\ndata: {\"text\":\"" + strings.ReplaceAll(toolEnvelope, `"`, `\"`) + "\"}\n\nevent: result\ndata: {\"runId\":\"" + recoveryRunID + "\",\"status\":\"FINISHED\",\"text\":\"" + strings.ReplaceAll(toolEnvelope, `"`, `\"`) + "\"}\n\n"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	c.Set("id", 1)
+	c.Set(cursorExternalToolsContextKey, map[string]cursorExternalToolSpec{
+		"client_external_tool_1": {Kind: "function", Name: "exec_command"},
+		"exec_command":           {Kind: "function", Name: "exec_command"},
+	})
+	common.SetContextKey(c, common.RequestIdKey, "req-cursor-internal-shell-recovery")
+
+	refusal := "这个会话里没有任何代码仓库可改。工作目录 /agent 是空的，也访问不到本机路径。"
+	assistantEvent, err := common.Marshal(cursorTextEvent{Text: refusal})
+	require.NoError(t, err)
+	resultEvent, err := common.Marshal(cursorResultEvent{RunID: initialRunID, Status: "FINISHED", Text: refusal})
+	require.NoError(t, err)
+	responseHeader := make(http.Header)
+	responseHeader.Set(cursorAgentIDInternalHeader, agentID)
+	responseHeader.Set(cursorRunIDInternalHeader, initialRunID)
+	responseHeader.Set(cursorPersistentInternalKey, "true")
+	responseHeader.Set(cursorClientStreamHeader, "true")
+	responseHeader.Set(cursorSkipRemoteUsageHeader, "true")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     responseHeader,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			"event: tool_call",
+			`data: {"callId":"internal-shell","name":"Shell","status":"completed"}`,
+			"",
+			"event: assistant",
+			"data: " + string(assistantEvent),
+			"",
+			"event: result",
+			"data: " + string(resultEvent),
+			"",
+		}, "\n"))),
+	}
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatClaude,
+		IsStream:    true,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType:       constant.ChannelTypeCursor,
+			ChannelBaseUrl:    server.URL,
+			ApiKey:            "cursor-secret",
+			UpstreamModelName: "claude-opus-5",
+		},
+	}
+
+	usage, apiErr := (&Adaptor{}).DoResponse(c, resp, info)
+
+	require.Nil(t, apiErr)
+	require.NotNil(t, usage)
+	request := <-recoveryRequest
+	assert.Contains(t, request.Prompt.Text, `Cursor's internal "Shell" tool`)
+	assert.Contains(t, request.Prompt.Text, "remote cloud workspace")
+	assert.Contains(t, request.Prompt.Text, `client tool alias "client_external_tool_1"`)
+	body := recorder.Body.String()
+	assert.Contains(t, body, `"type":"tool_use","id":"call_exec","name":"exec_command"`)
+	assert.Contains(t, body, `"stop_reason":"tool_use"`)
+	assert.NotContains(t, body, refusal)
+	assert.NotContains(t, body, "cursor_external_tool_calls")
+}
+
+func TestCursorCloudEnvironmentRefusalRecognizesLocalizedWorkspaceFailures(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{
+			name: "chinese empty cloud workspace",
+			text: "这个会话里没有任何代码仓库可改，工作目录 /agent 是空的，也访问不到本机路径。",
+			want: true,
+		},
+		{
+			name: "english local workspace unavailable",
+			text: "The cloud agent only has access to /agent and cannot access your local workspace.",
+			want: true,
+		},
+		{
+			name: "normal repository result",
+			text: "I inspected /agent and found the repository ready for changes.",
+			want: false,
+		},
+		{
+			name: "normal answer",
+			text: "The requested change is complete.",
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, cursorCloudEnvironmentRefusal(tt.text))
+		})
+	}
+}
+
 func TestCursorResponseFetchesTerminalRunResultForErrorDetail(t *testing.T) {
 	agentID := "bc-00000000-0000-0000-0000-000000000081"
 	runID := "run-00000000-0000-0000-0000-000000000081"

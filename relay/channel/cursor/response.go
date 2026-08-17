@@ -215,7 +215,7 @@ func (a *Adaptor) doResponse(
 			}
 			chunkText := textEvent.Text
 			if bufferAssistantForTools {
-				if cursorExternalToolStreamCandidate(streamedText.String()) {
+				if lastClientToolCollision.Name != "" || cursorExternalToolStreamCandidate(streamedText.String()) {
 					return nil
 				}
 				bufferAssistantForTools = false
@@ -358,10 +358,14 @@ func (a *Adaptor) doResponse(
 			terminal = cursorRunTerminal(resultStatus)
 		}
 	}
+	cloudEnvironmentRefusal := resultStatus == "FINISHED" && cursorCloudEnvironmentRefusal(finalText)
 	clientToolAlias := cursorExternalToolAliasForName(allowedExternalTools, lastClientToolCollision.Name)
+	if clientToolAlias == "" && cloudEnvironmentRefusal {
+		clientToolAlias = cursorWorkspaceExternalToolAlias(allowedExternalTools)
+	}
 	canRecoverStream := !clientStream || !clientOutputStarted
 	shouldRecoverExternalTool := clientToolAlias != "" && canRecoverStream &&
-		(resultStatus == "ERROR" || (resultStatus == "FINISHED" && cursorCloudEnvironmentRefusal(finalText)))
+		(lastClientToolCollision.Name != "" || resultStatus == "ERROR" || cloudEnvironmentRefusal)
 	if allowExternalToolRecovery && agentID != "" && shouldRecoverExternalTool {
 		logger.LogWarn(c, fmt.Sprintf("cursor channel: intercepted internal tool %q for client tool %q; start one recovery run", lastClientToolCollision.Name, clientToolAlias))
 		failedUsage := a.getCursorUsage(c, info, resp, agentID, runID)
@@ -635,31 +639,107 @@ func parseCursorExternalToolCalls(text string, allowedTools map[string]cursorExt
 }
 
 func cursorExternalToolAliasForName(allowedTools map[string]cursorExternalToolSpec, name string) string {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return ""
+	if alias := cursorExternalToolAliasForCandidates(allowedTools, []string{name}); alias != "" {
+		return alias
 	}
-	for alias, spec := range allowedTools {
-		if !strings.HasPrefix(alias, cursorExternalToolAliasPrefix) {
+
+	normalizedName := normalizeCursorToolName(name)
+	var candidates []string
+	switch normalizedName {
+	case "shell", "terminal", "runterminalcmd", "runcommand", "terminalcommand", "bash":
+		candidates = []string{"exec_command", "Bash", "shell", "terminal", "run_terminal_cmd"}
+	case "read", "readfile", "openfile", "viewfile", "repository", "codebase":
+		candidates = []string{"Read", "exec_command", "Bash", "Grep", "Glob", "Agent"}
+	case "grep", "search", "searchfiles", "codesearch":
+		candidates = []string{"Grep", "exec_command", "Bash", "Agent"}
+	case "glob", "findfiles", "listfiles":
+		candidates = []string{"Glob", "exec_command", "Bash", "Agent"}
+	case "edit", "editfile", "write", "writefile", "patch", "applypatch":
+		candidates = []string{"apply_patch", "Edit", "Write", "exec_command", "Bash", "Agent"}
+	}
+	return cursorExternalToolAliasForCandidates(allowedTools, candidates)
+}
+
+func cursorWorkspaceExternalToolAlias(allowedTools map[string]cursorExternalToolSpec) string {
+	return cursorExternalToolAliasForCandidates(allowedTools, []string{
+		"exec_command", "Bash", "Agent", "Read", "Glob", "Grep", "apply_patch", "Edit", "Write",
+	})
+}
+
+func cursorExternalToolAliasForCandidates(allowedTools map[string]cursorExternalToolSpec, candidates []string) string {
+	for _, candidate := range candidates {
+		normalizedCandidate := normalizeCursorToolName(candidate)
+		if normalizedCandidate == "" {
 			continue
 		}
-		if cursorQualifiedToolName(spec.Namespace, spec.Name) == name || spec.Name == name {
-			return alias
+		matchedAlias := ""
+		for alias, spec := range allowedTools {
+			if !strings.HasPrefix(alias, cursorExternalToolAliasPrefix) {
+				continue
+			}
+			qualifiedName := cursorQualifiedToolName(spec.Namespace, spec.Name)
+			if normalizeCursorToolName(qualifiedName) != normalizedCandidate && normalizeCursorToolName(spec.Name) != normalizedCandidate {
+				continue
+			}
+			if matchedAlias == "" || alias < matchedAlias {
+				matchedAlias = alias
+			}
+		}
+		if matchedAlias != "" {
+			return matchedAlias
 		}
 	}
 	return ""
 }
 
+func normalizeCursorToolName(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	if name == "" {
+		return ""
+	}
+	return strings.NewReplacer("_", "", "-", "", " ", "", ".", "", "/", "").Replace(name)
+}
+
 func cursorCloudEnvironmentRefusal(text string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(text))
-	if normalized == "" || !strings.Contains(normalized, "cloud agent") {
+	if normalized == "" {
 		return false
 	}
-	return strings.Contains(normalized, "no filesystem") ||
+	englishUnavailable := strings.Contains(normalized, "no filesystem") ||
 		strings.Contains(normalized, "no file system") ||
 		strings.Contains(normalized, "only have access to /agent") ||
+		strings.Contains(normalized, "no repository") ||
+		strings.Contains(normalized, "repository is empty") ||
+		strings.Contains(normalized, "can't access your local") ||
+		strings.Contains(normalized, "cannot access your local") ||
 		(strings.Contains(normalized, "local mac") &&
 			(strings.Contains(normalized, "can't complete") || strings.Contains(normalized, "cannot complete")))
+	if englishUnavailable && (strings.Contains(normalized, "cloud agent") ||
+		strings.Contains(normalized, "/agent") ||
+		strings.Contains(normalized, "local mac") ||
+		strings.Contains(normalized, "local workspace")) {
+		return true
+	}
+
+	for _, marker := range []string{
+		"这个会话里没有任何代码仓库",
+		"这个会话没有任何代码仓库",
+		"工作目录 /agent 是空",
+		"/agent 是空的",
+		"本机路径不存在",
+		"本机的路径不存在",
+		"访问不到本机",
+		"无法访问本机",
+		"无法访问你的本地",
+		"看不到本地代码",
+		"没有本地代码仓库",
+		"没有仓库可以修改",
+	} {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func cursorRunErrorDetail(text string, runError cursorErrorEvent, toolCall cursorToolCallEvent) string {
@@ -841,13 +921,30 @@ func cursorExternalToolStreamCandidate(text string) bool {
 	if strings.Contains(payload, marker) {
 		return true
 	}
-	lowerPayload := strings.ToLower(payload)
+	if cursorCloudEnvironmentRefusal(payload) {
+		return true
+	}
+	lowerPayload := strings.ToLower(strings.TrimLeftFunc(payload, func(character rune) bool {
+		switch character {
+		case ' ', '\t', '\r', '\n', '-', '*', '>', '•', '●':
+			return true
+		default:
+			return false
+		}
+	}))
 	for _, correctionPrefix := range []string{
 		"i made an error by invoking",
 		"i mistakenly invoked",
 		"i accidentally invoked",
 		"i can't complete this task",
 		"i cannot complete this task",
+		"the cloud agent",
+		"this cloud agent",
+		"这个会话里没有任何代码仓库",
+		"这个会话没有任何代码仓库",
+		"工作目录 /agent",
+		"我确认过环境状态",
+		"我无法访问你的本地",
 	} {
 		if strings.HasPrefix(correctionPrefix, lowerPayload) || strings.HasPrefix(lowerPayload, correctionPrefix) {
 			return true
