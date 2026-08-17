@@ -173,6 +173,91 @@ export function isWebsocketLog(
   return other?.ws === true || other?.transport === 'websocket'
 }
 
+/**
+ * Return the total input context represented by a usage log.
+ *
+ * OpenAI-compatible usage already reports the full input total. Anthropic
+ * usage reports uncached input separately, so cached reads and writes must be
+ * added back to represent the actual context length.
+ */
+export function getLogContextSize(
+  log: UsageLog,
+  other: LogOtherData | null | undefined
+): number {
+  const explicitTotal = other?.input_tokens_total
+  if (
+    typeof explicitTotal === 'number' &&
+    Number.isFinite(explicitTotal) &&
+    explicitTotal > 0
+  ) {
+    return Math.floor(explicitTotal)
+  }
+
+  const promptTokens =
+    Number.isFinite(log.prompt_tokens) && log.prompt_tokens > 0
+      ? Math.floor(log.prompt_tokens)
+      : 0
+  const isAnthropicUsage =
+    other?.usage_semantic === 'anthropic' || other?.claude === true
+  if (!isAnthropicUsage) return promptTokens
+
+  const cacheReadTokens =
+    typeof other?.cache_tokens === 'number' &&
+    Number.isFinite(other.cache_tokens) &&
+    other.cache_tokens > 0
+      ? Math.floor(other.cache_tokens)
+      : 0
+  const splitCacheWriteTokens =
+    (typeof other?.cache_creation_tokens_5m === 'number' &&
+    Number.isFinite(other.cache_creation_tokens_5m) &&
+    other.cache_creation_tokens_5m > 0
+      ? Math.floor(other.cache_creation_tokens_5m)
+      : 0) +
+    (typeof other?.cache_creation_tokens_1h === 'number' &&
+    Number.isFinite(other.cache_creation_tokens_1h) &&
+    other.cache_creation_tokens_1h > 0
+      ? Math.floor(other.cache_creation_tokens_1h)
+      : 0)
+  const normalizedCacheWriteTokens =
+    typeof other?.cache_write_tokens === 'number' &&
+    Number.isFinite(other.cache_write_tokens) &&
+    other.cache_write_tokens > 0
+      ? Math.floor(other.cache_write_tokens)
+      : 0
+  const legacyCacheWriteTokens =
+    typeof other?.cache_creation_tokens === 'number' &&
+    Number.isFinite(other.cache_creation_tokens) &&
+    other.cache_creation_tokens > 0
+      ? Math.floor(other.cache_creation_tokens)
+      : 0
+  const cacheWriteTokens =
+    normalizedCacheWriteTokens ||
+    splitCacheWriteTokens ||
+    legacyCacheWriteTokens
+
+  return promptTokens + cacheReadTokens + cacheWriteTokens
+}
+
+const CONTEXT_SIZE_FORMAT = new Intl.NumberFormat('en-US', {
+  maximumFractionDigits: 1,
+})
+
+export function formatLogContextSize(contextSize: number): string {
+  if (!Number.isFinite(contextSize) || contextSize <= 0) return '0'
+
+  const normalizedSize = Math.floor(contextSize)
+  if (normalizedSize >= 100_000_000) {
+    return `${CONTEXT_SIZE_FORMAT.format(normalizedSize / 100_000_000)}亿`
+  }
+  if (normalizedSize >= 1_000_000) {
+    return `${CONTEXT_SIZE_FORMAT.format(normalizedSize / 1_000_000)}M`
+  }
+  if (normalizedSize >= 1_000) {
+    return `${CONTEXT_SIZE_FORMAT.format(normalizedSize / 1_000)}K`
+  }
+  return String(normalizedSize)
+}
+
 export function getReasoningEffortVariant(
   effort: string | undefined
 ): StatusBadgeProps['variant'] {

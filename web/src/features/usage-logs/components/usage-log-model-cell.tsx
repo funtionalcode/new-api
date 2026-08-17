@@ -27,6 +27,7 @@ import {
   CancelCircleIcon,
   AddCircleIcon,
   Delete02Icon,
+  InputLongTextIcon,
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { useTranslation } from 'react-i18next'
@@ -41,7 +42,9 @@ import {
 
 import type { UsageLog } from '../data/schema'
 import {
+  formatLogContextSize,
   formatModelName,
+  getLogContextSize,
   getReasoningEffortVariant,
   isWebsocketLog,
   parseLogOther,
@@ -62,6 +65,11 @@ export function UsageLogModelCell(props: { log: UsageLog }) {
   const { t } = useTranslation()
   const other = parseLogOther(props.log.other)
   const modelInfo = formatModelName(props.log)
+  const contextSize = getLogContextSize(props.log, other)
+  const contextSizeLabel =
+    contextSize > 0
+      ? `${t('Context Size')}: ${formatLogContextSize(contextSize)}`
+      : undefined
   const reasoningEffort = other?.reasoning_effort?.trim()
   const reasoningEffortLabel = reasoningEffort
     ? `${t('Reasoning Effort')}: ${reasoningEffort}`
@@ -89,6 +97,34 @@ export function UsageLogModelCell(props: { log: UsageLog }) {
         modelName={modelInfo.name}
         actualModel={modelInfo.actualModel}
       />
+      {contextSizeLabel ? (
+        <TooltipProvider delay={0}>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <StatusBadge
+                  variant='grey'
+                  size='sm'
+                  copyable={false}
+                  showDot={false}
+                  aria-label={contextSizeLabel}
+                  role='img'
+                  tabIndex={0}
+                  data-context-size={contextSize}
+                  className='border-border/60 bg-muted/30 size-5 shrink-0 cursor-help justify-center border p-0 [&>svg]:size-3.5'
+                >
+                  <HugeiconsIcon
+                    icon={InputLongTextIcon}
+                    strokeWidth={2}
+                    aria-hidden='true'
+                  />
+                </StatusBadge>
+              }
+            />
+            <TooltipContent>{contextSizeLabel}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      ) : null}
       {showCursorAgentLifecycle ? (
         <TooltipProvider delay={0}>
           <Tooltip>

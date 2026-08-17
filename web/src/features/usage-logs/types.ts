@@ -184,6 +184,8 @@ export interface LogOtherData {
   transport?: string
   request_conversion?: string[]
   ws?: boolean
+  usage_semantic?: string
+  input_tokens_total?: number
   audio?: boolean
   audio_input?: number
   audio_output?: number
@@ -193,6 +195,7 @@ export interface LogOtherData {
   cache_creation_tokens?: number
   cache_creation_tokens_5m?: number
   cache_creation_tokens_1h?: number
+  cache_write_tokens?: number
   claude?: boolean
   model_ratio?: number
   completion_ratio?: number
