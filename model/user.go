@@ -229,10 +229,15 @@ func IsModelAllowedByUserLimit(modelName string, userModelLimit map[string]bool)
 	if userModelLimit == nil {
 		return false
 	}
-	if userModelLimit[modelName] {
+	if userModelLimit[modelName] || userModelLimit[ratio_setting.FormatMatchingModelName(modelName)] {
 		return true
 	}
-	return userModelLimit[ratio_setting.FormatMatchingModelName(modelName)]
+
+	baseModelName := strings.TrimSuffix(modelName, ratio_setting.CompactModelSuffix)
+	if baseModelName == modelName {
+		return false
+	}
+	return userModelLimit[baseModelName] || userModelLimit[ratio_setting.FormatMatchingModelName(baseModelName)]
 }
 
 func UpdateUserSetting(userId int, setting dto.UserSetting) error {
