@@ -24,6 +24,8 @@ import type {
 } from '../../types'
 import { formatMessageForAPI, isValidMessage } from '../message/message-utils'
 
+const GLM_5_3_DEFAULT_MAX_TOKENS = 65536
+
 /**
  * Build API request payload from messages and config
  */
@@ -54,6 +56,8 @@ export function buildChatCompletionPayload(
 
   if (parameterEnabled.max_tokens) {
     payload.max_tokens = config.max_tokens
+  } else if (config.model.trim().toLowerCase() === 'glm-5.3') {
+    payload.max_tokens = GLM_5_3_DEFAULT_MAX_TOKENS
   }
 
   if (parameterEnabled.frequency_penalty) {
