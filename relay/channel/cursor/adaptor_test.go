@@ -1829,6 +1829,60 @@ func TestCursorAdaptorUsesEphemeralAgentWhenPersistentAgentIsBusy(t *testing.T) 
 	}, requests)
 }
 
+func TestCursorAdaptorDoesNotUseEphemeralAgentWhenSerializedPersistentAgentIsBusy(t *testing.T) {
+	persistentAgentID := "bc-00000000-0000-0000-0000-000000000011"
+	requests := make([]string, 0, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.RequestURI())
+		if r.Method == http.MethodPost && r.URL.Path == "/v1/agents/"+persistentAgentID+"/runs" {
+			w.WriteHeader(http.StatusConflict)
+			_, _ = w.Write([]byte(`{"error":{"code":"agent_busy","message":"Agent already has an active run"}}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(server.Close)
+
+	c := newCursorTestContext(t)
+	setCursorTestAgentHeaders(c, persistentAgentID)
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatClaude,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelId:            42,
+			ChannelType:          constant.ChannelTypeCursor,
+			ChannelBaseUrl:       server.URL,
+			ChannelMultiKeyIndex: 0,
+			ApiKey:               "cursor-secret",
+			UpstreamModelName:    "claude-opus-5",
+			ChannelSetting: dto.ChannelSettings{
+				CursorAgentSerialExecution: true,
+			},
+		},
+	}
+	adaptor := &Adaptor{}
+	converted, err := adaptor.ConvertOpenAIRequest(c, info, &dto.GeneralOpenAIRequest{
+		Model: "claude-opus-5",
+		Messages: []dto.Message{
+			{Role: "user", Content: "first question"},
+			{Role: "assistant", Content: "first reply"},
+			{Role: "user", Content: "second question"},
+		},
+	})
+	require.NoError(t, err)
+	body, err := common.Marshal(converted)
+	require.NoError(t, err)
+
+	upstream, err := adaptor.DoRequest(c, info, bytes.NewReader(body))
+	require.NoError(t, err)
+	response, ok := upstream.(*http.Response)
+	require.True(t, ok)
+	defer service.CloseResponseBodyGracefully(response)
+	assert.Equal(t, http.StatusConflict, response.StatusCode)
+	assert.Equal(t, []string{
+		"POST /v1/agents/" + persistentAgentID + "/runs",
+	}, requests)
+}
+
 func TestCursorAdaptorFallsBackToRunWhenStreamIsUnavailable(t *testing.T) {
 	agentID := "bc-00000000-0000-0000-0000-000000000001"
 	runID := "run-00000000-0000-0000-0000-000000000001"

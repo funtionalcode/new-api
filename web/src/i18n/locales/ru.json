@@ -5695,6 +5695,8 @@
     "Zero retention": "Без хранения данных",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Serialize Cursor Agent runs": "Последовательный запуск Cursor Agent",
+    "Queue concurrent requests for the same Cursor Agent session to keep its bound key and avoid active-run conflicts": "Ставит параллельные запросы одного сеанса Cursor Agent в очередь, сохраняя привязанный ключ и предотвращая конфликт активных запусков"
   }
 }

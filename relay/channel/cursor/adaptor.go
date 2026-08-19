@@ -625,6 +625,22 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 	if err != nil {
 		return nil, fmt.Errorf("cursor channel: read request body: %w", err)
 	}
+	releaseSerialExecution, err := acquireCursorAgentSerialExecution(c, info)
+	if err != nil {
+		return nil, fmt.Errorf("cursor channel: wait for previous Agent run: %w", err)
+	}
+	defer func() {
+		if releaseSerialExecution != nil {
+			releaseSerialExecution()
+		}
+	}()
+	transferSerialRelease := func(response *http.Response) {
+		if releaseSerialExecution == nil {
+			return
+		}
+		transferCursorAgentSerialRelease(response, releaseSerialExecution)
+		releaseSerialExecution = nil
+	}
 	if common.GetContextKeyString(c, constant.ContextKeyCursorAgentLifecycle) == constant.CursorAgentLifecycleDelete {
 		agentID := c.GetString(cursorAgentIDContextKey)
 		if err := a.DeletePersistentAgent(c, info, agentID); err != nil {
@@ -637,11 +653,13 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 		responseHeader := make(http.Header)
 		responseHeader.Set(cursorAgentLifecycleHeader, constant.CursorAgentLifecycleDelete)
 		responseHeader.Set(cursorClientStreamHeader, strconv.FormatBool(info.IsStream))
-		return &http.Response{
+		response := &http.Response{
 			StatusCode: http.StatusOK,
 			Header:     responseHeader,
 			Body:       io.NopCloser(strings.NewReader("")),
-		}, nil
+		}
+		transferSerialRelease(response)
+		return response, nil
 	}
 
 	agentID := c.GetString(cursorAgentIDContextKey)
@@ -676,7 +694,7 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 			strings.EqualFold(strings.TrimSpace(errorResponse.Error.Message), "Agent already has an active run"))
 		fallbackValue, fallbackExists := c.Get(cursorBusyFallbackContextKey)
 		fallback, fallbackValid := fallbackValue.(*createAgentRequest)
-		if busy && fallbackExists && fallbackValid && fallback != nil {
+		if busy && !info.ChannelSetting.CursorAgentSerialExecution && fallbackExists && fallbackValid && fallback != nil {
 			body, err = common.Marshal(fallback)
 			if err != nil {
 				return nil, fmt.Errorf("cursor channel: encode busy Agent fallback: %w", err)
@@ -698,6 +716,7 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 		}
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		transferSerialRelease(response)
 		return response, nil
 	}
 	responseBody, err := io.ReadAll(response.Body)
@@ -792,6 +811,7 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 	if streamResponse.StatusCode != http.StatusOK {
 		a.finishCursorRun(c, info, agentID, runID, persistent, false)
 	}
+	transferSerialRelease(streamResponse)
 	return streamResponse, nil
 }
 
