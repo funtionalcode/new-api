@@ -256,7 +256,12 @@ func normalizeResponsesWebsocketUpstreamPayload(c *gin.Context, adaptor channel.
 	if errSet != nil {
 		return nil, types.NewError(errSet, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 	}
-	jsonData, _ = sjson.SetBytes(jsonData, "stream", true)
+	if info.ApiType == appconstant.APITypeXai {
+		jsonData, _ = sjson.DeleteBytes(jsonData, "stream")
+		jsonData, _ = sjson.DeleteBytes(jsonData, "background")
+	} else {
+		jsonData, _ = sjson.SetBytes(jsonData, "stream", true)
+	}
 	if len(convertedRequest.Instructions) > 0 {
 		jsonData, errSet = sjson.SetRawBytes(jsonData, "instructions", convertedRequest.Instructions)
 		if errSet != nil {

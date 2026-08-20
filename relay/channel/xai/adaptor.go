@@ -20,6 +20,7 @@ import (
 )
 
 type Adaptor struct {
+	openaiAdaptor openai.Adaptor
 }
 
 func (a *Adaptor) ConvertGeminiRequest(*gin.Context, *relaycommon.RelayInfo, *dto.GeminiChatRequest) (any, error) {
@@ -57,9 +58,13 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
+	a.openaiAdaptor.Init(info)
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	if info.IsWebsocket && info.RelayMode == constant.RelayModeResponses {
+		return a.openaiAdaptor.GetRequestURL(info)
+	}
 	requestURLPath := info.RequestURLPath
 	switch info.RelayMode {
 	case constant.RelayModeImagesGenerations:
@@ -126,6 +131,9 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
+	if info.IsWebsocket && info.RelayMode == constant.RelayModeResponses {
+		return channel.DoWssRequest(a, c, info, requestBody)
+	}
 	if info.RelayMode == constant.RelayModeAudioTranscription {
 		return channel.DoFormRequest(a, c, info, requestBody)
 	}

@@ -14,6 +14,7 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -48,6 +49,57 @@ func TestGetRequestURLForcesSTTEndpoint(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, "https://example.com/v1/stt", requestURL)
+}
+
+func TestDoRequestUsesWebsocketForResponses(t *testing.T) {
+	type requestSnapshot struct {
+		path          string
+		authorization string
+		contentType   string
+	}
+
+	observed := make(chan requestSnapshot, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		observed <- requestSnapshot{
+			path:          r.URL.Path,
+			authorization: r.Header.Get("Authorization"),
+			contentType:   r.Header.Get("Content-Type"),
+		}
+	}))
+	defer server.Close()
+
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	info := &relaycommon.RelayInfo{
+		IsWebsocket:    true,
+		RelayMode:      relayconstant.RelayModeResponses,
+		RequestURLPath: "/v1/responses",
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelBaseUrl: server.URL,
+			ChannelType:    constant.ChannelTypeXai,
+			ApiType:        constant.APITypeXai,
+			ApiKey:         "upstream-secret",
+		},
+	}
+	adaptor := &Adaptor{}
+	adaptor.Init(info)
+
+	result, err := adaptor.DoRequest(c, info, nil)
+
+	require.NoError(t, err)
+	conn, ok := result.(*websocket.Conn)
+	require.True(t, ok)
+	require.NoError(t, conn.Close())
+
+	request := <-observed
+	assert.Equal(t, "/v1/responses", request.path)
+	assert.Equal(t, "Bearer upstream-secret", request.authorization)
+	assert.Equal(t, "application/json", request.contentType)
 }
 
 func TestConvertAudioRequestOmitsRoutingModelForXAI(t *testing.T) {
