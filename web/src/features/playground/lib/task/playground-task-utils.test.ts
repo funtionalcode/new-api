@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
+
+import { describe, test } from 'vitest'
 
 import {
   buildImageGenerationMarkdown,
@@ -16,17 +17,24 @@ describe('playground task utils', () => {
       data: [{ url: 'https://example.com/image.png' }],
     })
 
-    assert.equal(markdown, '![Generated image 1](https://example.com/image.png)')
+    assert.equal(
+      markdown,
+      '![Generated image 1](https://example.com/image.png)'
+    )
   })
 
   test('builds markdown for generated speech audio', () => {
-    const markdown = buildSpeechGenerationMarkdown('blob:http://localhost/audio')
+    const markdown = buildSpeechGenerationMarkdown(
+      'blob:http://localhost/audio'
+    )
 
     assert.equal(markdown, '[Audio Preview](blob:http://localhost/audio)')
   })
 
   test('builds markdown for generated video urls', () => {
-    const markdown = buildVideoGenerationMarkdown('https://example.com/video.mp4')
+    const markdown = buildVideoGenerationMarkdown(
+      'https://example.com/video.mp4'
+    )
 
     assert.equal(markdown, '[Video Preview](https://example.com/video.mp4)')
   })
@@ -71,7 +79,9 @@ describe('playground task utils', () => {
 
   test('extracts generated video url for custom rendering', () => {
     assert.equal(
-      extractGeneratedVideoUrl('[Video Preview](https://example.com/video.mp4)'),
+      extractGeneratedVideoUrl(
+        '[Video Preview](https://example.com/video.mp4)'
+      ),
       'https://example.com/video.mp4'
     )
   })

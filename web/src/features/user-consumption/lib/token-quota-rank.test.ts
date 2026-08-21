@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
 
-import { processTokenQuotaRankChartData } from './token-quota-rank'
+import { describe, test } from 'vitest'
+
 import type { UserConsumptionSummary } from '../types'
+import { processTokenQuotaRankChartData } from './token-quota-rank'
 
 describe('user consumption token quota rank chart data', () => {
   test('aggregates consumption rows into quota ranking spec', () => {

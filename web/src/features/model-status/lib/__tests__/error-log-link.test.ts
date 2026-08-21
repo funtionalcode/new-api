@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
+
+import { describe, test } from 'vitest'
 
 import {
   MODEL_STATUS_ERROR_LOG_TYPE,

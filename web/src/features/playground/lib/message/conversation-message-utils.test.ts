@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
+
+import { describe, test } from 'vitest'
 
 import { MESSAGE_ROLES, MESSAGE_STATUS } from '../../constants'
 import type { Message } from '../../types'
@@ -11,11 +12,7 @@ import { createUserMessage } from './message-utils'
 
 describe('playground conversation message utils', () => {
   test('regenerates legacy task errors with the previous user message mode', () => {
-    const userMessage = createUserMessage(
-      'make a video',
-      1783566400,
-      'video'
-    )
+    const userMessage = createUserMessage('make a video', 1783566400, 'video')
     const legacyErrorMessage: Message = {
       key: 'assistant-error',
       from: MESSAGE_ROLES.ASSISTANT,

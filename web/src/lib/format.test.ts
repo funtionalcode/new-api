@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { afterEach, describe, test } from 'node:test'
+
+import { afterEach, describe, test } from 'vitest'
 
 import { DEFAULT_SYSTEM_NAME, DEFAULT_LOGO } from '@/lib/constants'
 import {

@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
 
+import { describe, test } from 'vitest'
+
+import type { UserChartsFilters } from '../types'
 import {
   buildUserChartTimeRange,
   buildUserChartTimeRangeDates,
   formatUserChartTimeRangeLabel,
 } from './user-chart-time-range'
-import type { UserChartsFilters } from '../types'
 
 const baseFilters: UserChartsFilters = {
   timeGranularity: 'day',

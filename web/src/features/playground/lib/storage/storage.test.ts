@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { afterEach, beforeEach, describe, test } from 'node:test'
+
+import { afterEach, beforeEach, describe, test } from 'vitest'
 
 import type { Message } from '../../types'
 import {

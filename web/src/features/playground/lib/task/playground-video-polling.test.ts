@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
 
-import { pollVideoGeneration } from './playground-video-polling'
+import { describe, test } from 'vitest'
+
 import type { VideoGenerationResponse } from '../../types'
+import { pollVideoGeneration } from './playground-video-polling'
 
 describe('playground video polling', () => {
   test('keeps polling until video completes after the previous 90 attempt limit', async () => {

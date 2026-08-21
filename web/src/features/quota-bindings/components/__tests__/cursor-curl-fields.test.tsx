@@ -17,9 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import assert from 'node:assert/strict'
-import { after, afterEach, describe, test } from 'node:test'
 
 import { Window } from 'happy-dom'
+import { afterAll, afterEach, describe, test } from 'vitest'
 
 import type { QuotaBindingFormState } from '../../lib/form-payload'
 
@@ -149,7 +149,7 @@ afterEach(async () => {
   rendered = undefined
 })
 
-after(() => domWindow.close())
+afterAll(() => domWindow.close())
 
 describe('Cursor curl fields', () => {
   test('supports entering all three billing endpoint curls independently', async () => {

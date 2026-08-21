@@ -16,8 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
+import { describe, expect, test } from 'vitest'
 
 import type { ChatCompletionRequest } from '../types'
 import { createStreamRequestController } from './use-stream-request'
@@ -120,12 +119,12 @@ describe('latest-wins stream request coordination', () => {
     const second = controller.send(payload, noRequestHeaders, noopCallbacks)
     firstHeaders.resolve({ Authorization: 'Bearer stale' })
     await first
-    assert.equal(sources.length, 0)
+    expect(sources.length).toBe(0)
 
     secondHeaders.resolve({ Authorization: 'Bearer current' })
     await second
-    assert.equal(sources.length, 1)
-    assert.equal(sources[0]?.streamed, true)
+    expect(sources.length).toBe(1)
+    expect(sources[0]?.streamed).toBe(true)
   })
 
   test('stop cancels a request that is still waiting for headers', async () => {
@@ -145,7 +144,7 @@ describe('latest-wins stream request coordination', () => {
     headers.resolve({ Authorization: 'Bearer ignored' })
     await request
 
-    assert.equal(sourceCount, 0)
+    expect(sourceCount).toBe(0)
   })
 
   test('dispose cancels a pending header request without a state update', async () => {
@@ -166,8 +165,8 @@ describe('latest-wins stream request coordination', () => {
     headers.resolve({ Authorization: 'Bearer ignored' })
     await request
 
-    assert.equal(sourceCount, 0)
-    assert.deepEqual(streamingStates, [false])
+    expect(sourceCount).toBe(0)
+    expect(streamingStates).toEqual([false])
   })
 
   test('closes the previous source and ignores all of its later events', async () => {
@@ -199,7 +198,7 @@ describe('latest-wins stream request coordination', () => {
 
     await controller.send(payload, noRequestHeaders, callbacks)
     const second = controller.send(payload, noRequestHeaders, callbacks)
-    assert.equal(sources[0]?.closed, true)
+    expect(sources[0]?.closed).toBe(true)
     sources[0]?.emit(
       'message',
       JSON.stringify({ choices: [{ delta: { content: 'stale' } }] })
@@ -212,7 +211,7 @@ describe('latest-wins stream request coordination', () => {
       JSON.stringify({ choices: [{ delta: { content: 'current' } }] })
     )
 
-    assert.deepEqual(updates, ['current'])
+    expect(updates).toEqual(['current'])
   })
 
   test('merges Cursor session headers and exposes response headers on open', async () => {
@@ -237,12 +236,11 @@ describe('latest-wins stream request coordination', () => {
       'x-cursor-agent-id': ['bc-00000000-0000-0000-0000-000000000001'],
     })
 
-    assert.deepEqual(sourceHeaders, {
+    expect(sourceHeaders).toEqual({
       Authorization: 'Bearer user',
       'X-Cursor-Persistent': 'true',
     })
-    assert.equal(
-      openedHeaders[0]?.['x-cursor-agent-id']?.[0],
+    expect(openedHeaders[0]?.['x-cursor-agent-id']?.[0]).toBe(
       'bc-00000000-0000-0000-0000-000000000001'
     )
   })
