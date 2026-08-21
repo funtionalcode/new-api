@@ -2326,6 +2326,7 @@
     "Greater Than or Equal": "Больше или равно",
     "Green ≥95%, yellow 80–95%, red <80%.": "Зелёный ≥95 %, жёлтый 80–95 %, красный <80 %.",
     "Grok": "Grok",
+    "Grok Bot Usage": "Использование Grok Bot",
     "Grok Settings": "Настройки Grok",
     "Group": "Группа",
     "Group & Quota": "Группа и квота",
@@ -3902,6 +3903,7 @@
     "Query Param": "Параметр запроса",
     "Querying...": "Выполняется запрос...",
     "Question": "Вопрос",
+    "Queue concurrent requests for the same Cursor Agent session to keep its bound key and avoid active-run conflicts": "Ставит параллельные запросы одного сеанса Cursor Agent в очередь, сохраняя привязанный ключ и предотвращая конфликт активных запусков",
     "Queued": "В очереди",
     "Quick actions": "Быстрые действия",
     "Quick insert common payment methods": "Быстрая вставка распространенных способов оплаты",
@@ -4496,6 +4498,7 @@
     "Sent the API key to FluentRead.": "API-ключ отправлен в FluentRead.",
     "Separate image/audio prices are enabled.": "Отдельные цены для изображений и аудио включены.",
     "Separate multiple rules with English commas. For regex patterns that need commas, switch to JSON Text.": "Разделяйте несколько правил английскими запятыми. Если regex нужны запятые, переключитесь на JSON Text.",
+    "Serialize Cursor Agent runs": "Последовательный запуск Cursor Agent",
     "Serve multiple users or teams with billing and quota control.": "Обслуживание нескольких пользователей или команд с управлением биллингом и квотами.",
     "Server Address": "Адрес сервера",
     "Server IP": "IP сервера",
@@ -5695,8 +5698,6 @@
     "Zero retention": "Без хранения данных",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom",
-    "Serialize Cursor Agent runs": "Последовательный запуск Cursor Agent",
-    "Queue concurrent requests for the same Cursor Agent session to keep its bound key and avoid active-run conflicts": "Ставит параллельные запросы одного сеанса Cursor Agent в очередь, сохраняя привязанный ключ и предотвращая конфликт активных запусков"
+    "Zoom": "Zoom"
   }
 }

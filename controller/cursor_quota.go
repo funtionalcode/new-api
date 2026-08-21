@@ -21,6 +21,7 @@ const (
 	cursorQuotaCurrentPeriodPath   = "/api/dashboard/get-current-period-usage"
 	cursorQuotaAggregatedUsagePath = "/api/dashboard/get-aggregated-usage-events"
 	cursorQuotaPlanInfoPath        = "/api/dashboard/get-plan-info"
+	cursorQuotaGrokBotUsagePath    = "/api/dashboard/get-sand-usage-status"
 )
 
 type cursorQuotaBindingRequest struct {
@@ -56,6 +57,12 @@ type cursorQuotaPlanInfoResponse struct {
 		IncludedAmountCents float64 `json:"includedAmountCents"`
 		Price               string  `json:"price"`
 	} `json:"planInfo"`
+}
+
+type cursorQuotaGrokBotUsageResponse struct {
+	UsagePercent                  *float64 `json:"usagePercent"`
+	NextResetTimestampUTC         any      `json:"nextResetTimestampUtc"`
+	UsesPooledEnterpriseAllowance bool     `json:"usesPooledEnterpriseAllowance"`
 }
 
 type cursorQuotaAggregatedUsageResponse struct {
@@ -119,6 +126,9 @@ type cursorQuotaUsageRefreshBody struct {
 	PlanRemainingCents     float64
 	PlanAPIPercent         float64
 	PlanTotalPercent       float64
+	GrokBotUsagePercent    float64
+	GrokBotResetAt         int64
+	GrokBotUsageAvailable  bool
 	OnDemandUsedCents      float64
 	OnDemandLimitCents     float64
 	OnDemandRemainingCents float64
@@ -244,6 +254,9 @@ func RefreshCursorQuotaBindingUsage(c *gin.Context) {
 		LastPlanRemainingCents:     usage.PlanRemainingCents,
 		LastPlanAPIPercent:         usage.PlanAPIPercent,
 		LastPlanTotalPercent:       usage.PlanTotalPercent,
+		LastGrokBotUsagePercent:    usage.GrokBotUsagePercent,
+		LastGrokBotResetAt:         usage.GrokBotResetAt,
+		LastGrokBotUsageAvailable:  usage.GrokBotUsageAvailable,
 		LastOnDemandUsedCents:      usage.OnDemandUsedCents,
 		LastOnDemandLimitCents:     usage.OnDemandLimitCents,
 		LastOnDemandRemainingCents: usage.OnDemandRemainingCents,
@@ -336,8 +349,30 @@ func refreshCursorQuotaUsage(ctx context.Context, binding *model.CursorQuotaBind
 	if err != nil {
 		return cursorQuotaUsageRefreshBody{}, err
 	}
+	grokBotBody, err := executeCursorQuotaCurl(
+		ctx,
+		binding.RequestCurl,
+		binding.Proxy,
+		cursorQuotaCurrentPeriodPath,
+		func(requestConfig *quotaCurlRequest) error {
+			requestURL, err := url.Parse(requestConfig.URL)
+			if err != nil {
+				return err
+			}
+			requestURL.Path = cursorQuotaGrokBotUsagePath
+			requestURL.RawPath = ""
+			requestURL.RawQuery = ""
+			requestURL.Fragment = ""
+			requestConfig.URL = requestURL.String()
+			requestConfig.Body = "{}"
+			return validateCursorQuotaEndpoint(requestConfig.URL, cursorQuotaGrokBotUsagePath)
+		},
+	)
+	if err != nil {
+		return cursorQuotaUsageRefreshBody{}, err
+	}
 
-	return extractCursorQuotaUsage(periodBody, aggregatedBody, planBody)
+	return extractCursorQuotaUsage(periodBody, aggregatedBody, planBody, grokBotBody)
 }
 
 func executeCursorQuotaCurl(
@@ -444,7 +479,7 @@ func updateCursorAggregatedUsageRequestBody(body string, billingCycleStartAt int
 	return string(updatedBody), nil
 }
 
-func extractCursorQuotaUsage(periodBody []byte, aggregatedBody []byte, planBody []byte) (cursorQuotaUsageRefreshBody, error) {
+func extractCursorQuotaUsage(periodBody []byte, aggregatedBody []byte, planBody []byte, grokBotBody []byte) (cursorQuotaUsageRefreshBody, error) {
 	period, startAt, endAt, err := extractCursorQuotaPeriod(periodBody)
 	if err != nil {
 		return cursorQuotaUsageRefreshBody{}, err
@@ -459,6 +494,10 @@ func extractCursorQuotaUsage(periodBody []byte, aggregatedBody []byte, planBody 
 	}
 	if plan.PlanInfo == nil {
 		return cursorQuotaUsageRefreshBody{}, fmt.Errorf("Cursor 套餐信息响应缺少 planInfo")
+	}
+	grokBotUsagePercent, grokBotResetAt, grokBotUsageAvailable, err := extractCursorGrokBotUsage(grokBotBody)
+	if err != nil {
+		return cursorQuotaUsageRefreshBody{}, err
 	}
 
 	modelUsages := make([]cursorQuotaModelUsage, 0, len(aggregated.Aggregations))
@@ -500,6 +539,9 @@ func extractCursorQuotaUsage(periodBody []byte, aggregatedBody []byte, planBody 
 		PlanRemainingCents:     normalizeCursorQuotaNumber(period.PlanUsage.Remaining),
 		PlanAPIPercent:         normalizeCursorQuotaNumber(period.PlanUsage.APIPercentUsed),
 		PlanTotalPercent:       normalizeCursorQuotaNumber(period.PlanUsage.TotalPercentUsed),
+		GrokBotUsagePercent:    grokBotUsagePercent,
+		GrokBotResetAt:         grokBotResetAt,
+		GrokBotUsageAvailable:  grokBotUsageAvailable,
 		OnDemandUsedCents:      onDemandUsed,
 		OnDemandLimitCents:     onDemandLimit,
 		OnDemandRemainingCents: onDemandRemaining,
@@ -510,6 +552,23 @@ func extractCursorQuotaUsage(periodBody []byte, aggregatedBody []byte, planBody 
 		TotalCostCents:         normalizeCursorQuotaNumber(aggregated.TotalCostCents),
 		ModelUsages:            modelUsages,
 	}, nil
+}
+
+func extractCursorGrokBotUsage(body []byte) (float64, int64, bool, error) {
+	var usage cursorQuotaGrokBotUsageResponse
+	if err := common.Unmarshal(body, &usage); err != nil {
+		return 0, 0, false, fmt.Errorf("解析 Cursor Grok Bot 用量失败: %w", err)
+	}
+	if usage.UsesPooledEnterpriseAllowance || usage.UsagePercent == nil {
+		return 0, 0, false, nil
+	}
+	resetAt := int64(0)
+	if usage.NextResetTimestampUTC != nil {
+		if parsed, err := parseCursorQuotaTimestamp(usage.NextResetTimestampUTC); err == nil {
+			resetAt = parsed
+		}
+	}
+	return normalizeCursorQuotaNumber(*usage.UsagePercent), resetAt, true, nil
 }
 
 func extractCursorQuotaPeriod(body []byte) (cursorQuotaCurrentPeriodResponse, int64, int64, error) {
@@ -531,20 +590,38 @@ func extractCursorQuotaPeriod(body []byte) (cursorQuotaCurrentPeriodResponse, in
 	return period, startAt, endAt, nil
 }
 
-func parseCursorQuotaTimestamp(value string) (int64, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
+func parseCursorQuotaTimestamp(value any) (int64, error) {
+	var raw string
+	switch typed := value.(type) {
+	case string:
+		raw = typed
+	case float64:
+		if math.IsNaN(typed) || math.IsInf(typed, 0) {
+			return 0, fmt.Errorf("时间格式无效")
+		}
+		raw = strconv.FormatFloat(typed, 'f', -1, 64)
+	case map[string]any:
+		seconds, ok := typed["seconds"]
+		if !ok {
+			return 0, fmt.Errorf("时间格式无效")
+		}
+		return parseCursorQuotaTimestamp(seconds)
+	default:
+		return 0, fmt.Errorf("时间格式无效")
+	}
+	valueString := strings.TrimSpace(raw)
+	if valueString == "" {
 		return 0, fmt.Errorf("时间为空")
 	}
 	isDigits := true
-	for _, char := range value {
+	for _, char := range valueString {
 		if char < '0' || char > '9' {
 			isDigits = false
 			break
 		}
 	}
 	if isDigits {
-		timestamp, err := strconv.ParseInt(value, 10, 64)
+		timestamp, err := strconv.ParseInt(valueString, 10, 64)
 		if err != nil {
 			return 0, err
 		}
@@ -556,7 +633,7 @@ func parseCursorQuotaTimestamp(value string) (int64, error) {
 		}
 		return timestamp, nil
 	}
-	parsed, err := time.Parse(time.RFC3339Nano, value)
+	parsed, err := time.Parse(time.RFC3339Nano, valueString)
 	if err != nil {
 		return 0, err
 	}

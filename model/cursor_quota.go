@@ -24,6 +24,9 @@ type CursorQuotaBinding struct {
 	LastPlanRemainingCents     float64 `json:"last_plan_remaining_cents" gorm:"default:0"`
 	LastPlanAPIPercent         float64 `json:"last_plan_api_percent" gorm:"default:0"`
 	LastPlanTotalPercent       float64 `json:"last_plan_total_percent" gorm:"default:0"`
+	LastGrokBotUsagePercent    float64 `json:"last_grok_bot_usage_percent" gorm:"default:0"`
+	LastGrokBotResetAt         int64   `json:"last_grok_bot_reset_at" gorm:"bigint;default:0"`
+	LastGrokBotUsageAvailable  bool    `json:"last_grok_bot_usage_available"`
 	LastOnDemandUsedCents      float64 `json:"last_on_demand_used_cents" gorm:"default:0"`
 	LastOnDemandLimitCents     float64 `json:"last_on_demand_limit_cents" gorm:"default:0"`
 	LastOnDemandRemainingCents float64 `json:"last_on_demand_remaining_cents" gorm:"default:0"`
@@ -71,6 +74,9 @@ type CursorQuotaUsageRefreshUpdate struct {
 	LastPlanRemainingCents     float64
 	LastPlanAPIPercent         float64
 	LastPlanTotalPercent       float64
+	LastGrokBotUsagePercent    float64
+	LastGrokBotResetAt         int64
+	LastGrokBotUsageAvailable  bool
 	LastOnDemandUsedCents      float64
 	LastOnDemandLimitCents     float64
 	LastOnDemandRemainingCents float64
@@ -196,6 +202,9 @@ func UpdateCursorQuotaBindingUsage(id int, update CursorQuotaUsageRefreshUpdate)
 		updates["last_plan_remaining_cents"] = update.LastPlanRemainingCents
 		updates["last_plan_api_percent"] = update.LastPlanAPIPercent
 		updates["last_plan_total_percent"] = update.LastPlanTotalPercent
+		updates["last_grok_bot_usage_percent"] = update.LastGrokBotUsagePercent
+		updates["last_grok_bot_reset_at"] = update.LastGrokBotResetAt
+		updates["last_grok_bot_usage_available"] = update.LastGrokBotUsageAvailable
 		updates["last_on_demand_used_cents"] = update.LastOnDemandUsedCents
 		updates["last_on_demand_limit_cents"] = update.LastOnDemandLimitCents
 		updates["last_on_demand_remaining_cents"] = update.LastOnDemandRemainingCents

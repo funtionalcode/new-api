@@ -10,6 +10,9 @@ type CursorQuotaUsageSource = Pick<
   | 'last_on_demand_used_cents'
   | 'last_on_demand_limit_cents'
   | 'last_on_demand_remaining_cents'
+  | 'last_grok_bot_usage_percent'
+  | 'last_grok_bot_reset_at'
+  | 'last_grok_bot_usage_available'
   | 'last_total_input_tokens'
   | 'last_total_output_tokens'
   | 'last_total_cache_write_tokens'
@@ -74,6 +77,9 @@ export function buildCursorQuotaUsageSummary(source: CursorQuotaUsageSource) {
   return {
     apiPercent: percent(source.last_plan_api_percent),
     totalPercent: percent(source.last_plan_total_percent),
+    grokBotUsagePercent: percent(source.last_grok_bot_usage_percent),
+    grokBotResetAt: nonNegativeNumber(source.last_grok_bot_reset_at),
+    grokBotUsageAvailable: source.last_grok_bot_usage_available === true,
     planUsedDollars: nonNegativeNumber(source.last_plan_used_cents) / 100,
     planLimitDollars: nonNegativeNumber(source.last_plan_limit_cents) / 100,
     planRemainingDollars:

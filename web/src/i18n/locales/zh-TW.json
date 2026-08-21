@@ -2326,6 +2326,7 @@
     "Greater Than or Equal": "大於等於",
     "Green ≥95%, yellow 80–95%, red <80%.": "綠 ≥95%，黃 80–95%，紅 <80%。",
     "Grok": "Grok",
+    "Grok Bot Usage": "Grok Bot 用量",
     "Grok Settings": "Grok 設定",
     "Group": "分組",
     "Group & Quota": "分組與配額",
@@ -3902,6 +3903,7 @@
     "Query Param": "請求參數",
     "Querying...": "正在查詢...",
     "Question": "問題",
+    "Queue concurrent requests for the same Cursor Agent session to keep its bound key and avoid active-run conflicts": "同一 Cursor Agent 工作階段的並行請求將排隊執行，保持綁定的 Key 並避免執行中衝突",
     "Queued": "排隊中",
     "Quick actions": "快捷操作",
     "Quick insert common payment methods": "快速插入常用支付方式",
@@ -4496,6 +4498,7 @@
     "Sent the API key to FluentRead.": "API 金鑰已發送至 FluentRead。",
     "Separate image/audio prices are enabled.": "已啟用圖像/音頻單獨定價。",
     "Separate multiple rules with English commas. For regex patterns that need commas, switch to JSON Text.": "多個規則用英文逗號分隔。正則裡需要逗號時，請切換到 JSON 文字。",
+    "Serialize Cursor Agent runs": "串行執行 Cursor Agent",
     "Serve multiple users or teams with billing and quota control.": "為多個用戶或團隊提供收費和配額管理服務。",
     "Server Address": "伺服器地址",
     "Server IP": "伺服器 IP",
@@ -5695,8 +5698,6 @@
     "Zero retention": "零數據保留",
     "Zhipu": "智譜",
     "Zhipu V4": "智譜 V4",
-    "Zoom": "縮放",
-    "Serialize Cursor Agent runs": "串行執行 Cursor Agent",
-    "Queue concurrent requests for the same Cursor Agent session to keep its bound key and avoid active-run conflicts": "同一 Cursor Agent 工作階段的並行請求將排隊執行，保持綁定的 Key 並避免執行中衝突"
+    "Zoom": "縮放"
   }
 }

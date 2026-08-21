@@ -11,6 +11,9 @@ describe('Cursor quota usage summary', () => {
       last_plan_used_cents: 5288,
       last_plan_limit_cents: 40000,
       last_plan_remaining_cents: 34712,
+      last_grok_bot_usage_percent: 37.5,
+      last_grok_bot_reset_at: 1_786_838_400,
+      last_grok_bot_usage_available: true,
       last_on_demand_used_cents: 2500,
       last_on_demand_limit_cents: 15000,
       last_on_demand_remaining_cents: 12500,
@@ -37,6 +40,9 @@ describe('Cursor quota usage summary', () => {
     assert.equal(summary.totalTokens, 365)
     assert.equal(summary.planUsedDollars, 52.88)
     assert.equal(summary.onDemandUsedDollars, 25)
+    assert.equal(summary.grokBotUsagePercent, 37.5)
+    assert.equal(summary.grokBotResetAt, 1_786_838_400)
+    assert.equal(summary.grokBotUsageAvailable, true)
     assert.equal(summary.models.length, 1)
     assert.equal(summary.models[0]?.total_tokens, 127)
   })
@@ -48,6 +54,9 @@ describe('Cursor quota usage summary', () => {
       last_plan_used_cents: -1,
       last_plan_limit_cents: 0,
       last_plan_remaining_cents: 0,
+      last_grok_bot_usage_percent: 150,
+      last_grok_bot_reset_at: -1,
+      last_grok_bot_usage_available: false,
       last_on_demand_used_cents: 0,
       last_on_demand_limit_cents: 0,
       last_on_demand_remaining_cents: 0,
@@ -62,6 +71,9 @@ describe('Cursor quota usage summary', () => {
     assert.equal(summary.totalPercent, 0)
     assert.equal(summary.totalTokens, 0)
     assert.equal(summary.planUsedDollars, 0)
+    assert.equal(summary.grokBotUsagePercent, 100)
+    assert.equal(summary.grokBotResetAt, 0)
+    assert.equal(summary.grokBotUsageAvailable, false)
     assert.deepEqual(summary.models, [])
   })
 })

@@ -134,6 +134,9 @@ export type CursorQuotaBinding = QuotaBindingBase & {
   last_plan_remaining_cents: number
   last_plan_api_percent: number
   last_plan_total_percent: number
+  last_grok_bot_usage_percent: number
+  last_grok_bot_reset_at: number
+  last_grok_bot_usage_available: boolean
   last_on_demand_used_cents: number
   last_on_demand_limit_cents: number
   last_on_demand_remaining_cents: number

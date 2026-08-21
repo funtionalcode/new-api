@@ -2326,6 +2326,7 @@
     "Greater Than or Equal": "Lớn hơn hoặc bằng",
     "Green ≥95%, yellow 80–95%, red <80%.": "Xanh ≥95%, vàng 80–95%, đỏ <80%.",
     "Grok": "Grok",
+    "Grok Bot Usage": "Mức sử dụng Grok Bot",
     "Grok Settings": "Cài đặt Grok",
     "Group": "Nhóm",
     "Group & Quota": "Nhóm & Hạn mức",
@@ -3902,6 +3903,7 @@
     "Query Param": "Query param",
     "Querying...": "Đang truy vấn...",
     "Question": "Câu hỏi",
+    "Queue concurrent requests for the same Cursor Agent session to keep its bound key and avoid active-run conflicts": "Xếp hàng các yêu cầu đồng thời trong cùng phiên Cursor Agent để giữ nguyên Key đã liên kết và tránh xung đột lượt chạy đang hoạt động",
     "Queued": "Trong hàng đợi",
     "Quick actions": "Thao tác nhanh",
     "Quick insert common payment methods": "Chèn nhanh các phương thức thanh toán phổ biến",
@@ -4496,6 +4498,7 @@
     "Sent the API key to FluentRead.": "Đã gửi khóa API đến FluentRead.",
     "Separate image/audio prices are enabled.": "Giá riêng cho hình ảnh/âm thanh đã được bật.",
     "Separate multiple rules with English commas. For regex patterns that need commas, switch to JSON Text.": "Tách nhiều quy tắc bằng dấu phẩy tiếng Anh. Với regex cần dấu phẩy, hãy chuyển sang JSON Text.",
+    "Serialize Cursor Agent runs": "Tuần tự hóa lượt chạy Cursor Agent",
     "Serve multiple users or teams with billing and quota control.": "Phục vụ nhiều người dùng hoặc nhóm với quản lý thanh toán và hạn mức.",
     "Server Address": "Địa chỉ máy chủ",
     "Server IP": "IP máy chủ",
@@ -5695,8 +5698,6 @@
     "Zero retention": "Không lưu dữ liệu",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom",
-    "Serialize Cursor Agent runs": "Tuần tự hóa lượt chạy Cursor Agent",
-    "Queue concurrent requests for the same Cursor Agent session to keep its bound key and avoid active-run conflicts": "Xếp hàng các yêu cầu đồng thời trong cùng phiên Cursor Agent để giữ nguyên Key đã liên kết và tránh xung đột lượt chạy đang hoạt động"
+    "Zoom": "Zoom"
   }
 }

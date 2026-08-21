@@ -35,8 +35,15 @@ func TestExtractCursorQuotaUsageParsesBillingResponses(t *testing.T) {
 		"totalCostCents":12.5
 	}`)
 	planBody := []byte(`{"planInfo":{"planName":"Ultra","includedAmountCents":40000,"price":"$200/mo"}}`)
+	grokBotBody := []byte(`{
+		"usagePercent":37.5,
+		"nextResetTimestampUtc":"2026-08-20T00:00:00Z",
+		"usesPooledEnterpriseAllowance":false,
+		"hasAvailableUsage":true,
+		"hasNonZeroIncludedLimit":true
+	}`)
 
-	usage, err := extractCursorQuotaUsage(periodBody, aggregatedBody, planBody)
+	usage, err := extractCursorQuotaUsage(periodBody, aggregatedBody, planBody, grokBotBody)
 	require.NoError(t, err)
 
 	assert.Equal(t, "Ultra", usage.PlanName)
@@ -53,6 +60,9 @@ func TestExtractCursorQuotaUsageParsesBillingResponses(t *testing.T) {
 	assert.Equal(t, int64(3), usage.TotalCacheWriteTokens)
 	assert.Equal(t, int64(12), usage.TotalCacheReadTokens)
 	assert.InDelta(t, 12.5, usage.TotalCostCents, 0.000001)
+	assert.InDelta(t, 37.5, usage.GrokBotUsagePercent, 0.000001)
+	assert.Equal(t, int64(1_787_184_000), usage.GrokBotResetAt)
+	assert.True(t, usage.GrokBotUsageAvailable)
 	require.Len(t, usage.ModelUsages, 2)
 	assert.Equal(t, int64(127), usage.ModelUsages[0].TotalTokens)
 	assert.Equal(t, 1, usage.ModelUsages[0].Tier)
@@ -66,12 +76,13 @@ func TestParseCursorQuotaTimestampAcceptsISOAndEpochValues(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		value    string
+		value    any
 		expected int64
 	}{
 		{name: "ISO timestamp", value: "2026-08-13T00:00:00.000Z", expected: isoTime.Unix()},
 		{name: "epoch seconds", value: "1786609998", expected: 1_786_609_998},
 		{name: "epoch milliseconds", value: "1786609998000", expected: 1_786_609_998},
+		{name: "protobuf timestamp", value: map[string]any{"seconds": "1786609998", "nanos": float64(0)}, expected: 1_786_609_998},
 	}
 
 	for _, test := range tests {
@@ -81,6 +92,18 @@ func TestParseCursorQuotaTimestampAcceptsISOAndEpochValues(t *testing.T) {
 			assert.Equal(t, test.expected, actual)
 		})
 	}
+}
+
+func TestExtractCursorGrokBotUsageHidesPooledEnterpriseAllowance(t *testing.T) {
+	percent, resetAt, available, err := extractCursorGrokBotUsage([]byte(`{
+		"usagePercent":42,
+		"nextResetTimestampUtc":{"seconds":"1786609998","nanos":0},
+		"usesPooledEnterpriseAllowance":true
+	}`))
+	require.NoError(t, err)
+	assert.Zero(t, percent)
+	assert.Zero(t, resetAt)
+	assert.False(t, available)
 }
 
 func TestUpdateCursorAggregatedUsageRequestBodyUsesCurrentBillingCycle(t *testing.T) {
@@ -98,6 +121,10 @@ func TestValidateCursorQuotaEndpointRejectsUnexpectedDestination(t *testing.T) {
 	require.NoError(t, validateCursorQuotaEndpoint(
 		"https://cursor.com/api/dashboard/get-current-period-usage",
 		currentPeriodPath,
+	))
+	require.NoError(t, validateCursorQuotaEndpoint(
+		"https://cursor.com/api/dashboard/get-sand-usage-status",
+		cursorQuotaGrokBotUsagePath,
 	))
 	assert.Error(t, validateCursorQuotaEndpoint(
 		"https://example.com/api/dashboard/get-current-period-usage",

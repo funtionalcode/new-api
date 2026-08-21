@@ -2326,6 +2326,7 @@
     "Greater Than or Equal": "以上",
     "Green ≥95%, yellow 80–95%, red <80%.": "緑 ≥95%、黄 80–95%、赤 <80%。",
     "Grok": "Grok",
+    "Grok Bot Usage": "Grok Bot 使用量",
     "Grok Settings": "Grok 設定",
     "Group": "グループ",
     "Group & Quota": "グループとクォータ",
@@ -3902,6 +3903,7 @@
     "Query Param": "クエリパラメータ",
     "Querying...": "クエリ中...",
     "Question": "質問",
+    "Queue concurrent requests for the same Cursor Agent session to keep its bound key and avoid active-run conflicts": "同じ Cursor Agent セッションへの同時リクエストを順番に処理し、紐付いた Key を維持して実行中の競合を防ぎます",
     "Queued": "キュー中",
     "Quick actions": "クイック操作",
     "Quick insert common payment methods": "一般的な支払い方法をすばやく挿入",
@@ -4496,6 +4498,7 @@
     "Sent the API key to FluentRead.": "API キーを FluentRead に送信しました。",
     "Separate image/audio prices are enabled.": "画像/音声の個別料金が有効です。",
     "Separate multiple rules with English commas. For regex patterns that need commas, switch to JSON Text.": "複数のルールは半角カンマで区切ります。カンマが必要な正規表現は JSON Text に切り替えてください。",
+    "Serialize Cursor Agent runs": "Cursor Agent の実行を直列化",
     "Serve multiple users or teams with billing and quota control.": "課金とクォータ管理で複数のユーザーやチームにサービスを提供します。",
     "Server Address": "サーバーURL",
     "Server IP": "サーバー IP",
@@ -5695,8 +5698,6 @@
     "Zero retention": "データ保持なし",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V 4",
-    "Zoom": "ズーム",
-    "Serialize Cursor Agent runs": "Cursor Agent の実行を直列化",
-    "Queue concurrent requests for the same Cursor Agent session to keep its bound key and avoid active-run conflicts": "同じ Cursor Agent セッションへの同時リクエストを順番に処理し、紐付いた Key を維持して実行中の競合を防ぎます"
+    "Zoom": "ズーム"
   }
 }

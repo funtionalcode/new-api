@@ -2326,6 +2326,7 @@
     "Greater Than or Equal": "Supérieur ou égal",
     "Green ≥95%, yellow 80–95%, red <80%.": "Vert ≥95 %, jaune 80–95 %, rouge <80 %.",
     "Grok": "Grok",
+    "Grok Bot Usage": "Utilisation de Grok Bot",
     "Grok Settings": "Paramètres Grok",
     "Group": "Groupe",
     "Group & Quota": "Groupe et Quota",
@@ -3902,6 +3903,7 @@
     "Query Param": "Paramètre de requête",
     "Querying...": "Recherche en cours...",
     "Question": "Question",
+    "Queue concurrent requests for the same Cursor Agent session to keep its bound key and avoid active-run conflicts": "Met en file d’attente les requêtes simultanées d’une même session Cursor Agent afin de conserver la clé liée et d’éviter les conflits d’exécution active",
     "Queued": "En file",
     "Quick actions": "Actions rapides",
     "Quick insert common payment methods": "Insérer rapidement les méthodes de paiement courantes",
@@ -4496,6 +4498,7 @@
     "Sent the API key to FluentRead.": "Clé API envoyée à FluentRead.",
     "Separate image/audio prices are enabled.": "Les prix séparés pour l’image et l’audio sont activés.",
     "Separate multiple rules with English commas. For regex patterns that need commas, switch to JSON Text.": "Séparez plusieurs règles par des virgules anglaises. Pour les regex nécessitant des virgules, passez en JSON Text.",
+    "Serialize Cursor Agent runs": "Sérialiser les exécutions Cursor Agent",
     "Serve multiple users or teams with billing and quota control.": "Servir plusieurs utilisateurs ou équipes avec gestion de la facturation et des quotas.",
     "Server Address": "Adresse du serveur",
     "Server IP": "IP du serveur",
@@ -5695,8 +5698,6 @@
     "Zero retention": "Aucune rétention",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom",
-    "Serialize Cursor Agent runs": "Sérialiser les exécutions Cursor Agent",
-    "Queue concurrent requests for the same Cursor Agent session to keep its bound key and avoid active-run conflicts": "Met en file d’attente les requêtes simultanées d’une même session Cursor Agent afin de conserver la clé liée et d’éviter les conflits d’exécution active"
+    "Zoom": "Zoom"
   }
 }

@@ -535,11 +535,12 @@ const cursorMoneyFormatter = new Intl.NumberFormat(undefined, {
   maximumFractionDigits: 2,
 })
 
-function CursorUsageCells({ binding }: { binding: CursorQuotaBinding }) {
+export function CursorUsageCells({ binding }: { binding: CursorQuotaBinding }) {
   const { t } = useTranslation()
   const usage = buildCursorQuotaUsageSummary(binding)
   const apiPercentLabel = `${usage.apiPercent.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`
   const totalPercentLabel = `${usage.totalPercent.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`
+  const grokBotPercentLabel = `${usage.grokBotUsagePercent.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`
   const cursorModelCount = usage.models.filter(
     (model) => model.tier >= 2
   ).length
@@ -555,8 +556,8 @@ function CursorUsageCells({ binding }: { binding: CursorQuotaBinding }) {
                 <div className='min-w-[220px] cursor-help' tabIndex={0} />
               }
             >
-              <div className='space-y-2'>
-                <div className='space-y-1'>
+              <div className='flex flex-col gap-2'>
+                <div className='flex flex-col gap-1'>
                   <div className='flex justify-between gap-2 text-xs'>
                     <span className='text-muted-foreground'>
                       {t('API Usage')}
@@ -567,13 +568,14 @@ function CursorUsageCells({ binding }: { binding: CursorQuotaBinding }) {
                   </div>
                   <Progress
                     value={usage.apiPercent}
+                    aria-label={t('API Usage')}
                     className={cn(
                       'h-1.5',
                       progressColor(normalizePercent(usage.apiPercent))
                     )}
                   />
                 </div>
-                <div className='space-y-1'>
+                <div className='flex flex-col gap-1'>
                   <div className='flex justify-between gap-2 text-xs'>
                     <span className='text-muted-foreground'>
                       {t('Total Usage')}
@@ -584,12 +586,35 @@ function CursorUsageCells({ binding }: { binding: CursorQuotaBinding }) {
                   </div>
                   <Progress
                     value={usage.totalPercent}
+                    aria-label={t('Total Usage')}
                     className={cn(
                       'h-1.5',
                       progressColor(normalizePercent(usage.totalPercent))
                     )}
                   />
                 </div>
+                {usage.grokBotUsageAvailable ? (
+                  <div className='flex flex-col gap-1'>
+                    <div className='flex justify-between gap-2 text-xs'>
+                      <span className='text-muted-foreground'>
+                        {t('Grok Bot Usage')}
+                      </span>
+                      <span className='font-mono font-medium'>
+                        {grokBotPercentLabel}
+                      </span>
+                    </div>
+                    <Progress
+                      value={usage.grokBotUsagePercent}
+                      aria-label={t('Grok Bot Usage')}
+                      className={cn(
+                        'h-1.5',
+                        progressColor(
+                          normalizePercent(usage.grokBotUsagePercent)
+                        )
+                      )}
+                    />
+                  </div>
+                ) : null}
               </div>
             </TooltipTrigger>
             <TooltipContent
@@ -613,6 +638,12 @@ function CursorUsageCells({ binding }: { binding: CursorQuotaBinding }) {
                   {cursorMoneyFormatter.format(usage.onDemandUsedDollars)} /{' '}
                   {cursorMoneyFormatter.format(usage.onDemandLimitDollars)}
                 </span>
+                {usage.grokBotUsageAvailable && usage.grokBotResetAt > 0 ? (
+                  <span>
+                    {t('Grok Bot Usage')} · {t('Reset at:')}{' '}
+                    {formatTimestampToDate(usage.grokBotResetAt)}
+                  </span>
+                ) : null}
               </div>
             </TooltipContent>
           </Tooltip>
