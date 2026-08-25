@@ -105,6 +105,51 @@ func TestExtractCliproxyUsageSupportsClaudeLimitsOnlyPayload(t *testing.T) {
 	require.Equal(t, time.Date(2026, 7, 8, 10, 0, 0, 0, time.UTC).Unix(), usage.ClaudeFableResetAt)
 }
 
+func TestExtractCliproxyUsageSupportsCodexWhamPayload(t *testing.T) {
+	result := &service.CliproxyAPICallResponse{
+		Body: map[string]any{
+			"plan_type": "pro",
+			"rate_limit": map[string]any{
+				"primary_window": map[string]any{
+					"used_percent":         float64(41),
+					"limit_window_seconds": float64(604800),
+					"reset_at":             float64(1788137789),
+				},
+			},
+			"additional_rate_limits": []any{
+				map[string]any{
+					"limit_name":      "GPT-5.3-Codex-Spark",
+					"metered_feature": "codex_bengalfox",
+					"rate_limit": map[string]any{
+						"primary_window": map[string]any{
+							"used_percent":         float64(11),
+							"limit_window_seconds": float64(18000),
+							"reset_at":             float64(1787663429),
+						},
+						"secondary_window": map[string]any{
+							"used_percent":         float64(12),
+							"limit_window_seconds": float64(604800),
+							"reset_at":             float64(1788164344),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	usage, err := extractCliproxyUsage(result)
+
+	require.NoError(t, err)
+	require.Equal(t, "pro", usage.PlanType)
+	require.Zero(t, usage.FiveHourPercent)
+	require.Equal(t, 41, usage.WeeklyPercent)
+	require.Equal(t, int64(1788137789), usage.WeeklyResetAt)
+	require.Equal(t, 11, usage.CodexFiveHourPercent)
+	require.Equal(t, int64(1787663429), usage.CodexFiveHourResetAt)
+	require.Equal(t, 12, usage.CodexWeeklyPercent)
+	require.Equal(t, int64(1788164344), usage.CodexWeeklyResetAt)
+}
+
 func TestBuildCliproxyUsageRefreshRequestUsesClaudeOAuthUsage(t *testing.T) {
 	request := buildCliproxyUsageRefreshRequest(&model.CliproxyAuthFileBinding{
 		AuthIndex: "c1fa0ce8add6b367",

@@ -72,6 +72,52 @@ describe('cliproxy auth file usage summary', () => {
     assert.equal(summary.detailWindows.length, 0)
   })
 
+  test('shows Codex remaining quota and falls back to its five-hour window', () => {
+    const summary = buildCliproxyUsageSummary(
+      {
+        last_refreshed_at: 1,
+        last_usage_tokens: 0,
+        last_usage_quota: 0,
+        last_plan_type: 'pro',
+        last_five_hour_percent: 0,
+        last_five_hour_reset_at: 0,
+        last_weekly_percent: 41,
+        last_weekly_reset_at: 1788137789,
+        last_codex_five_hour_percent: 11,
+        last_codex_five_hour_reset_at: 1787663429,
+        last_codex_weekly_percent: 12,
+        last_codex_weekly_reset_at: 1788164344,
+        last_claude_fable_percent: 0,
+        last_claude_fable_reset_at: 0,
+        last_xai_on_demand_cap: 0,
+        last_xai_billing_period_end_at: 0,
+        last_error: '',
+      },
+      'codex'
+    )
+
+    assert.deepEqual(summary.primaryWindows, [
+      {
+        key: 'fiveHour',
+        percent: 89,
+        resetAt: 1787663429,
+      },
+      {
+        key: 'weekly',
+        percent: 59,
+        resetAt: 1788137789,
+      },
+    ])
+    assert.deepEqual(
+      summary.detailWindows.map((window) => [window.key, window.percent]),
+      [
+        ['weekly', 59],
+        ['codexFiveHour', 89],
+        ['codexWeekly', 88],
+      ]
+    )
+  })
+
   test('formats xAI billing values as USD cents with remaining percent', () => {
     const summary = buildCliproxyXAIUsageSummary({
       last_usage_tokens: 0,

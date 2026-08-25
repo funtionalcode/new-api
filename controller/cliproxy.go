@@ -738,7 +738,7 @@ func resolveCliproxyXAIMonthlyUsage(body map[string]any) (cliproxyUsageRefreshBo
 	if billingPeriodEnd == "" {
 		billingPeriodEnd = firstStringFromMap(billingCycle, "billingPeriodEnd", "billing_period_end", "end")
 	}
-	if !hasQuota && !hasUsed && !hasOnDemandCap && !hasOnDemandUsed && billingPeriodEnd == "" && planType == "" {
+	if !hasQuota && !hasUsed && !hasOnDemandCap && !hasOnDemandUsed && billingPeriodEnd == "" {
 		return cliproxyUsageRefreshBody{}, false
 	}
 	return cliproxyUsageRefreshBody{

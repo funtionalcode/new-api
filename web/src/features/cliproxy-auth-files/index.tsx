@@ -255,7 +255,16 @@ function normalizeUsagePercent(value: unknown): number {
   return Math.min(100, Math.max(0, Math.round(percent)))
 }
 
-function usageProgressColor(percent: number): string {
+function usageProgressColor(percent: number, higherIsBetter: boolean): string {
+  if (higherIsBetter) {
+    if (percent <= 10) {
+      return '[&_[data-slot=progress-indicator]]:bg-rose-500'
+    }
+    if (percent <= 30) {
+      return '[&_[data-slot=progress-indicator]]:bg-amber-500'
+    }
+    return '[&_[data-slot=progress-indicator]]:bg-emerald-500'
+  }
   if (percent >= 90) {
     return '[&_[data-slot=progress-indicator]]:bg-rose-500'
   }
@@ -265,7 +274,15 @@ function usageProgressColor(percent: number): string {
   return '[&_[data-slot=progress-indicator]]:bg-emerald-500'
 }
 
-function UsageLimitBar({ label, percent }: { label: string; percent: number }) {
+function UsageLimitBar({
+  label,
+  percent,
+  higherIsBetter = false,
+}: {
+  label: string
+  percent: number
+  higherIsBetter?: boolean
+}) {
   const normalizedPercent = normalizeUsagePercent(percent)
 
   return (
@@ -276,7 +293,10 @@ function UsageLimitBar({ label, percent }: { label: string; percent: number }) {
       </div>
       <Progress
         value={normalizedPercent}
-        className={cn('h-1.5', usageProgressColor(normalizedPercent))}
+        className={cn(
+          'h-1.5',
+          usageProgressColor(normalizedPercent, higherIsBetter)
+        )}
       />
     </div>
   )
@@ -463,6 +483,7 @@ export function BindingUsageCell({
                 key={window.key}
                 label={usageWindowLabel(window.key, labels)}
                 percent={window.percent}
+                higherIsBetter={type === 'codex'}
               />
             ))}
           </div>

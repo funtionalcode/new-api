@@ -76,6 +76,16 @@ export type CliproxyXAIUsageSummary = {
   primaryWindows: CliproxyXAIUsageWindow[]
 }
 
+function hasStoredUsageWindow(percent: number, resetAt: number): boolean {
+  return percent > 0 || resetAt > 0
+}
+
+function remainingUsagePercent(percent: number, resetAt: number): number {
+  if (!hasStoredUsageWindow(percent, resetAt)) return 0
+  const normalizedPercent = Math.min(100, Math.max(0, Math.round(percent)))
+  return 100 - normalizedPercent
+}
+
 function normalizeCents(value: number): number {
   if (!Number.isFinite(value)) return 0
   return Math.max(0, Math.round(value))
@@ -230,21 +240,83 @@ export function buildCliproxyUsageSummary(
     }
   }
 
+  const mainFiveHourWindow: CliproxyUsageWindow = {
+    key: 'fiveHour',
+    percent: remainingUsagePercent(
+      binding.last_five_hour_percent,
+      binding.last_five_hour_reset_at
+    ),
+    resetAt: binding.last_five_hour_reset_at,
+  }
+  const mainWeeklyWindow: CliproxyUsageWindow = {
+    key: 'weekly',
+    percent: remainingUsagePercent(
+      binding.last_weekly_percent,
+      binding.last_weekly_reset_at
+    ),
+    resetAt: binding.last_weekly_reset_at,
+  }
+  const codexFiveHourWindow: CliproxyUsageWindow = {
+    key: 'codexFiveHour',
+    percent: remainingUsagePercent(
+      binding.last_codex_five_hour_percent,
+      binding.last_codex_five_hour_reset_at
+    ),
+    resetAt: binding.last_codex_five_hour_reset_at,
+  }
+  const codexWeeklyWindow: CliproxyUsageWindow = {
+    key: 'codexWeekly',
+    percent: remainingUsagePercent(
+      binding.last_codex_weekly_percent,
+      binding.last_codex_weekly_reset_at
+    ),
+    resetAt: binding.last_codex_weekly_reset_at,
+  }
+
+  const hasMainFiveHourWindow = hasStoredUsageWindow(
+    binding.last_five_hour_percent,
+    binding.last_five_hour_reset_at
+  )
+  const hasMainWeeklyWindow = hasStoredUsageWindow(
+    binding.last_weekly_percent,
+    binding.last_weekly_reset_at
+  )
+  const hasCodexFiveHourWindow = hasStoredUsageWindow(
+    binding.last_codex_five_hour_percent,
+    binding.last_codex_five_hour_reset_at
+  )
+  const hasCodexWeeklyWindow = hasStoredUsageWindow(
+    binding.last_codex_weekly_percent,
+    binding.last_codex_weekly_reset_at
+  )
+  const primaryFiveHourWindow = hasMainFiveHourWindow
+    ? mainFiveHourWindow
+    : {
+        ...codexFiveHourWindow,
+        key: 'fiveHour' as const,
+      }
+  const primaryWeeklyWindow = hasMainWeeklyWindow
+    ? mainWeeklyWindow
+    : {
+        ...codexWeeklyWindow,
+        key: 'weekly' as const,
+      }
+
   return {
     hasUsageWindow: true,
-    primaryWindows,
+    primaryWindows: [
+      ...(hasMainFiveHourWindow || hasCodexFiveHourWindow
+        ? [primaryFiveHourWindow]
+        : []),
+      ...(hasMainWeeklyWindow || hasCodexWeeklyWindow
+        ? [primaryWeeklyWindow]
+        : []),
+    ],
     detailWindows: [
-      ...primaryWindows,
-      {
-        key: 'codexFiveHour',
-        percent: binding.last_codex_five_hour_percent,
-        resetAt: binding.last_codex_five_hour_reset_at,
-      },
-      {
-        key: 'codexWeekly',
-        percent: binding.last_codex_weekly_percent,
-        resetAt: binding.last_codex_weekly_reset_at,
-      },
+      ...(hasMainFiveHourWindow ? [mainFiveHourWindow] : []),
+      ...(hasMainWeeklyWindow ? [mainWeeklyWindow] : []),
+      ...(hasCodexFiveHourWindow ? [codexFiveHourWindow] : []),
+      ...(hasCodexWeeklyWindow ? [codexWeeklyWindow] : []),
     ],
   }
 }
