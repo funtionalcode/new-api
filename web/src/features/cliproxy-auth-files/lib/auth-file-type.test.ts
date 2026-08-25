@@ -62,15 +62,25 @@ describe('cliproxy auth file type', () => {
   })
 
   test('keeps upgraded xAI plans distinguishable', () => {
+    for (const plan of [
+      'SuperGrok Lite',
+      'SuperGrok Plus',
+      'SuperGrok Heavy',
+    ]) {
+      assert.equal(
+        getCliproxyAuthFileType({
+          auth_name: 'account.json',
+          auth_file: '',
+          last_plan_type: plan,
+        }),
+        'xai'
+      )
+      assert.equal(getCliproxyPlanLabel(plan), plan)
+    }
     assert.equal(
-      getCliproxyAuthFileType({
-        auth_name: 'account.json',
-        auth_file: '',
-        last_plan_type: 'SuperGrok Heavy',
-      }),
-      'xai'
+      getCliproxyPlanLabel('SUBSCRIPTION_TIER_SUPER_GROK_PLUS'),
+      'SuperGrok Plus'
     )
-    assert.equal(getCliproxyPlanLabel('SuperGrok Heavy'), 'SuperGrok Heavy')
   })
 
   test('extracts email from auth file names', () => {

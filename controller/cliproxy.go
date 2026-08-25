@@ -22,6 +22,7 @@ const (
 	cliproxyClaudeProfileURL     = "https://api.anthropic.com/api/oauth/profile"
 	cliproxyXAIWeeklyBillingURL  = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
 	cliproxyXAIMonthlyBillingURL = "https://cli-chat-proxy.grok.com/v1/billing"
+	cliproxyXAISettingsURL       = "https://cli-chat-proxy.grok.com/v1/settings"
 	cliproxyXAIBillingURL        = cliproxyXAIMonthlyBillingURL
 )
 
@@ -385,14 +386,18 @@ func buildCliproxyXAIBillingRequest(authIndex string) service.CliproxyAPICallReq
 }
 
 func buildCliproxyXAIWeeklyBillingRequest(authIndex string) service.CliproxyAPICallRequest {
-	return buildCliproxyXAIBillingRequestForURL(authIndex, cliproxyXAIWeeklyBillingURL)
+	return buildCliproxyXAIRequestForURL(authIndex, cliproxyXAIWeeklyBillingURL)
 }
 
 func buildCliproxyXAIMonthlyBillingRequest(authIndex string) service.CliproxyAPICallRequest {
-	return buildCliproxyXAIBillingRequestForURL(authIndex, cliproxyXAIMonthlyBillingURL)
+	return buildCliproxyXAIRequestForURL(authIndex, cliproxyXAIMonthlyBillingURL)
 }
 
-func buildCliproxyXAIBillingRequestForURL(authIndex string, url string) service.CliproxyAPICallRequest {
+func buildCliproxyXAISettingsRequest(authIndex string) service.CliproxyAPICallRequest {
+	return buildCliproxyXAIRequestForURL(authIndex, cliproxyXAISettingsURL)
+}
+
+func buildCliproxyXAIRequestForURL(authIndex string, url string) service.CliproxyAPICallRequest {
 	return service.CliproxyAPICallRequest{
 		AuthIndex: authIndex,
 		Method:    http.MethodGet,
@@ -419,6 +424,11 @@ func refreshCliproxyXAIUsage(ctx context.Context, caller cliproxyAPICaller, bind
 	if weeklyErr != nil && monthlyErr != nil {
 		return cliproxyXAIRefreshResult{}, fmt.Errorf("周额度刷新失败: %v；月度额度刷新失败: %v", weeklyErr, monthlyErr)
 	}
+	settingsResponse, settingsErr := caller.CallAPI(ctx, buildCliproxyXAISettingsRequest(binding.AuthIndex))
+	settingsPlan := ""
+	if settingsErr == nil {
+		settingsPlan = extractCliproxyXAIPlan(settingsResponse)
+	}
 
 	usage := cliproxyUsageRefreshBody{
 		UsedTokens:               binding.LastUsageTokens,
@@ -442,11 +452,16 @@ func refreshCliproxyXAIUsage(ctx context.Context, caller cliproxyAPICaller, bind
 	if monthlyErr == nil {
 		usage.UsedTokens = monthlyUsage.UsedTokens
 		usage.Quota = monthlyUsage.Quota
+		// A successful monthly refresh without an explicit subscription tier must
+		// clear values previously guessed from quota amounts.
 		usage.PlanType = monthlyUsage.PlanType
 		usage.OnDemandCap = monthlyUsage.OnDemandCap
 		usage.XAIOnDemandUsed = monthlyUsage.XAIOnDemandUsed
 		usage.XAIOnDemandUsedRefreshed = monthlyUsage.XAIOnDemandUsedRefreshed
 		usage.BillingPeriodEndAt = monthlyUsage.BillingPeriodEndAt
+	}
+	if settingsPlan != "" {
+		usage.PlanType = settingsPlan
 	}
 	if weeklyErr == nil && monthlyErr == nil && !weeklyUsage.XAIWeeklyPercentSet && usage.Quota > 0 {
 		weeklyPercent := math.Round(float64(usage.UsedTokens) / float64(usage.Quota) * 100)
@@ -693,6 +708,7 @@ func resolveCliproxyXAIWeeklyUsage(body map[string]any) (cliproxyUsageRefreshBod
 
 func resolveCliproxyXAIMonthlyUsage(body map[string]any) (cliproxyUsageRefreshBody, bool) {
 	config := cliproxyXAIPayload(body)
+	planType := resolveCliproxyXAIPlan(body)
 	usageData := firstMapFromMap(config, "usage")
 	billingCycle := firstMapFromMap(config, "billingCycle", "billing_cycle")
 	quota, hasQuota := cliproxyXAICents(
@@ -722,13 +738,13 @@ func resolveCliproxyXAIMonthlyUsage(body map[string]any) (cliproxyUsageRefreshBo
 	if billingPeriodEnd == "" {
 		billingPeriodEnd = firstStringFromMap(billingCycle, "billingPeriodEnd", "billing_period_end", "end")
 	}
-	if !hasQuota && !hasUsed && !hasOnDemandCap && !hasOnDemandUsed && billingPeriodEnd == "" {
+	if !hasQuota && !hasUsed && !hasOnDemandCap && !hasOnDemandUsed && billingPeriodEnd == "" && planType == "" {
 		return cliproxyUsageRefreshBody{}, false
 	}
 	return cliproxyUsageRefreshBody{
 		UsedTokens:               usedTokens,
 		Quota:                    quota,
-		PlanType:                 resolveCliproxyXAIPlan(quota),
+		PlanType:                 planType,
 		OnDemandCap:              onDemandCap,
 		XAIOnDemandUsed:          onDemandUsed,
 		XAIOnDemandUsedRefreshed: hasOnDemandUsed,
@@ -746,11 +762,83 @@ func cliproxyXAIPayload(body map[string]any) map[string]any {
 	return body
 }
 
-func resolveCliproxyXAIPlan(monthlyLimitCents int) string {
-	if monthlyLimitCents == 150000 {
-		return "SuperGrok Heavy"
+func extractCliproxyXAIPlan(result *service.CliproxyAPICallResponse) string {
+	if result == nil {
+		return ""
 	}
-	return "SuperGrok"
+	body := result.Body
+	if len(body) == 0 {
+		body = result.Data
+	}
+	return resolveCliproxyXAIPlan(body)
+}
+
+func resolveCliproxyXAIPlan(body map[string]any) string {
+	config := cliproxyXAIPayload(body)
+	sources := []map[string]any{firstMapFromMap(config, "settings"), config, body}
+	for _, source := range sources {
+		rawPlan := firstCliproxyXAIPlanFromMap(
+			source,
+			"subscription_tier_display",
+			"subscriptionTierDisplay",
+			"plan_type_display",
+			"planTypeDisplay",
+		)
+		if rawPlan != "" {
+			return canonicalCliproxyXAIPlan(rawPlan)
+		}
+	}
+	for _, source := range sources {
+		rawPlan := firstCliproxyXAIPlanFromMap(
+			source,
+			"subscription_tier",
+			"subscriptionTier",
+			"plan_type",
+			"planType",
+		)
+		if rawPlan != "" {
+			return canonicalCliproxyXAIPlan(rawPlan)
+		}
+	}
+	return ""
+}
+
+func firstCliproxyXAIPlanFromMap(data map[string]any, keys ...string) string {
+	for _, key := range keys {
+		value, ok := data[key].(string)
+		if !ok {
+			continue
+		}
+		if plan := strings.TrimSpace(value); plan != "" {
+			return plan
+		}
+	}
+	return ""
+}
+
+func canonicalCliproxyXAIPlan(rawPlan string) string {
+	trimmedPlan := strings.TrimSpace(rawPlan)
+	if trimmedPlan == "" {
+		return ""
+	}
+	normalizedPlan := normalizeCliproxyPlan(trimmedPlan)
+	normalizedPlan = strings.TrimPrefix(normalizedPlan, "subscriptiontier")
+	switch normalizedPlan {
+	case "free", "xaifree":
+		return "Free"
+	case "supergroklite":
+		return "SuperGrok Lite"
+	case "supergrok":
+		return "SuperGrok"
+	case "supergrokplus":
+		return "SuperGrok Plus"
+	case "supergrokheavy":
+		return "SuperGrok Heavy"
+	case "xpremium+", "xpremiumplus", "premium+", "premiumplus":
+		return "X Premium+"
+	default:
+		return trimmedPlan
+	}
 }
 
 func cliproxyXAICents(data map[string]any, keys ...string) (int, bool) {
@@ -845,7 +933,7 @@ func isCliproxyXAIAuthFile(binding *model.CliproxyAuthFileBinding) bool {
 		return false
 	}
 	switch normalizeCliproxyPlan(binding.LastPlanType) {
-	case "xai", "supergrok", "supergrokheavy":
+	case "xai", "xaifree", "supergroklite", "supergrok", "supergrokplus", "supergrokheavy", "xpremium+", "xpremiumplus", "subscriptiontiersupergroklite", "subscriptiontiersupergrok", "subscriptiontiersupergrokplus", "subscriptiontiersupergrokheavy":
 		return true
 	}
 	return isCliproxyXAIAuthFileName(binding.AuthFile) || isCliproxyXAIAuthFileName(binding.AuthName)

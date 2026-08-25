@@ -132,11 +132,19 @@ func TestBuildCliproxyUsageRefreshRequestUsesXAIBilling(t *testing.T) {
 	require.NotContains(t, request.Header, "Chatgpt-Account-Id")
 }
 
-func TestIsCliproxyXAIAuthFileRecognizesSuperGrokHeavyPlan(t *testing.T) {
-	require.True(t, isCliproxyXAIAuthFile(&model.CliproxyAuthFileBinding{
-		AuthName:     "account@example.com.json",
-		LastPlanType: "SuperGrok Heavy",
-	}))
+func TestIsCliproxyXAIAuthFileRecognizesCurrentPlans(t *testing.T) {
+	for _, plan := range []string{
+		"SuperGrok Lite",
+		"SuperGrok",
+		"SuperGrok Plus",
+		"SuperGrok Heavy",
+		"SUBSCRIPTION_TIER_SUPER_GROK_PLUS",
+	} {
+		require.True(t, isCliproxyXAIAuthFile(&model.CliproxyAuthFileBinding{
+			AuthName:     "account@example.com.json",
+			LastPlanType: plan,
+		}), plan)
+	}
 }
 
 func TestExtractCliproxyUsageSupportsXAIBillingPayload(t *testing.T) {
@@ -146,6 +154,7 @@ func TestExtractCliproxyUsageSupportsXAIBillingPayload(t *testing.T) {
 				"monthlyLimit":     map[string]any{"val": float64(15000)},
 				"used":             map[string]any{"val": float64(123)},
 				"onDemandCap":      map[string]any{"val": float64(2500)},
+				"subscriptionTier": "SUBSCRIPTION_TIER_SUPER_GROK",
 				"billingPeriodEnd": "2026-08-01T00:00:00+00:00",
 			},
 		},
@@ -190,6 +199,7 @@ func TestResolveCliproxyXAIMonthlyUsageSupportsSnakeCaseAndHeavyPlan(t *testing.
 			"used":               map[string]any{"val": float64(42000)},
 			"on_demand_cap":      map[string]any{"val": float64(10000)},
 			"on_demand_used":     map[string]any{"val": float64(300)},
+			"subscription_tier":  "SUBSCRIPTION_TIER_SUPER_GROK_HEAVY",
 			"billing_period_end": "2026-08-01T00:00:00Z",
 		},
 	})
@@ -210,8 +220,9 @@ func TestResolveCliproxyXAIMonthlyUsageSupportsBillingCycleUsagePayload(t *testi
 			"billingPeriodStart": "2026-07-01T00:00:00Z",
 			"billingPeriodEnd":   "2026-08-01T00:00:00Z",
 		},
-		"monthlyLimit": map[string]any{"val": float64(150000)},
-		"onDemandCap":  map[string]any{"val": float64(0)},
+		"monthlyLimit":            map[string]any{"val": float64(150000)},
+		"onDemandCap":             map[string]any{"val": float64(0)},
+		"subscriptionTierDisplay": "SuperGrok Plus",
 		"usage": map[string]any{
 			"includedUsed": map[string]any{"val": float64(9383)},
 			"onDemandUsed": map[string]any{"val": float64(0)},
@@ -220,13 +231,33 @@ func TestResolveCliproxyXAIMonthlyUsageSupportsBillingCycleUsagePayload(t *testi
 	})
 
 	require.True(t, ok)
-	require.Equal(t, "SuperGrok Heavy", usage.PlanType)
+	require.Equal(t, "SuperGrok Plus", usage.PlanType)
 	require.Equal(t, 150000, usage.Quota)
 	require.Equal(t, 9383, usage.UsedTokens)
 	require.Zero(t, usage.OnDemandCap)
 	require.Zero(t, usage.XAIOnDemandUsed)
 	require.True(t, usage.XAIOnDemandUsedRefreshed)
 	require.Equal(t, time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC).Unix(), usage.BillingPeriodEndAt)
+}
+
+func TestResolveCliproxyXAIMonthlyUsageDoesNotInferPlanFromQuota(t *testing.T) {
+	usage, ok := resolveCliproxyXAIMonthlyUsage(map[string]any{
+		"monthlyLimit": map[string]any{"val": float64(150000)},
+		"used":         map[string]any{"val": float64(100)},
+	})
+
+	require.True(t, ok)
+	require.Empty(t, usage.PlanType)
+}
+
+func TestExtractCliproxyXAIPlanUsesSettingsDisplayTier(t *testing.T) {
+	plan := extractCliproxyXAIPlan(&service.CliproxyAPICallResponse{
+		Body: map[string]any{
+			"settings": map[string]any{"subscription_tier_display": "SuperGrok Lite"},
+		},
+	})
+
+	require.Equal(t, "SuperGrok Lite", plan)
 }
 
 func TestResolveCliproxyXAIMonthlyUsageMarksExplicitZeroOnDemandUsageAsRefreshed(t *testing.T) {
@@ -247,10 +278,12 @@ func TestResolveCliproxyXAIMonthlyUsageMarksExplicitZeroOnDemandUsageAsRefreshed
 func TestBuildCliproxyXAIBillingRequestsUseGrokCLIHeaders(t *testing.T) {
 	weeklyRequest := buildCliproxyXAIWeeklyBillingRequest("auth-index")
 	monthlyRequest := buildCliproxyXAIMonthlyBillingRequest("auth-index")
+	settingsRequest := buildCliproxyXAISettingsRequest("auth-index")
 
 	require.Equal(t, cliproxyXAIWeeklyBillingURL, weeklyRequest.URL)
 	require.Equal(t, cliproxyXAIMonthlyBillingURL, monthlyRequest.URL)
-	for _, request := range []service.CliproxyAPICallRequest{weeklyRequest, monthlyRequest} {
+	require.Equal(t, cliproxyXAISettingsURL, settingsRequest.URL)
+	for _, request := range []service.CliproxyAPICallRequest{weeklyRequest, monthlyRequest, settingsRequest} {
 		require.Equal(t, "auth-index", request.AuthIndex)
 		require.Equal(t, "Bearer $TOKEN$", request.Header["Authorization"])
 		require.Equal(t, "xai-grok-cli", request.Header["x-xai-token-auth"])
@@ -347,6 +380,9 @@ func TestRefreshCliproxyXAIUsageMergesWeeklyAndMonthlySnapshots(t *testing.T) {
 					"billingPeriodEnd": "2026-08-01T00:00:00Z",
 				}},
 			},
+			cliproxyXAISettingsURL: {
+				Body: map[string]any{"subscription_tier_display": "SuperGrok Plus"},
+			},
 		},
 		errors: map[string]error{},
 	}
@@ -361,6 +397,36 @@ func TestRefreshCliproxyXAIUsageMergesWeeklyAndMonthlySnapshots(t *testing.T) {
 	require.Equal(t, 15000, result.Usage.Quota)
 	require.Equal(t, 2500, result.Usage.OnDemandCap)
 	require.Equal(t, 125, result.Usage.XAIOnDemandUsed)
+	require.Equal(t, "SuperGrok Plus", result.Usage.PlanType)
+}
+
+func TestRefreshCliproxyXAIUsageClearsGuessedPlanWhenSettingsIsUnavailable(t *testing.T) {
+	caller := &fakeCliproxyAPICaller{
+		responses: map[string]*service.CliproxyAPICallResponse{
+			cliproxyXAIWeeklyBillingURL: {
+				Body: map[string]any{"config": map[string]any{
+					"currentPeriod":      map[string]any{"start": "2026-07-09T13:16:00Z", "end": "2026-07-16T13:16:00Z"},
+					"creditUsagePercent": float64(45),
+				}},
+			},
+			cliproxyXAIMonthlyBillingURL: {
+				Body: map[string]any{"config": map[string]any{
+					"monthlyLimit": map[string]any{"val": float64(150000)},
+					"used":         map[string]any{"val": float64(1768)},
+				}},
+			},
+		},
+		errors: map[string]error{cliproxyXAISettingsURL: errors.New("unauthorized")},
+	}
+	binding := &model.CliproxyAuthFileBinding{
+		AuthIndex:    "xai-auth",
+		LastPlanType: "SuperGrok Heavy",
+	}
+
+	result, err := refreshCliproxyXAIUsage(context.Background(), caller, binding)
+
+	require.NoError(t, err)
+	require.Empty(t, result.Usage.PlanType)
 }
 
 func TestRefreshCliproxyXAIUsageFallsBackToMonthlyUsedPercentWhenWeeklyResponseOmitsPercent(t *testing.T) {

@@ -35,7 +35,20 @@ const claudePlanTypes = new Set([
   'claudeenterprise',
 ])
 
-const xaiPlanTypes = new Set(['xai', 'supergrok', 'supergrokheavy'])
+const xaiPlanTypes = new Set([
+  'xai',
+  'xaifree',
+  'supergroklite',
+  'supergrok',
+  'supergrokplus',
+  'supergrokheavy',
+  'xpremium+',
+  'xpremiumplus',
+  'subscriptiontiersupergroklite',
+  'subscriptiontiersupergrok',
+  'subscriptiontiersupergrokplus',
+  'subscriptiontiersupergrokheavy',
+])
 
 interface CliproxyAuthFileTypeSource {
   auth_name?: string
@@ -58,10 +71,21 @@ function normalizeCliproxyPlan(value?: string): string {
 export function getCliproxyPlanLabel(value?: string): string {
   const label = String(value || '').trim()
   switch (normalizeCliproxyPlan(label)) {
+    case 'subscriptiontiersupergroklite':
+    case 'supergroklite':
+      return 'SuperGrok Lite'
+    case 'subscriptiontiersupergrok':
     case 'supergrok':
       return 'SuperGrok'
+    case 'subscriptiontiersupergrokplus':
+    case 'supergrokplus':
+      return 'SuperGrok Plus'
+    case 'subscriptiontiersupergrokheavy':
     case 'supergrokheavy':
       return 'SuperGrok Heavy'
+    case 'xpremium+':
+    case 'xpremiumplus':
+      return 'X Premium+'
     default:
       return label
   }

@@ -312,7 +312,7 @@ function xaiUsageWindowLabel(
   return labels.monthly
 }
 
-function BindingUsageCell({
+export function BindingUsageCell({
   binding,
   labels,
 }: {
@@ -352,17 +352,21 @@ function BindingUsageCell({
                 />
               ))}
             </div>
-            <div className='flex flex-wrap items-center gap-x-3 gap-y-1'>
-              <PlanLabel
-                type={type}
-                value={binding.last_plan_type || 'SuperGrok'}
-              />
-              {binding.last_error ? (
-                <Badge variant='destructive' className='h-5 px-1.5 text-[11px]'>
-                  {t('Error')}
-                </Badge>
-              ) : null}
-            </div>
+            {binding.last_plan_type || binding.last_error ? (
+              <div className='flex flex-wrap items-center gap-x-3 gap-y-1'>
+                {binding.last_plan_type ? (
+                  <PlanLabel type={type} value={binding.last_plan_type} />
+                ) : null}
+                {binding.last_error ? (
+                  <Badge
+                    variant='destructive'
+                    className='h-5 px-1.5 text-[11px]'
+                  >
+                    {t('Error')}
+                  </Badge>
+                ) : null}
+              </div>
+            ) : null}
           </TooltipTrigger>
           <TooltipContent
             side='top'

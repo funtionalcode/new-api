@@ -39,7 +39,10 @@ export function getCliproxyPlanLabelConfig(
   type: CliproxyAuthFileType,
   value: unknown
 ): CliproxyPlanLabelConfig | null {
-  const key = normalizeCliproxyPlanKey(value)
+  const planLabel = getCliproxyPlanLabel(
+    typeof value === 'string' ? value : undefined
+  )
+  const key = normalizeCliproxyPlanKey(planLabel)
   if (!key) return null
 
   if (type === 'claude') {
@@ -110,9 +113,18 @@ export function getCliproxyPlanLabelConfig(
     }
   }
 
-  if (type === 'xai' && (key === 'supergrok' || key === 'supergrokheavy')) {
+  if (
+    type === 'xai' &&
+    [
+      'supergroklite',
+      'supergrok',
+      'supergrokplus',
+      'supergrokheavy',
+      'xpremium+',
+    ].includes(key)
+  ) {
     return {
-      label: getCliproxyPlanLabel(String(value)),
+      label: planLabel,
       className:
         'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-200',
     }
@@ -142,7 +154,7 @@ export function getCliproxyPlanLabelConfig(
   }
 
   return {
-    label: String(value),
+    label: planLabel,
     className: 'border-border bg-background text-muted-foreground',
   }
 }

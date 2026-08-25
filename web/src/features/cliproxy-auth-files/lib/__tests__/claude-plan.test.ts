@@ -87,4 +87,15 @@ describe('Claude plan labels', () => {
       )
     }
   })
+
+  test('keeps current xAI plan names distinct', () => {
+    for (const plan of [
+      'SuperGrok Lite',
+      'SuperGrok',
+      'SuperGrok Plus',
+      'SuperGrok Heavy',
+    ]) {
+      assert.equal(getCliproxyPlanLabelConfig('xai', plan)?.label, plan)
+    }
+  })
 })
