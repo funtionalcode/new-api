@@ -80,12 +80,6 @@ function hasStoredUsageWindow(percent: number, resetAt: number): boolean {
   return percent > 0 || resetAt > 0
 }
 
-function remainingUsagePercent(percent: number, resetAt: number): number {
-  if (!hasStoredUsageWindow(percent, resetAt)) return 0
-  const normalizedPercent = Math.min(100, Math.max(0, Math.round(percent)))
-  return 100 - normalizedPercent
-}
-
 function normalizeCents(value: number): number {
   if (!Number.isFinite(value)) return 0
   return Math.max(0, Math.round(value))
@@ -242,34 +236,22 @@ export function buildCliproxyUsageSummary(
 
   const mainFiveHourWindow: CliproxyUsageWindow = {
     key: 'fiveHour',
-    percent: remainingUsagePercent(
-      binding.last_five_hour_percent,
-      binding.last_five_hour_reset_at
-    ),
+    percent: binding.last_five_hour_percent,
     resetAt: binding.last_five_hour_reset_at,
   }
   const mainWeeklyWindow: CliproxyUsageWindow = {
     key: 'weekly',
-    percent: remainingUsagePercent(
-      binding.last_weekly_percent,
-      binding.last_weekly_reset_at
-    ),
+    percent: binding.last_weekly_percent,
     resetAt: binding.last_weekly_reset_at,
   }
   const codexFiveHourWindow: CliproxyUsageWindow = {
     key: 'codexFiveHour',
-    percent: remainingUsagePercent(
-      binding.last_codex_five_hour_percent,
-      binding.last_codex_five_hour_reset_at
-    ),
+    percent: binding.last_codex_five_hour_percent,
     resetAt: binding.last_codex_five_hour_reset_at,
   }
   const codexWeeklyWindow: CliproxyUsageWindow = {
     key: 'codexWeekly',
-    percent: remainingUsagePercent(
-      binding.last_codex_weekly_percent,
-      binding.last_codex_weekly_reset_at
-    ),
+    percent: binding.last_codex_weekly_percent,
     resetAt: binding.last_codex_weekly_reset_at,
   }
 

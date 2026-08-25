@@ -72,7 +72,7 @@ describe('cliproxy auth file usage summary', () => {
     assert.equal(summary.detailWindows.length, 0)
   })
 
-  test('shows Codex remaining quota and falls back to its five-hour window', () => {
+  test('shows Codex used quota and falls back to its five-hour window', () => {
     const summary = buildCliproxyUsageSummary(
       {
         last_refreshed_at: 1,
@@ -99,21 +99,21 @@ describe('cliproxy auth file usage summary', () => {
     assert.deepEqual(summary.primaryWindows, [
       {
         key: 'fiveHour',
-        percent: 89,
+        percent: 11,
         resetAt: 1787663429,
       },
       {
         key: 'weekly',
-        percent: 59,
+        percent: 41,
         resetAt: 1788137789,
       },
     ])
     assert.deepEqual(
       summary.detailWindows.map((window) => [window.key, window.percent]),
       [
-        ['weekly', 59],
-        ['codexFiveHour', 89],
-        ['codexWeekly', 88],
+        ['weekly', 41],
+        ['codexFiveHour', 11],
+        ['codexWeekly', 12],
       ]
     )
   })
