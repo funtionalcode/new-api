@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -100,6 +101,58 @@ func TestDoRequestUsesWebsocketForResponses(t *testing.T) {
 	assert.Equal(t, "/v1/responses", request.path)
 	assert.Equal(t, "Bearer upstream-secret", request.authorization)
 	assert.Equal(t, "application/json", request.contentType)
+}
+
+func TestConvertOpenAIResponsesRequestNormalizesRootUnionSchema(t *testing.T) {
+	request := dto.OpenAIResponsesRequest{
+		Model: "grok-4.5",
+		Tools: []byte(`[
+			{"type":"namespace","name":"mcp__codex_app","tools":[
+				{"type":"function","name":"automation_update","strict":false,"parameters":{
+					"type":"object","properties":{},
+					"oneOf":[{"$ref":"#/$defs/create"},{"$ref":"#/$defs/delete"}],
+					"$defs":{
+						"id":{"type":"string"},
+						"create":{"type":"object","properties":{"mode":{"enum":["create"]}},"required":["mode"],"additionalProperties":false},
+						"delete":{"type":"object","properties":{"mode":{"enum":["delete"]},"id":{"$ref":"#/$defs/id"}},"required":["mode","id"],"additionalProperties":false}
+					}
+				}}
+			]},
+			{"type":"function","name":"lookup","parameters":{"type":"object","properties":{"query":{"type":"string"}}}}
+		]`),
+	}
+
+	converted, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(nil, nil, request)
+
+	require.NoError(t, err)
+	convertedRequest, ok := converted.(dto.OpenAIResponsesRequest)
+	require.True(t, ok)
+	var tools []any
+	require.NoError(t, common.Unmarshal(convertedRequest.Tools, &tools))
+	require.Len(t, tools, 2)
+	namespace, ok := tools[0].(map[string]any)
+	require.True(t, ok)
+	nestedTools, ok := namespace["tools"].([]any)
+	require.True(t, ok)
+	require.Len(t, nestedTools, 1)
+	automationTool, ok := nestedTools[0].(map[string]any)
+	require.True(t, ok)
+	parameters, ok := automationTool["parameters"].(map[string]any)
+	require.True(t, ok)
+	assert.Len(t, parameters, 1)
+	assert.Contains(t, parameters, "oneOf")
+	variants, ok := parameters["oneOf"].([]any)
+	require.True(t, ok)
+	require.Len(t, variants, 2)
+	deleteVariant, ok := variants[1].(map[string]any)
+	require.True(t, ok)
+	properties, ok := deleteVariant["properties"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, map[string]any{"type": "string"}, properties["id"])
+	encodedTools := string(convertedRequest.Tools)
+	assert.NotContains(t, encodedTools, `"$defs"`)
+	assert.NotContains(t, encodedTools, `"$ref"`)
+	assert.Contains(t, encodedTools, `"name":"lookup","parameters":{"properties":{"query":{"type":"string"}},"type":"object"}`)
 }
 
 func TestConvertAudioRequestOmitsRoutingModelForXAI(t *testing.T) {

@@ -2,6 +2,7 @@ package xai
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -127,7 +128,95 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	if request.Model == "" && info != nil {
 		request.Model = info.UpstreamModelName
 	}
+	normalizedTools, err := normalizeXAIResponsesTools(request.Tools)
+	if err != nil {
+		return nil, fmt.Errorf("normalize xAI Responses tools: %w", err)
+	}
+	request.Tools = normalizedTools
 	return request, nil
+}
+
+func normalizeXAIResponsesTools(rawTools []byte) ([]byte, error) {
+	if len(rawTools) == 0 {
+		return rawTools, nil
+	}
+	var tools []any
+	if err := common.Unmarshal(rawTools, &tools); err != nil {
+		return nil, err
+	}
+	for _, rawTool := range tools {
+		if tool, ok := rawTool.(map[string]any); ok {
+			normalizeXAIResponsesTool(tool)
+		}
+	}
+	return common.Marshal(tools)
+}
+
+func normalizeXAIResponsesTool(tool map[string]any) {
+	if nestedTools, ok := tool["tools"].([]any); ok {
+		for _, rawNestedTool := range nestedTools {
+			if nestedTool, ok := rawNestedTool.(map[string]any); ok {
+				normalizeXAIResponsesTool(nestedTool)
+			}
+		}
+	}
+	parameters, ok := tool["parameters"].(map[string]any)
+	if !ok {
+		return
+	}
+	definitions, _ := parameters["$defs"].(map[string]any)
+	normalized, _ := normalizeXAIResponsesSchemaValue(parameters, definitions, map[string]bool{}).(map[string]any)
+	delete(normalized, "$defs")
+	for _, unionKey := range []string{"oneOf", "anyOf"} {
+		if variants, ok := normalized[unionKey].([]any); ok && len(variants) > 0 {
+			tool["parameters"] = map[string]any{unionKey: variants}
+			return
+		}
+	}
+	tool["parameters"] = normalized
+}
+
+func normalizeXAIResponsesSchemaValue(value any, definitions map[string]any, resolving map[string]bool) any {
+	switch typedValue := value.(type) {
+	case []any:
+		normalized := make([]any, len(typedValue))
+		for i, item := range typedValue {
+			normalized[i] = normalizeXAIResponsesSchemaValue(item, definitions, resolving)
+		}
+		return normalized
+	case map[string]any:
+		if ref, ok := typedValue["$ref"].(string); ok && strings.HasPrefix(ref, "#/$defs/") {
+			name := strings.TrimPrefix(ref, "#/$defs/")
+			definition, exists := definitions[name]
+			if exists && !resolving[name] {
+				resolving[name] = true
+				normalizedDefinition := normalizeXAIResponsesSchemaValue(definition, definitions, resolving)
+				delete(resolving, name)
+				if normalizedMap, ok := normalizedDefinition.(map[string]any); ok {
+					result := normalizedMap
+					for key, item := range typedValue {
+						if key == "$ref" || key == "$defs" {
+							continue
+						}
+						result[key] = normalizeXAIResponsesSchemaValue(item, definitions, resolving)
+					}
+					return result
+				}
+				return normalizedDefinition
+			}
+			return map[string]any{}
+		}
+		result := make(map[string]any, len(typedValue))
+		for key, item := range typedValue {
+			if key == "$defs" {
+				continue
+			}
+			result[key] = normalizeXAIResponsesSchemaValue(item, definitions, resolving)
+		}
+		return result
+	default:
+		return value
+	}
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
