@@ -43,6 +43,16 @@ describe('playground chat completion payload', () => {
     assert.equal(payload.max_tokens, 65536)
   })
 
+  test('uses the GLM 5.3 long-output default for model variants', () => {
+    const payload = buildChatCompletionPayload(
+      messages,
+      { ...DEFAULT_CONFIG, model: 'glm-5.3-flash' },
+      { ...DEFAULT_PARAMETER_ENABLED, max_tokens: false }
+    )
+
+    assert.equal(payload.max_tokens, 65536)
+  })
+
   test('preserves an explicit max tokens limit for GLM 5.3', () => {
     const payload = buildChatCompletionPayload(
       messages,
@@ -57,6 +67,16 @@ describe('playground chat completion payload', () => {
     const payload = buildChatCompletionPayload(
       messages,
       { ...DEFAULT_CONFIG, model: 'gpt-4o' },
+      { ...DEFAULT_PARAMETER_ENABLED, max_tokens: false }
+    )
+
+    assert.equal(payload.max_tokens, undefined)
+  })
+
+  test('does not treat a similarly prefixed model as a GLM 5.3 variant', () => {
+    const payload = buildChatCompletionPayload(
+      messages,
+      { ...DEFAULT_CONFIG, model: 'glm-5.30' },
       { ...DEFAULT_PARAMETER_ENABLED, max_tokens: false }
     )
 

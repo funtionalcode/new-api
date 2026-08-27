@@ -56,8 +56,14 @@ export function buildChatCompletionPayload(
 
   if (parameterEnabled.max_tokens) {
     payload.max_tokens = config.max_tokens
-  } else if (config.model.trim().toLowerCase() === 'glm-5.3') {
-    payload.max_tokens = GLM_5_3_DEFAULT_MAX_TOKENS
+  } else {
+    const normalizedModel = config.model.trim().toLowerCase()
+    if (
+      normalizedModel === 'glm-5.3' ||
+      normalizedModel.startsWith('glm-5.3-')
+    ) {
+      payload.max_tokens = GLM_5_3_DEFAULT_MAX_TOKENS
+    }
   }
 
   if (parameterEnabled.frequency_penalty) {
