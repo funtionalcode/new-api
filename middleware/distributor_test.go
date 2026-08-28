@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -22,6 +24,7 @@ func setupDistributorTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
 	gin.SetMode(gin.TestMode)
+	require.NoError(t, i18n.Init())
 	oldMainDatabaseType := common.MainDatabaseType()
 	oldLogDatabaseType := common.LogDatabaseType()
 	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
@@ -32,7 +35,7 @@ func setupDistributorTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 	model.DB = db
 	model.LOG_DB = db
-	require.NoError(t, db.AutoMigrate(&model.User{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Task{}))
 
 	t.Cleanup(func() {
 		common.SetDatabaseTypes(oldMainDatabaseType, oldLogDatabaseType)
@@ -43,6 +46,62 @@ func setupDistributorTestDB(t *testing.T) *gorm.DB {
 	})
 
 	return db
+}
+
+func TestDistributeAllowsNonexistentVideoCapabilityProbePastModelLimit(t *testing.T) {
+	setupDistributorTestDB(t)
+
+	router := gin.New()
+	router.GET(
+		"/v1/video/generations/:task_id",
+		func(c *gin.Context) {
+			c.Set("id", 4001)
+			common.SetContextKey(c, constant.ContextKeyTokenModelLimitEnabled, true)
+			common.SetContextKey(c, constant.ContextKeyTokenModelLimit, map[string]bool{"allowed-model": true})
+			c.Next()
+		},
+		Distribute(),
+		func(c *gin.Context) {
+			c.Status(http.StatusNoContent)
+		},
+	)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/v1/video/generations/codex-capability-probe-nonexistent", nil)
+	router.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusNoContent, recorder.Code)
+}
+
+func TestDistributeStillRejectsDisallowedExistingVideoTaskModel(t *testing.T) {
+	db := setupDistributorTestDB(t)
+	require.NoError(t, db.Create(&model.Task{
+		TaskID:     "existing-task",
+		UserId:     4002,
+		Properties: model.Properties{OriginModelName: "blocked-model"},
+	}).Error)
+
+	router := gin.New()
+	router.GET(
+		"/v1/video/generations/:task_id",
+		func(c *gin.Context) {
+			c.Set("id", 4002)
+			common.SetContextKey(c, constant.ContextKeyTokenModelLimitEnabled, true)
+			common.SetContextKey(c, constant.ContextKeyTokenModelLimit, map[string]bool{"allowed-model": true})
+			c.Next()
+		},
+		Distribute(),
+		func(c *gin.Context) {
+			c.Status(http.StatusNoContent)
+		},
+	)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/v1/video/generations/existing-task", nil)
+	router.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+	require.Contains(t, recorder.Body.String(), "blocked-model")
 }
 
 func TestIsModelAllowedByUserAllowsHistoricalUnlimitedTokenModel(t *testing.T) {
