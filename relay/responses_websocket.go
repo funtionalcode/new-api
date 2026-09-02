@@ -11,7 +11,6 @@ import (
 	appcommon "github.com/QuantumNous/new-api/common"
 	appconstant "github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -38,9 +37,14 @@ type responsesWebsocketTurn struct {
 	prewarm         bool
 }
 
-func ResponsesWebsocketHelper(c *gin.Context, clientWs *websocket.Conn) *types.NewAPIError {
+type ResponsesWebsocketChannelSelector func(c *gin.Context, modelName string) (int, *types.NewAPIError)
+
+func ResponsesWebsocketHelper(c *gin.Context, clientWs *websocket.Conn, selectChannel ResponsesWebsocketChannelSelector) *types.NewAPIError {
 	if clientWs == nil {
 		return types.NewError(errors.New("websocket connection is nil"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+	}
+	if selectChannel == nil {
+		return types.NewError(errors.New("websocket channel selector is nil"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 	}
 
 	var targetWs *websocket.Conn
@@ -80,12 +84,12 @@ func ResponsesWebsocketHelper(c *gin.Context, clientWs *websocket.Conn) *types.N
 				continue
 			}
 
-			selectedChannel, selectErr := middleware.SelectChannelForWebsocketRequest(c, explicitModelName)
+			channelID, selectErr := selectChannel(c, explicitModelName)
 			if selectErr != nil {
 				writeResponsesWebsocketAPIError(c, clientWs, selectErr)
 				continue
 			}
-			selectedChannelID = selectedChannel.Id
+			selectedChannelID = channelID
 			setResponsesWebsocketUsedChannel(c, selectedChannelID)
 			originalModelName = explicitModelName
 		} else if explicitModelName != "" && explicitModelName != originalModelName {

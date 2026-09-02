@@ -140,11 +140,11 @@ func getImageToken(c *gin.Context, fileMeta *types.FileMeta, model string, strea
 			if imageTokens > 1536 {
 				imageTokens = 1536
 			}
-			return int(math.Round(float64(imageTokens) * multiplier)), nil
+			return common.QuotaRound(float64(imageTokens) * multiplier), nil
 		}
 		// below cap
 		imageTokens := rawPatches
-		return int(math.Round(float64(imageTokens) * multiplier)), nil
+		return common.QuotaRound(float64(imageTokens) * multiplier), nil
 	}
 
 	// Tile-based calculation for 4o/4.1/4.5/o1/o3/etc.
@@ -181,13 +181,17 @@ func EstimateRequestToken(c *gin.Context, meta *types.TokenCountMeta, info *rela
 	if !constant.CountToken {
 		return 0, nil
 	}
-	return CountRequestToken(c, meta, info, "")
+	return CountRequestToken(c, meta, info)
 }
 
-// CountRequestToken estimates the request input tokens regardless of whether
-// billing-time token counting is enabled. model overrides the client-facing
-// model when the request has already been mapped for an upstream channel.
-func CountRequestToken(c *gin.Context, meta *types.TokenCountMeta, info *relaycommon.RelayInfo, model string) (int, error) {
+// CountRequestToken counts request tokens regardless of the billing estimation
+// switch. The optional model overrides the client-facing model after channel
+// mapping, which keeps utility endpoints and provider probes consistent.
+func CountRequestToken(c *gin.Context, meta *types.TokenCountMeta, info *relaycommon.RelayInfo, models ...string) (int, error) {
+	model := ""
+	if len(models) > 0 {
+		model = models[0]
+	}
 	if meta == nil {
 		return 0, errors.New("token count meta is nil")
 	}

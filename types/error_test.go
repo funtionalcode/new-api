@@ -1,16 +1,17 @@
-package types
+package types_test
 
 import (
 	"errors"
 	"testing"
 
+	relaytypes "github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMaskSensitiveErrorWithStatusCodePreservesDomain(t *testing.T) {
-	apiErr := NewErrorWithStatusCode(
+	apiErr := relaytypes.NewErrorWithStatusCode(
 		errors.New(`Post "https://api.openai.com/v1/responses": EOF`),
-		ErrorCodeDoRequestFailed,
+		relaytypes.ErrorCodeDoRequestFailed,
 		500,
 	)
 
@@ -22,14 +23,14 @@ func TestMaskSensitiveErrorWithStatusCodePreservesDomain(t *testing.T) {
 }
 
 func TestComposeUpstreamErrorMessageEnrichesGenericError(t *testing.T) {
-	require.Equal(t, "model not allowed", ComposeUpstreamErrorMessage("model not allowed", "invalid_request_error", "model_not_found"))
-	require.Equal(t, "Error (type=invalid_request_error, code=model_not_found)", ComposeUpstreamErrorMessage("Error", "invalid_request_error", "model_not_found"))
-	require.Equal(t, "invalid_request_error", ComposeUpstreamErrorMessage("", "invalid_request_error", nil))
-	require.Equal(t, "Error (code=model_not_found)", ComposeUpstreamErrorMessage("Error", "error", "model_not_found"))
+	require.Equal(t, "model not allowed", relaytypes.ComposeUpstreamErrorMessage("model not allowed", "invalid_request_error", "model_not_found"))
+	require.Equal(t, "Error (type=invalid_request_error, code=model_not_found)", relaytypes.ComposeUpstreamErrorMessage("Error", "invalid_request_error", "model_not_found"))
+	require.Equal(t, "invalid_request_error", relaytypes.ComposeUpstreamErrorMessage("", "invalid_request_error", nil))
+	require.Equal(t, "Error (code=model_not_found)", relaytypes.ComposeUpstreamErrorMessage("Error", "error", "model_not_found"))
 }
 
 func TestWithOpenAIErrorPreservesTypeAndCodeInGenericMessage(t *testing.T) {
-	apiErr := WithOpenAIError(OpenAIError{
+	apiErr := relaytypes.WithOpenAIError(relaytypes.OpenAIError{
 		Message: "Error",
 		Type:    "invalid_request_error",
 		Code:    "model_not_found",
@@ -39,7 +40,7 @@ func TestWithOpenAIErrorPreservesTypeAndCodeInGenericMessage(t *testing.T) {
 }
 
 func TestWithClaudeErrorPreservesTypeInGenericMessage(t *testing.T) {
-	apiErr := WithClaudeError(ClaudeError{
+	apiErr := relaytypes.WithClaudeError(relaytypes.ClaudeError{
 		Message: "Error",
 		Type:    "invalid_request_error",
 	}, 500)

@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/samber/lo"
@@ -176,16 +177,14 @@ func getChannelQuery(group string, model string, retry int) (*gorm.DB, error) {
 	return channelQuery, nil
 }
 
-func GetChannel(group string, model string, retry int, requestPath string) (*Channel, error) {
-	return GetChannelForUser(group, model, retry, requestPath, 0)
-}
-
-func GetChannelForUser(group string, model string, retry int, requestPath string, userId int) (*Channel, error) {
+func GetChannel(
+	group string,
+	model string,
+	retry int,
+	filters []dto.ChannelFilter,
+) (*Channel, error) {
 	var abilities []Ability
-
-	err := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true).
-		Order("priority DESC").
-		Find(&abilities).Error
+	err := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true).Order("priority DESC, weight DESC").Find(&abilities).Error
 	if err != nil {
 		return nil, err
 	}
@@ -193,49 +192,76 @@ func GetChannelForUser(group string, model string, retry int, requestPath string
 		normalizedModel := ratio_setting.FormatMatchingModelName(model)
 		if normalizedModel != "" && normalizedModel != model {
 			err = DB.Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, normalizedModel, true).
-				Order("priority DESC").
+				Order("priority DESC, weight DESC").
 				Find(&abilities).Error
 			if err != nil {
 				return nil, err
 			}
 		}
 	}
-	abilities = filterAbilitiesByRequestPathAndModel(abilities, requestPath, model)
-
-	if len(abilities) == 0 {
+	abilities = filterAbilitiesByConstraints(abilities, model, filters)
+	if len(abilities) > 0 {
+		priorities := make([]int64, 0)
+		seen := make(map[int64]bool)
+		for _, ability := range abilities {
+			priority := int64(0)
+			if ability.Priority != nil {
+				priority = *ability.Priority
+			}
+			if !seen[priority] {
+				seen[priority] = true
+				priorities = append(priorities, priority)
+			}
+		}
+		sort.Slice(priorities, func(i, j int) bool { return priorities[i] > priorities[j] })
+		if retry >= len(priorities) {
+			retry = len(priorities) - 1
+		}
+		targetPriority := priorities[retry]
+		abilities = lo.Filter(abilities, func(ability Ability, _ int) bool {
+			return ability.Priority == nil && targetPriority == 0 || ability.Priority != nil && *ability.Priority == targetPriority
+		})
+	}
+	channel := Channel{}
+	if len(abilities) > 0 {
+		// Randomly choose one
+		weightSum := uint(0)
+		for _, ability_ := range abilities {
+			weightSum += ability_.Weight + 10
+		}
+		// Randomly choose one
+		weight := common.GetRandomInt(int(weightSum))
+		for _, ability_ := range abilities {
+			weight -= int(ability_.Weight) + 10
+			//log.Printf("weight: %d, ability weight: %d", weight, *ability_.Weight)
+			if weight <= 0 {
+				channel.Id = ability_.ChannelId
+				break
+			}
+		}
+	}
+	if channel.Id == 0 {
 		return nil, nil
 	}
-
-	channelIds := lo.Map(abilities, func(ability Ability, _ int) int {
-		return ability.ChannelId
-	})
-	var channels []*Channel
-	if err = DB.Where("id IN ?", channelIds).Find(&channels).Error; err != nil {
+	if err = DB.First(&channel, "id = ?", channel.Id).Error; err != nil {
 		return nil, err
 	}
-	channelMap := make(map[int]*Channel, len(channels))
-	for _, channel := range channels {
-		channelMap[channel.Id] = channel
-	}
-	satisfiedChannels := make([]*Channel, 0, len(abilities))
-	for _, ability := range abilities {
-		channel, ok := channelMap[ability.ChannelId]
-		if !ok {
-			return nil, fmt.Errorf("数据库一致性错误，渠道# %d 不存在，请联系管理员修复", ability.ChannelId)
-		}
-		if userId <= 0 || channel.IsOpenToUser(userId) {
-			satisfiedChannels = append(satisfiedChannels, channel)
-		}
-	}
-	return SelectRandomChannelByPriority(satisfiedChannels, retry)
+	return &channel, nil
 }
 
-// filterAbilitiesByRequestPathAndModel restricts candidates by request path and
-// model for the DB (non-memory-cache) selection path. When requestPath is empty,
-// filtering is skipped.
-func filterAbilitiesByRequestPathAndModel(abilities []Ability, requestPath string, model string) []Ability {
-	if requestPath == "" || len(abilities) == 0 {
-		return abilities
+func GetChannelForUser(group string, model string, retry int, requestPath string, userId int) (*Channel, error) {
+	return GetChannel(group, model, retry, []dto.ChannelFilter{
+		{Kind: dto.FilterRequestPath, RequestPath: requestPath},
+		{Kind: dto.FilterUserAccess, UserId: userId},
+	})
+}
+
+// filterAbilitiesByConstraints applies the same ChannelSatisfiesFilters
+// predicate used by the memory-cache path. A failed channel lookup fails
+// closed when a task-plugin identity is required and fails open otherwise.
+func filterAbilitiesByConstraints(abilities []Ability, modelName string, filters []dto.ChannelFilter) []Ability {
+	if len(abilities) == 0 {
+		return nil
 	}
 
 	channelIds := make([]int, 0, len(abilities))
@@ -250,7 +276,9 @@ func filterAbilitiesByRequestPathAndModel(abilities []Ability, requestPath strin
 
 	var channels []*Channel
 	if err := DB.Where("id IN ?", channelIds).Find(&channels).Error; err != nil {
-		// On error, fall back to unfiltered candidates to avoid blocking selection
+		if filtersRequireChannelData(filters) {
+			return nil
+		}
 		return abilities
 	}
 
@@ -261,12 +289,22 @@ func filterAbilitiesByRequestPathAndModel(abilities []Ability, requestPath strin
 
 	filtered := make([]Ability, 0, len(abilities))
 	for _, ability := range abilities {
-		channel, ok := channelsByID[ability.ChannelId]
-		if !ok || channel.SupportsRequestPath(requestPath, model) {
+		channel := channelsByID[ability.ChannelId]
+		if ok, _ := ChannelSatisfiesFilters(channel, modelName, filters); ok {
 			filtered = append(filtered, ability)
 		}
 	}
 	return filtered
+}
+
+func filtersRequireChannelData(filters []dto.ChannelFilter) bool {
+	for _, filter := range filters {
+		if filter.Kind == dto.FilterTaskPluginIdentity && filter.TaskPluginKey != "" ||
+			filter.Kind == dto.FilterUserAccess && filter.UserId > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (channel *Channel) AddAbilities(tx *gorm.DB) error {

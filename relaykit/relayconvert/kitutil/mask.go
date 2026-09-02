@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	maskURLPattern    = regexp.MustCompile(`(http|https)://[^\s/$.?#].[^\s]*`)
+	maskURLPattern    = regexp.MustCompile(`https?://[^\s"'<>]+`)
 	maskDomainPattern = regexp.MustCompile(`\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}\b`)
 	maskIPPattern     = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
 	// maskApiKeyPattern matches patterns like 'api_key:xxx' or "api_key:xxx" to mask the API key value
@@ -29,31 +29,16 @@ func maskHostTail(parts []string) []string {
 	return []string{lastPart}
 }
 
-// maskHostForURL collapses subdomains and keeps only masked prefix + preserved tail.
-// Example: api.openai.com -> ***.com, sub.domain.co.uk -> ***.co.uk
+// maskHostForURL preserves the provider hostname so operational logs identify
+// the failing upstream while path and credential data remain masked.
 func maskHostForURL(host string) string {
-	parts := strings.Split(host, ".")
-	if len(parts) < 2 {
-		return "***"
-	}
-	tail := maskHostTail(parts)
-	return "***." + strings.Join(tail, ".")
+	return host
 }
 
 // maskHostForPlainDomain masks a plain domain and reflects subdomain depth with multiple ***.
 // Example: openai.com -> ***.com, api.openai.com -> ***.***.com, sub.domain.co.uk -> ***.***.co.uk
 func maskHostForPlainDomain(domain string) string {
-	parts := strings.Split(domain, ".")
-	if len(parts) < 2 {
-		return domain
-	}
-	tail := maskHostTail(parts)
-	numStars := len(parts) - len(tail)
-	if numStars < 1 {
-		numStars = 1
-	}
-	stars := strings.TrimSuffix(strings.Repeat("***.", numStars), ".")
-	return stars + "." + strings.Join(tail, ".")
+	return domain
 }
 
 // MaskSensitiveInfo masks sensitive information like URLs, IPs, and domain names in a string
@@ -101,19 +86,15 @@ func MaskSensitiveInfo(str string) string {
 
 		// Mask query parameters
 		if u.RawQuery != "" {
-			values, err := url.ParseQuery(u.RawQuery)
-			if err != nil {
-				// If can't parse query, just mask the whole query string
-				result += "?***"
-			} else {
-				maskedParams := make([]string, 0, len(values))
-				for key := range values {
-					maskedParams = append(maskedParams, key+"=***")
-				}
-				if len(maskedParams) > 0 {
-					result += "?" + strings.Join(maskedParams, "&")
+			maskedParams := strings.Split(u.RawQuery, "&")
+			for index, part := range maskedParams {
+				if key, _, found := strings.Cut(part, "="); found {
+					maskedParams[index] = key + "=***"
+				} else {
+					maskedParams[index] = "***"
 				}
 			}
+			result += "?" + strings.Join(maskedParams, "&")
 		}
 
 		return result

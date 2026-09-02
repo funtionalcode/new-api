@@ -1299,13 +1299,14 @@ func cursorResponsesExternalToolSpecs(request dto.OpenAIResponsesRequest) (map[s
 	}
 
 	specs := make(map[string]cursorExternalToolSpec)
+	aliasIndex := 0
 	for _, tool := range tools {
-		appendCursorResponsesToolSpecs(specs, tool, "")
+		appendCursorResponsesToolSpecs(specs, tool, "", &aliasIndex)
 	}
 	return specs, nil
 }
 
-func appendCursorResponsesToolSpecs(specs map[string]cursorExternalToolSpec, tool map[string]any, namespace string) {
+func appendCursorResponsesToolSpecs(specs map[string]cursorExternalToolSpec, tool map[string]any, namespace string, aliasIndex *int) {
 	toolType, _ := tool["type"].(string)
 	toolType = strings.TrimSpace(toolType)
 	name, _ := tool["name"].(string)
@@ -1318,7 +1319,7 @@ func appendCursorResponsesToolSpecs(specs map[string]cursorExternalToolSpec, too
 		}
 		for _, rawChild := range children {
 			if child, ok := rawChild.(map[string]any); ok {
-				appendCursorResponsesToolSpecs(specs, child, namespace)
+				appendCursorResponsesToolSpecs(specs, child, namespace, aliasIndex)
 			}
 		}
 		return
@@ -1327,7 +1328,10 @@ func appendCursorResponsesToolSpecs(specs map[string]cursorExternalToolSpec, too
 		return
 	}
 	qualifiedName := cursorQualifiedToolName(namespace, name)
-	specs[qualifiedName] = cursorExternalToolSpec{Kind: toolType, Name: name, Namespace: namespace}
+	spec := cursorExternalToolSpec{Kind: toolType, Name: name, Namespace: namespace}
+	specs[qualifiedName] = spec
+	*aliasIndex++
+	specs[fmt.Sprintf("%s%d", cursorExternalToolAliasPrefix, *aliasIndex)] = spec
 }
 
 func cursorQualifiedToolName(namespace string, name string) string {

@@ -134,19 +134,22 @@ func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, req
 	return channel.DoTaskApiRequest(a, c, info, requestBody)
 }
 
-func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (string, []byte, *dto.TaskError) {
+func (a *TaskAdaptor) ParseResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (*channel.TaskSubmitResponse, *dto.TaskError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", nil, service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
+		return nil, service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
 	}
 	_ = resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, service.TaskErrorWrapper(fmt.Errorf("xai video submit failed: %s", strings.TrimSpace(string(responseBody))), "upstream_error", resp.StatusCode)
+	}
 
 	var submit submitResponse
 	if err := common.Unmarshal(responseBody, &submit); err != nil {
-		return "", nil, service.TaskErrorWrapper(err, "unmarshal_response_failed", http.StatusInternalServerError)
+		return nil, service.TaskErrorWrapper(err, "unmarshal_response_failed", http.StatusInternalServerError)
 	}
 	if strings.TrimSpace(submit.RequestID) == "" {
-		return "", nil, service.TaskErrorWrapper(fmt.Errorf("missing request_id"), "invalid_response", http.StatusInternalServerError)
+		return nil, service.TaskErrorWrapper(fmt.Errorf("missing request_id"), "invalid_response", http.StatusInternalServerError)
 	}
 
 	video := relaykitdto.NewOpenAIVideo()
@@ -154,8 +157,11 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	video.TaskID = info.PublicTaskID
 	video.CreatedAt = time.Now().Unix()
 	video.Model = info.OriginModelName
-	c.JSON(http.StatusOK, video)
-	return submit.RequestID, responseBody, nil
+	return &channel.TaskSubmitResponse{
+		UpstreamTaskID: submit.RequestID,
+		TaskData:       responseBody,
+		ClientResponse: video,
+	}, nil
 }
 
 func (a *TaskAdaptor) FetchTask(baseURL string, key string, body map[string]any, proxy string) (*http.Response, error) {
@@ -222,6 +228,9 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 
 func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 	video := task.ToOpenAIVideo()
+	if resultURL := task.GetResultURL(); resultURL != "" {
+		video.SetMetadata("url", resultURL)
+	}
 	if task.FinishTime > 0 {
 		video.CompletedAt = task.FinishTime
 	}

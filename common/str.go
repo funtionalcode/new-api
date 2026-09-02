@@ -136,8 +136,8 @@ func MaskEmail(email string) string {
 	return "***@" + email[atIndex+1:]
 }
 
-// MaskSensitiveInfo moved to the conversion kit (kitutil) because the types
-// package error formatting depends on it; host callers keep this name.
+// MaskSensitiveInfo preserves upstream hostnames for diagnostics while masking
+// URL paths, query values, IP addresses, and inline API keys.
 func MaskSensitiveInfo(str string) string {
 	return kitutil.MaskSensitiveInfo(str)
 }

@@ -41,7 +41,7 @@ func TestBuildRequestBodyUsesXAIImageObject(t *testing.T) {
 	}`, string(bodyBytes))
 }
 
-func TestDoResponseReturnsOpenAIVideoWithPublicTaskID(t *testing.T) {
+func TestParseResponseReturnsOpenAIVideoWithPublicTaskID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -54,14 +54,15 @@ func TestDoResponseReturnsOpenAIVideoWithPublicTaskID(t *testing.T) {
 		Body:       io.NopCloser(strings.NewReader(`{"request_id":"xai_request"}`)),
 	}
 
-	taskID, taskData, taskErr := (&TaskAdaptor{}).DoResponse(c, resp, info)
+	result, taskErr := (&TaskAdaptor{}).ParseResponse(c, resp, info)
 
 	require.Nil(t, taskErr)
-	require.Equal(t, "xai_request", taskID)
-	require.JSONEq(t, `{"request_id":"xai_request"}`, string(taskData))
-	require.Equal(t, http.StatusOK, recorder.Code)
-	require.Contains(t, recorder.Body.String(), `"id":"task_public"`)
-	require.Contains(t, recorder.Body.String(), `"model":"grok-imagine-video"`)
+	require.Equal(t, "xai_request", result.UpstreamTaskID)
+	require.JSONEq(t, `{"request_id":"xai_request"}`, string(result.TaskData))
+	clientResponse, err := common.Marshal(result.ClientResponse)
+	require.NoError(t, err)
+	require.Contains(t, string(clientResponse), `"id":"task_public"`)
+	require.Contains(t, string(clientResponse), `"model":"grok-imagine-video"`)
 }
 
 func TestParseTaskResultMapsDoneResponse(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/constant"
+	taskdto "github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/stretchr/testify/assert"
 )
@@ -32,7 +33,11 @@ func TestCursorChannelIsFilteredFromUnsupportedCachedRequestPaths(t *testing.T) 
 	}
 	channel2advancedCustomConfig = map[int]*dto.AdvancedCustomConfig{}
 
-	assert.Equal(t, []int{1, 2}, filterChannelsByRequestPathAndModel([]int{1, 2}, "/v1/messages", "claude-opus-5"))
-	assert.Equal(t, []int{1, 2}, filterChannelsByRequestPathAndModel([]int{1, 2}, "/v1/responses", "claude-opus-5"))
-	assert.Equal(t, []int{2}, filterChannelsByRequestPathAndModel([]int{1, 2}, "/v1/responses/compact", "claude-opus-5"))
+	filter := func(path string) []int {
+		channels, _ := filterCandidateIDs([]int{1, 2}, "claude-opus-5", []taskdto.ChannelFilter{{Kind: taskdto.FilterRequestPath, RequestPath: path}})
+		return channels
+	}
+	assert.Equal(t, []int{1, 2}, filter("/v1/messages"))
+	assert.Equal(t, []int{1, 2}, filter("/v1/responses"))
+	assert.Equal(t, []int{2}, filter("/v1/responses/compact"))
 }

@@ -265,7 +265,9 @@ export function CommonLogsFilterBar<TData>(
     filters.upstreamRequestId,
     filters.ip,
   ].filter(Boolean).length
-  const sensitiveType = sensitiveVisible ? 'text' : 'password'
+  const sensitiveInputClass = sensitiveVisible
+    ? undefined
+    : '[-webkit-text-security:disc]'
   const logTypeItems = useMemo(
     () =>
       LOG_TYPE_FILTERS.map((type) => ({
@@ -329,7 +331,7 @@ export function CommonLogsFilterBar<TData>(
     <LogsFilterField>
       <LogsFilterInput
         placeholder={t('Group')}
-        type={sensitiveType}
+        className={sensitiveInputClass}
         value={filters.group || ''}
         onChange={(e) => handleChange('group', e.target.value)}
         onKeyDown={handleKeyDown}
@@ -377,7 +379,7 @@ export function CommonLogsFilterBar<TData>(
       <LogsFilterField>
         <LogsFilterInput
           placeholder={t('Token Name')}
-          type={sensitiveType}
+          className={sensitiveInputClass}
           value={filters.token || ''}
           onChange={(e) => handleChange('token', e.target.value)}
           onKeyDown={handleKeyDown}
@@ -387,7 +389,7 @@ export function CommonLogsFilterBar<TData>(
         <LogsFilterField>
           <LogsFilterInput
             placeholder={t('Username')}
-            type={sensitiveType}
+            className={sensitiveInputClass}
             value={filters.username || ''}
             onChange={(e) => handleChange('username', e.target.value)}
             onKeyDown={handleKeyDown}
@@ -408,7 +410,7 @@ export function CommonLogsFilterBar<TData>(
         <LogsFilterField>
           <LogsFilterInput
             placeholder={t('Channel Name')}
-            type={sensitiveType}
+            className={sensitiveInputClass}
             value={filters.channelName || ''}
             onChange={(e) => handleChange('channelName', e.target.value)}
             onKeyDown={handleKeyDown}
@@ -434,7 +436,7 @@ export function CommonLogsFilterBar<TData>(
       <LogsFilterField>
         <LogsFilterInput
           placeholder={t('IP Address')}
-          type={sensitiveType}
+          className={sensitiveInputClass}
           value={filters.ip || ''}
           onChange={(e) => handleChange('ip', e.target.value)}
           onKeyDown={handleKeyDown}

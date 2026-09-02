@@ -11,8 +11,9 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/relaykit/dto"
+	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
 
@@ -20,16 +21,17 @@ var group2model2channels map[string]map[string][]int // enabled channel
 var channelsIDM map[int]*Channel                     // all channels include disabled
 // channel2advancedCustomConfig caches parsed Advanced Custom (type 58) configs so
 // path-aware selection avoids re-parsing JSON per request. Refreshed on full sync.
-var channel2advancedCustomConfig map[int]*dto.AdvancedCustomConfig
+var channel2advancedCustomConfig map[int]*kitdto.AdvancedCustomConfig
 var channelSyncLock sync.RWMutex
 
 func InitChannelCache() {
 	if !common.MemoryCacheEnabled {
 		InvalidatePricingCache()
+		rebuildTaskAliasView()
 		return
 	}
 	newChannelId2channel := make(map[int]*Channel)
-	newChannel2advancedCustomConfig := make(map[int]*dto.AdvancedCustomConfig)
+	newChannel2advancedCustomConfig := make(map[int]*kitdto.AdvancedCustomConfig)
 	var channels []*Channel
 	DB.Find(&channels)
 	for _, channel := range channels {
@@ -100,6 +102,7 @@ func InitChannelCache() {
 	// loadPricingAdvancedCustomConfigs. channelSyncLock MUST be released before
 	// invalidating the pricing cache, otherwise the reversed order deadlocks.
 	InvalidatePricingCache()
+	rebuildTaskAliasView()
 	common.SysLog("channels synced from database")
 }
 
@@ -111,26 +114,27 @@ func SyncChannelCache(frequency int) {
 	}
 }
 
-func GetRandomSatisfiedChannel(group string, model string, retry int, requestPath string) (*Channel, error) {
-	return GetRandomSatisfiedChannelForUser(group, model, retry, requestPath, 0)
-}
-
-func GetRandomSatisfiedChannelForUser(group string, model string, retry int, requestPath string, userId int) (*Channel, error) {
+func GetRandomSatisfiedChannel(
+	group string,
+	model string,
+	retry int,
+	filters []dto.ChannelFilter,
+) (*Channel, error) {
 	// if memory cache is disabled, get channel directly from database
 	if !common.MemoryCacheEnabled {
-		return GetChannelForUser(group, model, retry, requestPath, userId)
+		return GetChannel(group, model, retry, filters)
 	}
 
 	channelSyncLock.RLock()
 	defer channelSyncLock.RUnlock()
 
 	// First, try to find channels with the exact model name.
-	channels := filterChannelsByRequestPathAndModel(group2model2channels[group][model], requestPath, model)
+	channels, _ := filterCandidateIDs(group2model2channels[group][model], model, filters)
 
 	// If no channels found, try to find channels with the normalized model name.
 	if len(channels) == 0 {
 		normalizedModel := ratio_setting.FormatMatchingModelName(model)
-		channels = filterChannelsByRequestPathAndModel(group2model2channels[group][normalizedModel], requestPath, model)
+		channels, _ = filterCandidateIDs(group2model2channels[group][normalizedModel], model, filters)
 	}
 
 	if len(channels) == 0 {
@@ -140,15 +144,20 @@ func GetRandomSatisfiedChannelForUser(group string, model string, retry int, req
 	satisfiedChannels := make([]*Channel, 0, len(channels))
 	for _, channelId := range channels {
 		if channel, ok := channelsIDM[channelId]; ok {
-			if userId <= 0 || channel.IsOpenToUser(userId) {
-				satisfiedChannels = append(satisfiedChannels, channel)
-			}
+			satisfiedChannels = append(satisfiedChannels, channel)
 		} else {
 			return nil, fmt.Errorf("数据库一致性错误，渠道# %d 不存在，请联系管理员修复", channelId)
 		}
 	}
 
 	return SelectRandomChannelByPriority(satisfiedChannels, retry)
+}
+
+func GetRandomSatisfiedChannelForUser(group string, model string, retry int, requestPath string, userId int) (*Channel, error) {
+	return GetRandomSatisfiedChannel(group, model, retry, []dto.ChannelFilter{
+		{Kind: dto.FilterRequestPath, RequestPath: requestPath},
+		{Kind: dto.FilterUserAccess, UserId: userId},
+	})
 }
 
 func SelectRandomChannelByPriority(channels []*Channel, retry int) (*Channel, error) {
@@ -217,34 +226,6 @@ func SelectRandomChannelByPriority(channels []*Channel, retry int) (*Channel, er
 	}
 	// return null if no channel is not found
 	return nil, errors.New("channel not found")
-}
-
-// filterChannelsByRequestPathAndModel restricts candidates by request path and
-// model. When requestPath is empty, filtering is skipped.
-// Caller must hold channelSyncLock (read lock). The cached slice is never mutated.
-func filterChannelsByRequestPathAndModel(channels []int, requestPath string, model string) []int {
-	if requestPath == "" || len(channels) == 0 {
-		return channels
-	}
-	filtered := make([]int, 0, len(channels))
-	for _, channelId := range channels {
-		channel, ok := channelsIDM[channelId]
-		if !ok {
-			// keep it so the downstream consistency error is raised as before
-			filtered = append(filtered, channelId)
-			continue
-		}
-		if channel.Type == constant.ChannelTypeAdvancedCustom {
-			config := channel2advancedCustomConfig[channelId]
-			if config == nil || !config.SupportsPathForModel(normalizeChannelRequestPath(requestPath), model) {
-				continue
-			}
-		} else if !channel.SupportsRequestPath(requestPath, model) {
-			continue
-		}
-		filtered = append(filtered, channelId)
-	}
-	return filtered
 }
 
 func CacheGetChannel(id int) (*Channel, error) {
@@ -322,7 +303,7 @@ func CacheUpdateChannel(channel *Channel) {
 	}
 	channelsIDM[channel.Id] = channel
 	if channel2advancedCustomConfig == nil {
-		channel2advancedCustomConfig = make(map[int]*dto.AdvancedCustomConfig)
+		channel2advancedCustomConfig = make(map[int]*kitdto.AdvancedCustomConfig)
 	}
 	delete(channel2advancedCustomConfig, channel.Id)
 	if channel.Type == constant.ChannelTypeAdvancedCustom {

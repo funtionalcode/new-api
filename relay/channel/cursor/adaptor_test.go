@@ -1738,6 +1738,7 @@ func TestCursorAdaptorReusesServerManagedClaudeCodeAgentUntilCleanup(t *testing.
 	mutex.Lock()
 	defer mutex.Unlock()
 	assert.Equal(t, []string{
+		"GET /v1/models",
 		"POST /v1/agents",
 		"GET /v1/agents/" + agentID + "/runs/run-1/stream",
 		"GET /v1/agents/" + agentID + "/usage?runId=run-1",

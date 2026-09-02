@@ -50,6 +50,8 @@ for (const key of domGlobals) {
 
 const { act } = await import('react')
 const { createRoot } = await import('react-dom/client')
+const { QueryClient, QueryClientProvider } =
+  await import('@tanstack/react-query')
 const { createInstance } = await import('i18next')
 const { I18nextProvider, initReactI18next } = await import('react-i18next')
 
@@ -131,16 +133,22 @@ describe('usage log audit target user', () => {
     const container = document.createElement('div')
     document.body.append(container)
     const root = createRoot(container)
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
 
     await act(async () => {
       root.render(
         <I18nextProvider i18n={i18n}>
-          <DetailsDialog
-            log={quotaAuditLog}
-            isAdmin
-            open
-            onOpenChange={() => {}}
-          />
+          <QueryClientProvider client={queryClient}>
+            <DetailsDialog
+              log={quotaAuditLog}
+              isAdmin
+              isRoot
+              open
+              onOpenChange={() => {}}
+            />
+          </QueryClientProvider>
         </I18nextProvider>
       )
     })
