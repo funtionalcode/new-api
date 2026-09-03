@@ -123,8 +123,11 @@ func RenderClaude(model string, intent Intent, maxTokens *uint, adapterBudgetPer
 	}
 
 	preferManual := capabilities.supportsManual && intent.BudgetTokens != nil && intent.Mode != ModeAdaptive
-	if !capabilities.supportsManual && intent.BudgetTokens != nil && intent.BudgetSource == SourceNative && intent.Mode == ModeEnabled {
-		return ClaudeRender{}, fmt.Errorf("model %q requires adaptive thinking and does not support native budget_tokens", model)
+	if capabilities.adaptive && !capabilities.supportsManual && intent.BudgetTokens != nil && intent.BudgetSource == SourceNative && intent.Mode == ModeEnabled {
+		// Older Claude clients express reasoning strength with an exact token budget.
+		// Adaptive-only models cannot preserve that exact budget, so reduce it to
+		// the closest supported effort instead of rejecting the request.
+		intent.Mode = ModeAdaptive
 	}
 	if capabilities.adaptive && !preferManual {
 		effort := intent.Effort
