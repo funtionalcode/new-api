@@ -49,6 +49,10 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
+	if info.RelayMode == constant.RelayModeImagesEdits && !xaiImageEditIsJSON(c) {
+		return a.openaiAdaptor.ConvertImageRequest(c, info, request)
+	}
+
 	xaiRequest := ImageRequest{
 		Model:          request.Model,
 		Prompt:         request.Prompt,
@@ -223,10 +227,18 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 	if info.IsWebsocket && info.RelayMode == constant.RelayModeResponses {
 		return channel.DoWssRequest(a, c, info, requestBody)
 	}
-	if info.RelayMode == constant.RelayModeAudioTranscription {
+	if info.RelayMode == constant.RelayModeAudioTranscription ||
+		(info.RelayMode == constant.RelayModeImagesEdits && !xaiImageEditIsJSON(c)) {
 		return channel.DoFormRequest(a, c, info, requestBody)
 	}
 	return channel.DoApiRequest(a, c, info, requestBody)
+}
+
+func xaiImageEditIsJSON(c *gin.Context) bool {
+	if c == nil || c.Request == nil {
+		return false
+	}
+	return strings.HasPrefix(c.Request.Header.Get("Content-Type"), "application/json")
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
