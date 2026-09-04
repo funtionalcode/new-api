@@ -173,34 +173,9 @@ export function isWebsocketLog(
   return other?.ws === true || other?.transport === 'websocket'
 }
 
-/**
- * Return the total input context represented by a usage log.
- *
- * OpenAI-compatible usage already reports the full input total. Anthropic
- * usage reports uncached input separately, so cached reads and writes must be
- * added back to represent the actual context length.
- */
-export function getLogContextSize(
-  log: UsageLog,
+export function getLogCacheTokenCounts(
   other: LogOtherData | null | undefined
-): number {
-  const explicitTotal = other?.input_tokens_total
-  if (
-    typeof explicitTotal === 'number' &&
-    Number.isFinite(explicitTotal) &&
-    explicitTotal > 0
-  ) {
-    return Math.floor(explicitTotal)
-  }
-
-  const promptTokens =
-    Number.isFinite(log.prompt_tokens) && log.prompt_tokens > 0
-      ? Math.floor(log.prompt_tokens)
-      : 0
-  const isAnthropicUsage =
-    other?.usage_semantic === 'anthropic' || other?.claude === true
-  if (!isAnthropicUsage) return promptTokens
-
+): { cacheReadTokens: number; cacheWriteTokens: number } {
   const cacheReadTokens =
     typeof other?.cache_tokens === 'number' &&
     Number.isFinite(other.cache_tokens) &&
@@ -230,10 +205,45 @@ export function getLogContextSize(
     other.cache_creation_tokens > 0
       ? Math.floor(other.cache_creation_tokens)
       : 0
-  const cacheWriteTokens =
-    normalizedCacheWriteTokens ||
-    splitCacheWriteTokens ||
-    legacyCacheWriteTokens
+
+  return {
+    cacheReadTokens,
+    cacheWriteTokens:
+      normalizedCacheWriteTokens ||
+      splitCacheWriteTokens ||
+      legacyCacheWriteTokens,
+  }
+}
+
+/**
+ * Return the total input context represented by a usage log.
+ *
+ * OpenAI-compatible usage already reports the full input total. Anthropic
+ * usage reports uncached input separately, so cached reads and writes must be
+ * added back to represent the actual context length.
+ */
+export function getLogContextSize(
+  log: UsageLog,
+  other: LogOtherData | null | undefined
+): number {
+  const explicitTotal = other?.input_tokens_total
+  if (
+    typeof explicitTotal === 'number' &&
+    Number.isFinite(explicitTotal) &&
+    explicitTotal > 0
+  ) {
+    return Math.floor(explicitTotal)
+  }
+
+  const promptTokens =
+    Number.isFinite(log.prompt_tokens) && log.prompt_tokens > 0
+      ? Math.floor(log.prompt_tokens)
+      : 0
+  const isAnthropicUsage =
+    other?.usage_semantic === 'anthropic' || other?.claude === true
+  if (!isAnthropicUsage) return promptTokens
+
+  const { cacheReadTokens, cacheWriteTokens } = getLogCacheTokenCounts(other)
 
   return promptTokens + cacheReadTokens + cacheWriteTokens
 }

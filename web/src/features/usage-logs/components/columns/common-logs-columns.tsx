@@ -60,6 +60,7 @@ import { DetailsDialog } from '../dialogs/details-dialog'
 import { LogCostDisplay } from '../log-cost-display'
 import { TimingMetricsCell, StreamTpsCell } from '../timing-metrics-cell'
 import { UsageLogModelCell } from '../usage-log-model-cell'
+import { UsageLogTokens } from '../usage-log-tokens'
 import { useUsageLogsContext } from '../usage-logs-provider'
 
 interface DetailSegment {
@@ -528,9 +529,7 @@ export function useCommonLogsColumns(
               <TooltipProvider delay={300}>
                 <Tooltip>
                   <TooltipTrigger
-                    render={
-                      <span className='flex min-w-0 flex-col gap-0.5' />
-                    }
+                    render={<span className='flex min-w-0 flex-col gap-0.5' />}
                   >
                     <span className='text-muted-foreground max-w-[120px] truncate text-sm hover:underline'>
                       {sensitiveVisible ? log.username : '••••'}
@@ -703,44 +702,7 @@ export function useCommonLogsColumns(
         const log = row.original
         if (!isDisplayableLogType(log.type)) return null
 
-        const other = parseLogOther(log.other)
-
-        const promptTokens = log.prompt_tokens || 0
-        const completionTokens = log.completion_tokens || 0
-        if (promptTokens === 0 && completionTokens === 0) {
-          return <span className='text-muted-foreground text-xs'>-</span>
-        }
-
-        const cacheReadTokens = other?.cache_tokens || 0
-        const cacheWrite5m = other?.cache_creation_tokens_5m || 0
-        const cacheWrite1h = other?.cache_creation_tokens_1h || 0
-        const hasSplitCache = cacheWrite5m > 0 || cacheWrite1h > 0
-        const cacheWriteTokens = hasSplitCache
-          ? cacheWrite5m + cacheWrite1h
-          : other?.cache_creation_tokens || 0
-
-        return (
-          <div className='flex flex-col gap-0.5'>
-            <span className='font-mono text-xs font-medium tabular-nums'>
-              {promptTokens.toLocaleString()} /{' '}
-              {completionTokens.toLocaleString()}
-            </span>
-            {(cacheReadTokens > 0 || cacheWriteTokens > 0) && (
-              <div className='flex items-center gap-1 text-[11px]'>
-                {cacheReadTokens > 0 && (
-                  <span className='text-muted-foreground/60'>
-                    {t('Cache')}↓ {cacheReadTokens.toLocaleString()}
-                  </span>
-                )}
-                {cacheWriteTokens > 0 && (
-                  <span className='text-muted-foreground/60'>
-                    ↑ {cacheWriteTokens.toLocaleString()}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        )
+        return <UsageLogTokens log={log} />
       },
     },
     {
