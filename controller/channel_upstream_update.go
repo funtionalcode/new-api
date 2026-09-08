@@ -429,6 +429,12 @@ func fetchChannelUpstreamModelIDs(channel *model.Channel) ([]string, error) {
 		} else {
 			url = fmt.Sprintf("%s/v1/models", baseURL)
 		}
+	case constant.ChannelTypeElevenLabs:
+		if strings.HasSuffix(baseURL, "/v1") {
+			url = fmt.Sprintf("%s/models", baseURL)
+		} else {
+			url = fmt.Sprintf("%s/v1/models", baseURL)
+		}
 	default:
 		url = fmt.Sprintf("%s/v1/models", baseURL)
 	}
@@ -462,6 +468,26 @@ func fetchChannelUpstreamModelIDs(channel *model.Channel) ([]string, error) {
 			ids = append(ids, item.ID)
 		}
 		return normalizeModelNames(ids), nil
+	}
+	if channel.Type == constant.ChannelTypeElevenLabs {
+		var result []struct {
+			ModelID           string `json:"model_id"`
+			CanDoTextToSpeech bool   `json:"can_do_text_to_speech"`
+		}
+		if err := common.Unmarshal(body, &result); err != nil {
+			return nil, fmt.Errorf("invalid ElevenLabs Models response: %w", err)
+		}
+		ids := make([]string, 0, len(result))
+		for _, item := range result {
+			if item.CanDoTextToSpeech {
+				ids = append(ids, item.ModelID)
+			}
+		}
+		ids = normalizeModelNames(ids)
+		if len(ids) == 0 {
+			return nil, errors.New("ElevenLabs Models response contains no text-to-speech models")
+		}
+		return ids, nil
 	}
 
 	var result OpenAIModelsResponse

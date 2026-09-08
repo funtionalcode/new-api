@@ -87,6 +87,8 @@ func ChannelType2APIType(channelType int) (int, bool) {
 		apiType = constant.APITypeNewAPI
 	case constant.ChannelTypeCursor:
 		apiType = constant.APITypeCursor
+	case constant.ChannelTypeElevenLabs:
+		apiType = constant.APITypeElevenLabs
 	}
 	if apiType == -1 {
 		// Task plugin channels are served by the task relay and must never

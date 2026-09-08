@@ -173,6 +173,18 @@ export const CHANNEL_TYPE_CONFIGS: Record<number, ChannelTypeConfig> = {
       key: 'Cursor API Key',
     },
   },
+  65: {
+    id: 65,
+    name: CHANNEL_TYPES[65],
+    icon: 'ElevenLabs',
+    defaultBaseUrl: 'https://api.elevenlabs.io',
+    supportedModels: [
+      'eleven_v3',
+      'eleven_multilingual_v2',
+      'eleven_flash_v2_5',
+      'eleven_flash_v2',
+    ],
+  },
 }
 
 /**

@@ -54,6 +54,7 @@ export function getChannelTypeIcon(type: number): string {
     57: 'OpenAI', // ChatGPT Subscription (Codex)
     58: 'OpenAI', // CodexChat
     59: 'OpenAI', // Mimo
+    65: 'ElevenLabs', // ElevenLabs
     60: 'NewAPI', // Advanced Custom
     61: 'Sub2API', // Sub2API
     62: 'NewAPI', // New API

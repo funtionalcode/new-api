@@ -1,0 +1,250 @@
+New API ElevenLabs 语音接口说明
+===============================
+
+文档版本：2026-09-05
+
+一、接口概述
+------------
+
+New API 已支持通过 OpenAI 兼容的语音合成接口调用 ElevenLabs，包括 Eleven v3。
+
+客户端请求 New API：
+
+  POST {NEW_API_BASE_URL}/v1/audio/speech
+
+New API 会将请求转换为 ElevenLabs Text to Speech 请求，并直接返回音频二进制数据。
+
+当前仅支持文本转语音，不支持通过 ElevenLabs 渠道调用聊天、嵌入、重排序、图片或 Responses 接口。
+
+
+二、渠道配置
+------------
+
+在 New API 管理后台新增渠道时填写：
+
+  渠道类型：ElevenLabs
+  Base URL：https://api.elevenlabs.io
+  密钥：ElevenLabs API Key
+  模型：选择或填写需要开放的 ElevenLabs 模型
+
+内置模型：
+
+  eleven_v3
+  eleven_multilingual_v2
+  eleven_flash_v2_5
+  eleven_flash_v2
+
+渠道编辑页支持从 ElevenLabs 的 /v1/models 接口获取模型。系统只保留上游标记为支持文本转语音的模型。
+
+注意：客户端调用时使用的是 New API 令牌，不是 ElevenLabs API Key。ElevenLabs API Key 只保存在渠道配置中。
+
+
+三、认证与请求头
+----------------
+
+  Authorization: Bearer {NEW_API_TOKEN}
+  Content-Type: application/json
+
+
+四、请求字段
+------------
+
+model
+  类型：string
+  必填：是
+  说明：ElevenLabs 模型 ID。Eleven v3 使用 eleven_v3。
+
+input
+  类型：string
+  必填：是
+  说明：需要合成的文本。文本会原样传给 ElevenLabs，因此可以使用 Eleven v3 支持的音频标签，例如 [warmly]、[whispers]、[laughs]。
+
+voice
+  类型：string
+  必填：是
+  说明：ElevenLabs Voice ID。这里不能填写 alloy、nova 等 OpenAI 音色名称。
+
+response_format
+  类型：string
+  必填：否
+  默认值：mp3
+  可选值及对应的 ElevenLabs 输出格式：
+
+    mp3   -> mp3_44100_128
+    opus  -> opus_48000_64
+    pcm   -> pcm_24000
+    wav   -> wav_44100
+
+speed
+  类型：number
+  必填：否
+  约束：必须大于 0
+  说明：语速。若 voice_settings.speed 同时存在，顶层 speed 优先。
+
+language_code
+  类型：string
+  必填：否
+  说明：语言代码，例如 zh、en。是否生效取决于所选模型的能力。
+
+voice_settings
+  类型：object
+  必填：否
+  说明：ElevenLabs 音色参数，可包含：
+
+    stability           number，范围 0 到 1
+    similarity_boost    number，范围 0 到 1
+    style                number，范围 0 到 1
+    use_speaker_boost    boolean
+    speed                number，必须大于 0
+
+显式传入的 0、0.0 或 false 会被保留并发送到 ElevenLabs。
+
+
+五、Eleven v3 基础示例
+---------------------
+
+请求：
+
+  curl -X POST "{NEW_API_BASE_URL}/v1/audio/speech" \
+    -H "Authorization: Bearer {NEW_API_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "model": "eleven_v3",
+      "input": "你好，这是通过 New API 调用 Eleven v3 生成的语音。",
+      "voice": "{ELEVENLABS_VOICE_ID}",
+      "response_format": "mp3"
+    }' \
+    --output speech.mp3
+
+
+六、带音频标签和音色参数的示例
+--------------------------------
+
+  curl -X POST "{NEW_API_BASE_URL}/v1/audio/speech" \
+    -H "Authorization: Bearer {NEW_API_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "model": "eleven_v3",
+      "input": "[warmly] 欢迎使用 New API。[whispers] 这一句会更轻柔。",
+      "voice": "{ELEVENLABS_VOICE_ID}",
+      "response_format": "mp3",
+      "language_code": "zh",
+      "voice_settings": {
+        "stability": 0.45,
+        "similarity_boost": 0.8,
+        "style": 0.2,
+        "use_speaker_boost": true,
+        "speed": 1.05
+      }
+    }' \
+    --output speech.mp3
+
+
+七、JavaScript 示例
+------------------
+
+  const response = await fetch(`${NEW_API_BASE_URL}/v1/audio/speech`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${NEW_API_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'eleven_v3',
+      input: '你好，这是 Eleven v3 语音测试。',
+      voice: ELEVENLABS_VOICE_ID,
+      response_format: 'mp3',
+      language_code: 'zh',
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+
+  const audio = await response.arrayBuffer();
+  // Node.js 中可将 audio 写入 .mp3 文件；浏览器中可转换为 Blob 后播放。
+
+
+八、响应说明
+------------
+
+成功时：
+
+  HTTP 状态码：200
+  响应体：音频二进制数据
+  Content-Type：使用 ElevenLabs 返回的音频类型
+
+该接口当前为非流式接口。客户端应读取完整的二进制响应，不要按 JSON 或 SSE 解析。
+
+使用 curl 时必须通过 --output 保存文件，否则二进制内容会直接输出到终端。
+
+
+九、限制与校验
+--------------
+
+1. eleven_v3 的 input 最多为 5000 个 Unicode 字符，超过限制的请求会在发送到上游前被拒绝。
+2. input、model、voice 不能为空。
+3. voice 必须是 ElevenLabs Voice ID。
+4. response_format 仅支持 mp3、opus、pcm、wav。
+5. stability、similarity_boost、style 必须在 0 到 1 之间。
+6. speed 必须大于 0。
+7. 当前不支持流式音频返回。
+
+
+十、常见问题
+------------
+
+1. 提示 voice is required
+   请求中没有 voice，或 voice 为空。请填写 ElevenLabs Voice ID。
+
+2. 使用 alloy、nova 等音色失败
+   这些是 OpenAI 音色名称，不是 ElevenLabs Voice ID。请从 ElevenLabs 获取实际的 Voice ID。
+
+3. 提示 unsupported ElevenLabs response_format
+   请将 response_format 改为 mp3、opus、pcm 或 wav。
+
+4. Eleven v3 请求被拒绝
+   检查 input 是否超过 5000 个 Unicode 字符，并确认渠道已开放 eleven_v3 模型。
+
+5. 返回 ElevenLabs 鉴权、额度或参数错误
+   检查渠道中的 ElevenLabs API Key、账户额度、Voice ID 和模型权限。New API 会保留上游错误信息，便于定位问题。
+
+6. 返回的是乱码
+   成功响应是音频二进制数据。请保存为与 response_format 对应的文件，或按 ArrayBuffer/Blob 处理，不要当作文本读取。
+
+
+十一、上游转换关系
+------------------
+
+New API 请求：
+
+  POST /v1/audio/speech
+  Authorization: Bearer {NEW_API_TOKEN}
+
+ElevenLabs 上游请求：
+
+  POST /v1/text-to-speech/{voice_id}?output_format={ELEVENLABS_OUTPUT_FORMAT}
+  xi-api-key: {ELEVENLABS_API_KEY}
+
+字段转换：
+
+  input           -> text
+  model           -> model_id
+  voice           -> URL 中的 voice_id
+  language_code   -> language_code
+  voice_settings  -> voice_settings
+  response_format -> output_format
+
+
+十二、官方参考
+--------------
+
+ElevenLabs Text to Speech：
+  https://elevenlabs.io/docs/api-reference/text-to-speech/convert
+
+ElevenLabs Models：
+  https://elevenlabs.io/docs/overview/models
+
+ElevenLabs Voice Settings：
+  https://elevenlabs.io/docs/api-reference/voices/settings/get

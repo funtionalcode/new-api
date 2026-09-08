@@ -25,6 +25,7 @@ export const CHANNEL_TYPE_NEW_API = 62
 export const CHANNEL_TYPE_CURSOR = 63
 
 export const CHANNEL_TYPE_TASK_PLUGIN = 64
+export const CHANNEL_TYPE_ELEVENLABS = 65
 
 export const CHANNEL_TYPES = {
   0: 'Unknown',
@@ -88,12 +89,13 @@ export const CHANNEL_TYPES = {
   62: 'New API',
   63: 'Cursor',
   64: 'Task Plugin',
+  65: 'ElevenLabs',
 } as const
 
 const CHANNEL_TYPE_DISPLAY_ORDER: number[] = [
   1, 14, 33, 24, 43, 3, 41, 48, 62, 63, 60, 64, 42, 34, 20, 4, 40, 27, 25, 17,
-  26, 15, 46, 23, 18, 45, 31, 35, 49, 19, 47, 37, 38, 39, 11, 8, 57, 61, 22, 21,
-  44, 2, 5, 36, 50, 51, 52, 53, 54, 55, 56, 58, 59,
+  26, 15, 46, 23, 18, 45, 31, 35, 59, 65, 49, 19, 47, 37, 38, 39, 11, 8, 57, 61,
+  22, 21, 44, 2, 5, 36, 50, 51, 52, 53, 54, 55, 56, 58,
 ]
 
 export const CHANNEL_TYPE_OPTIONS: { value: number; label: string }[] = (() => {
@@ -407,7 +409,7 @@ export const FIELD_DESCRIPTIONS = {
 
 export const MODEL_FETCHABLE_TYPES = new Set([
   1, 4, 14, 17, 20, 23, 24, 25, 26, 27, 31, 34, 35, 40, 42, 43, 47, 48, 57, 58,
-  60, 61, 62, 63, 64,
+  60, 61, 62, 63, 64, 65,
 ])
 
 export const FIELD_PASSTHROUGH_TYPES = new Set([

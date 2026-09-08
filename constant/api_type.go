@@ -42,5 +42,6 @@ const (
 	APITypeSub2API
 	APITypeNewAPI
 	APITypeCursor
+	APITypeElevenLabs
 	APITypeDummy // this one is only for count, do not add any channel after this
 )

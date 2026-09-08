@@ -22,6 +22,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/cursor"
 	"github.com/QuantumNous/new-api/relay/channel/deepseek"
 	"github.com/QuantumNous/new-api/relay/channel/dify"
+	"github.com/QuantumNous/new-api/relay/channel/elevenlabs"
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
 	"github.com/QuantumNous/new-api/relay/channel/jimeng"
 	"github.com/QuantumNous/new-api/relay/channel/jina"
@@ -133,6 +134,8 @@ func GetAdaptor(apiType int) channel.Adaptor {
 		return &newapi.Adaptor{}
 	case constant.APITypeCursor:
 		return &cursor.Adaptor{}
+	case constant.APITypeElevenLabs:
+		return &elevenlabs.Adaptor{}
 	}
 	return nil
 }

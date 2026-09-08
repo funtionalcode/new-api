@@ -18,6 +18,8 @@ type AudioRequest struct {
 	Speed          *float64        `json:"speed,omitempty"`
 	StreamFormat   string          `json:"stream_format,omitempty"`
 	Metadata       json.RawMessage `json:"metadata,omitempty"`
+	LanguageCode   *string         `json:"language_code,omitempty"`
+	VoiceSettings  json.RawMessage `json:"voice_settings,omitempty"`
 	// vllm-omini
 	TaskType                json.RawMessage `json:"task_type,omitempty"`
 	Language                json.RawMessage `json:"language,omitempty"`

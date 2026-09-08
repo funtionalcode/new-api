@@ -70,6 +70,35 @@ func TestParseOpenAIModelIDsStrictResponseContract(t *testing.T) {
 	}
 }
 
+func TestFetchElevenLabsModelsUsesProviderAuthAndFiltersNonTTSModels(t *testing.T) {
+	t.Parallel()
+
+	apiKey := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		apiKey <- r.Header.Get("xi-api-key")
+		_, _ = w.Write([]byte(`[
+			{"model_id":"eleven_v3","can_do_text_to_speech":true},
+			{"model_id":"scribe_v2","can_do_text_to_speech":false},
+			{"model_id":"eleven_flash_v2_5","can_do_text_to_speech":true},
+			{"model_id":"eleven_v3","can_do_text_to_speech":true}
+		]`))
+	}))
+	defer server.Close()
+
+	baseURL := server.URL
+	channel := &model.Channel{
+		Type:    constant.ChannelTypeElevenLabs,
+		Key:     "eleven-secret",
+		BaseURL: &baseURL,
+	}
+
+	models, err := fetchChannelUpstreamModelIDs(channel)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"eleven_v3", "eleven_flash_v2_5"}, models)
+	assert.Equal(t, "eleven-secret", <-apiKey)
+}
+
 func TestFetchAdvancedCustomModelsAppliesHeaderOverrideAfterRouteAuth(t *testing.T) {
 	type receivedRequest struct {
 		Headers http.Header

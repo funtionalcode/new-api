@@ -62,6 +62,7 @@ const (
 	ChannelTypeNewAPI         = 62
 	ChannelTypeCursor         = 63
 	ChannelTypeTaskPlugin     = 64
+	ChannelTypeElevenLabs     = 65
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
@@ -132,6 +133,7 @@ var ChannelBaseURLs = []string{
 	"",                                          //62
 	"https://api.cursor.com",                    //63
 	"",                                          //64
+	"https://api.elevenlabs.io",                 //65
 }
 
 func GetChannelBaseURL(channelType int) string {
@@ -203,6 +205,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeNewAPI:         "New API",
 	ChannelTypeCursor:         "Cursor",
 	ChannelTypeTaskPlugin:     "Task Plugin",
+	ChannelTypeElevenLabs:     "ElevenLabs",
 }
 
 func GetChannelTypeName(channelType int) string {
