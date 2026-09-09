@@ -1246,6 +1246,26 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	if err != nil {
 		return nil, err
 	}
+	if len(request.Input) > 0 && common.GetJsonType(request.Input) == "array" {
+		var inputItems []map[string]any
+		if err := common.Unmarshal(request.Input, &inputItems); err != nil {
+			return nil, fmt.Errorf("cursor channel: invalid Responses input: %w", err)
+		}
+		filteredItems := make([]map[string]any, 0, len(inputItems))
+		for _, item := range inputItems {
+			itemType, _ := item["type"].(string)
+			if strings.TrimSpace(itemType) == "reasoning" {
+				continue
+			}
+			filteredItems = append(filteredItems, item)
+		}
+		if len(filteredItems) != len(inputItems) {
+			request.Input, err = common.Marshal(filteredItems)
+			if err != nil {
+				return nil, fmt.Errorf("cursor channel: filter Responses reasoning history: %w", err)
+			}
+		}
+	}
 	openAIRequest, err := service.ResponsesRequestToChatCompletionsRequest(&request)
 	if err != nil {
 		return nil, fmt.Errorf("cursor channel: convert Responses request: %w", err)

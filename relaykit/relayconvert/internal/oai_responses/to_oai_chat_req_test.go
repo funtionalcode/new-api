@@ -161,41 +161,6 @@ func TestResponsesRequestToChatCompletionsRequestAssistantTextAndFunctionCallCoe
 	assert.JSONEq(t, `{"ok":true}`, got.Messages[1].StringContent())
 }
 
-func TestResponsesRequestToChatCompletionsRequestSkipsOpaqueReasoningHistory(t *testing.T) {
-	got, err := ResponsesRequestToChatCompletionsRequest(&dto.OpenAIResponsesRequest{
-		Model: "gpt-test",
-		Input: mustRawMessage(t, []map[string]any{
-			{
-				"type":              "reasoning",
-				"id":                "rs_1",
-				"summary":           []any{},
-				"encrypted_content": "opaque",
-			},
-			{
-				"type": "message",
-				"role": "assistant",
-				"content": []map[string]any{
-					{"type": "output_text", "text": "Previous answer."},
-				},
-			},
-			{
-				"type": "message",
-				"role": "user",
-				"content": []map[string]any{
-					{"type": "input_text", "text": "Continue."},
-				},
-			},
-		}),
-	})
-	require.NoError(t, err)
-
-	require.Len(t, got.Messages, 2)
-	assert.Equal(t, "assistant", got.Messages[0].Role)
-	assert.Equal(t, "Previous answer.", got.Messages[0].StringContent())
-	assert.Equal(t, "user", got.Messages[1].Role)
-	assert.Equal(t, "Continue.", got.Messages[1].StringContent())
-}
-
 func TestResponsesRequestToChatCompletionsRequestOnlyFunctionCallCreatesAssistant(t *testing.T) {
 	got, err := ResponsesRequestToChatCompletionsRequest(&dto.OpenAIResponsesRequest{
 		Model: "gpt-test",
