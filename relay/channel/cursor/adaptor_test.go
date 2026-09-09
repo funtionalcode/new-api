@@ -2101,6 +2101,31 @@ func TestConvertOpenAIResponsesRequestReusesServerManagedCodexAgent(t *testing.T
 	assert.Equal(t, agentID, second.GetString(cursorAgentIDContextKey))
 }
 
+func TestConvertOpenAIResponsesRequestSkipsCodexReasoningHistory(t *testing.T) {
+	c := newCursorTestContext(t)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Set("id", 24)
+	common.SetContextKey(c, constant.ContextKeyUsingGroup, "default")
+
+	converted, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(c, &relaycommon.RelayInfo{
+		RelayMode: relayconstant.RelayModeResponses,
+	}, dto.OpenAIResponsesRequest{
+		Model: "gpt-5.6-sol",
+		Input: []byte(`[
+			{"type":"reasoning","id":"rs_1","summary":[],"encrypted_content":"opaque"},
+			{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Previous answer."}]},
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"Continue."}]}
+		]`),
+	})
+	require.NoError(t, err)
+
+	request, ok := converted.(*createAgentRequest)
+	require.True(t, ok)
+	assert.Contains(t, request.Prompt.Text, `"role":"assistant","content":"Previous answer."`)
+	assert.Contains(t, request.Prompt.Text, `"role":"user","content":"Continue."`)
+	assert.NotContains(t, request.Prompt.Text, `"role":"user","content":""`)
+}
+
 func TestCursorNonStreamResponseConvertsCustomToolCallToResponses(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
