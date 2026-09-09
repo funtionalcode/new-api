@@ -2213,7 +2213,7 @@ func TestConvertOpenAIResponsesRequestReusesServerManagedCodexAgent(t *testing.T
 	assert.Equal(t, agentID, second.GetString(cursorAgentIDContextKey))
 }
 
-func TestConvertOpenAIResponsesRequestSkipsCodexReasoningHistory(t *testing.T) {
+func TestConvertOpenAIResponsesRequestSkipsCodexOpaqueReasoningHistory(t *testing.T) {
 	c := newCursorTestContext(t)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 	c.Set("id", 24)
@@ -2225,7 +2225,14 @@ func TestConvertOpenAIResponsesRequestSkipsCodexReasoningHistory(t *testing.T) {
 		Model: "gpt-5.6-sol",
 		Input: []byte(`[
 			{"type":"reasoning","id":"rs_1","summary":[],"encrypted_content":"opaque"},
-			{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Previous answer."}]},
+			{"type":"encrypted_content","encrypted_content":"standalone-opaque"},
+			{"type":"message","role":"assistant","content":[
+				{"type":"output_text","text":"Previous answer."},
+				{"type":"encrypted_content","encrypted_content":"nested-opaque"}
+			]},
+			{"type":"message","role":"assistant","content":[
+				{"type":"encrypted_content","encrypted_content":"opaque-only"}
+			]},
 			{"type":"message","role":"user","content":[{"type":"input_text","text":"Continue."}]}
 		]`),
 	})
@@ -2235,6 +2242,8 @@ func TestConvertOpenAIResponsesRequestSkipsCodexReasoningHistory(t *testing.T) {
 	require.True(t, ok)
 	assert.Contains(t, request.Prompt.Text, `"role":"assistant","content":"Previous answer."`)
 	assert.Contains(t, request.Prompt.Text, `"role":"user","content":"Continue."`)
+	assert.NotContains(t, request.Prompt.Text, "encrypted_content")
+	assert.NotContains(t, request.Prompt.Text, "opaque")
 	assert.NotContains(t, request.Prompt.Text, `"role":"user","content":""`)
 }
 

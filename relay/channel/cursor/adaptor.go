@@ -1283,25 +1283,9 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	if err != nil {
 		return nil, err
 	}
-	if len(request.Input) > 0 && common.GetJsonType(request.Input) == "array" {
-		var inputItems []map[string]any
-		if err := common.Unmarshal(request.Input, &inputItems); err != nil {
-			return nil, fmt.Errorf("cursor channel: invalid Responses input: %w", err)
-		}
-		filteredItems := make([]map[string]any, 0, len(inputItems))
-		for _, item := range inputItems {
-			itemType, _ := item["type"].(string)
-			if strings.TrimSpace(itemType) == "reasoning" {
-				continue
-			}
-			filteredItems = append(filteredItems, item)
-		}
-		if len(filteredItems) != len(inputItems) {
-			request.Input, err = common.Marshal(filteredItems)
-			if err != nil {
-				return nil, fmt.Errorf("cursor channel: filter Responses reasoning history: %w", err)
-			}
-		}
+	request.Input, err = filterCursorResponsesOpaqueReasoning(request.Input)
+	if err != nil {
+		return nil, err
 	}
 	openAIRequest, err := service.ResponsesRequestToChatCompletionsRequest(&request)
 	if err != nil {
@@ -1325,6 +1309,56 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 		c.Set(cursorExternalToolsContextKey, convertedSpecs)
 	}
 	return converted, err
+}
+
+func filterCursorResponsesOpaqueReasoning(input []byte) ([]byte, error) {
+	if len(input) == 0 || common.GetJsonType(input) != "array" {
+		return input, nil
+	}
+	var inputItems []map[string]any
+	if err := common.Unmarshal(input, &inputItems); err != nil {
+		return nil, fmt.Errorf("cursor channel: invalid Responses input: %w", err)
+	}
+	filteredItems := make([]map[string]any, 0, len(inputItems))
+	changed := false
+	for _, item := range inputItems {
+		itemType, _ := item["type"].(string)
+		switch strings.TrimSpace(itemType) {
+		case "reasoning", "encrypted_content":
+			changed = true
+			continue
+		}
+
+		contentParts, ok := item["content"].([]any)
+		if !ok {
+			filteredItems = append(filteredItems, item)
+			continue
+		}
+		filteredParts := make([]any, 0, len(contentParts))
+		for _, rawPart := range contentParts {
+			part, ok := rawPart.(map[string]any)
+			partType, _ := part["type"].(string)
+			if ok && strings.TrimSpace(partType) == "encrypted_content" {
+				changed = true
+				continue
+			}
+			filteredParts = append(filteredParts, rawPart)
+		}
+		if len(contentParts) > 0 && len(filteredParts) == 0 {
+			changed = true
+			continue
+		}
+		item["content"] = filteredParts
+		filteredItems = append(filteredItems, item)
+	}
+	if !changed {
+		return input, nil
+	}
+	filteredInput, err := common.Marshal(filteredItems)
+	if err != nil {
+		return nil, fmt.Errorf("cursor channel: filter Responses opaque reasoning: %w", err)
+	}
+	return filteredInput, nil
 }
 
 func cursorResponsesExternalToolSpecs(request dto.OpenAIResponsesRequest) (map[string]cursorExternalToolSpec, error) {
