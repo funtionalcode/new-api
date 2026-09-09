@@ -76,6 +76,11 @@ type createRunResponse struct {
 	} `json:"run"`
 }
 
+type cursorAgentResponse struct {
+	ID          string `json:"id"`
+	LatestRunID string `json:"latestRunId"`
+}
+
 type cursorMetadata struct {
 	AgentID    string
 	Persistent bool

@@ -1830,17 +1830,32 @@ func TestCursorAdaptorUsesEphemeralAgentWhenPersistentAgentIsBusy(t *testing.T) 
 	}, requests)
 }
 
-func TestCursorAdaptorDoesNotUseEphemeralAgentWhenSerializedPersistentAgentIsBusy(t *testing.T) {
+func TestCursorAdaptorWaitsForBusySerializedPersistentAgentBeforeRetry(t *testing.T) {
 	persistentAgentID := "bc-00000000-0000-0000-0000-000000000011"
-	requests := make([]string, 0, 1)
+	requests := make([]string, 0, 5)
+	createRunCalls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests = append(requests, r.Method+" "+r.URL.RequestURI())
-		if r.Method == http.MethodPost && r.URL.Path == "/v1/agents/"+persistentAgentID+"/runs" {
-			w.WriteHeader(http.StatusConflict)
-			_, _ = w.Write([]byte(`{"error":{"code":"agent_busy","message":"Agent already has an active run"}}`))
-			return
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/agents/"+persistentAgentID+"/runs":
+			createRunCalls++
+			if createRunCalls == 1 {
+				w.WriteHeader(http.StatusConflict)
+				_, _ = w.Write([]byte(`{"error":{"code":"agent_busy","message":"Agent already has an active run"}}`))
+				return
+			}
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"run":{"id":"run-2"}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agents/"+persistentAgentID:
+			_, _ = w.Write([]byte(`{"id":"` + persistentAgentID + `","status":"ACTIVE","latestRunId":"run-1"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agents/"+persistentAgentID+"/runs/run-1":
+			_, _ = w.Write([]byte(`{"id":"run-1","agentId":"` + persistentAgentID + `","status":"CANCELLED"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agents/"+persistentAgentID+"/runs/run-2/stream":
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte("event: result\ndata: {\"runId\":\"run-2\",\"status\":\"FINISHED\",\"text\":\"continued\"}\n\n"))
+		default:
+			http.NotFound(w, r)
 		}
-		http.NotFound(w, r)
 	}))
 	t.Cleanup(server.Close)
 
@@ -1878,9 +1893,13 @@ func TestCursorAdaptorDoesNotUseEphemeralAgentWhenSerializedPersistentAgentIsBus
 	response, ok := upstream.(*http.Response)
 	require.True(t, ok)
 	defer service.CloseResponseBodyGracefully(response)
-	assert.Equal(t, http.StatusConflict, response.StatusCode)
+	assert.Equal(t, http.StatusOK, response.StatusCode)
 	assert.Equal(t, []string{
 		"POST /v1/agents/" + persistentAgentID + "/runs",
+		"GET /v1/agents/" + persistentAgentID,
+		"GET /v1/agents/" + persistentAgentID + "/runs/run-1",
+		"POST /v1/agents/" + persistentAgentID + "/runs",
+		"GET /v1/agents/" + persistentAgentID + "/runs/run-2/stream",
 	}, requests)
 }
 

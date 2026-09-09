@@ -694,7 +694,15 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 			strings.EqualFold(strings.TrimSpace(errorResponse.Error.Message), "Agent already has an active run"))
 		fallbackValue, fallbackExists := c.Get(cursorBusyFallbackContextKey)
 		fallback, fallbackValid := fallbackValue.(*createAgentRequest)
-		if busy && !info.ChannelSetting.CursorAgentSerialExecution && fallbackExists && fallbackValid && fallback != nil {
+		if busy && info.ChannelSetting.CursorAgentSerialExecution {
+			if err := a.waitCursorAgentActiveRun(c, info, agentID); err != nil {
+				return nil, fmt.Errorf("cursor channel: wait for active Agent run: %w", err)
+			}
+			response, err = a.doCursorAPIRequest(c.Request.Context(), c, info, http.MethodPost, requestPath, bytes.NewReader(body), false)
+			if err != nil {
+				return nil, err
+			}
+		} else if busy && fallbackExists && fallbackValid && fallback != nil {
 			body, err = common.Marshal(fallback)
 			if err != nil {
 				return nil, fmt.Errorf("cursor channel: encode busy Agent fallback: %w", err)
@@ -1003,6 +1011,35 @@ func (a *Adaptor) waitCursorRun(c *gin.Context, info *relaycommon.RelayInfo, age
 		case <-time.After(cursorRunPollInterval):
 		}
 	}
+}
+
+func (a *Adaptor) waitCursorAgentActiveRun(c *gin.Context, info *relaycommon.RelayInfo, agentID string) error {
+	if c == nil || c.Request == nil {
+		return errors.New("cursor channel: request context is required while waiting for an active run")
+	}
+	agentPath := "/v1/agents/" + url.PathEscape(agentID)
+	response, err := a.doCursorAPIRequest(c.Request.Context(), c, info, http.MethodGet, agentPath, nil, false)
+	if err != nil {
+		return fmt.Errorf("get Agent: %w", err)
+	}
+	responseBody, readErr := io.ReadAll(response.Body)
+	service.CloseResponseBodyGracefully(response)
+	if readErr != nil {
+		return fmt.Errorf("read Agent response: %w", readErr)
+	}
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("get Agent returned status %d", response.StatusCode)
+	}
+	var agent cursorAgentResponse
+	if err := common.Unmarshal(responseBody, &agent); err != nil {
+		return fmt.Errorf("decode Agent response: %w", err)
+	}
+	runID := strings.TrimSpace(agent.LatestRunID)
+	if runID == "" {
+		return errors.New("active Agent response is missing latestRunId")
+	}
+	_, err = a.waitCursorRun(c, info, agentID, runID)
+	return err
 }
 
 func (a *Adaptor) DeletePersistentAgent(c *gin.Context, info *relaycommon.RelayInfo, agentID string) error {
