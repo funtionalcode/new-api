@@ -1158,6 +1158,11 @@ func TestCursorCloudEnvironmentRefusalRecognizesLocalizedWorkspaceFailures(t *te
 			want: true,
 		},
 		{
+			name: "chinese previous local repository unavailable",
+			text: "无法继续实现：当前 Cloud Agent 的 /agent 为空，且无法访问之前的 /Users/haogege/project 仓库。",
+			want: true,
+		},
+		{
 			name: "english local workspace unavailable",
 			text: "The cloud agent only has access to /agent and cannot access your local workspace.",
 			want: true,
@@ -1179,6 +1184,94 @@ func TestCursorCloudEnvironmentRefusalRecognizesLocalizedWorkspaceFailures(t *te
 			assert.Equal(t, tt.want, cursorCloudEnvironmentRefusal(tt.text))
 		})
 	}
+}
+
+func TestCursorResponsesStreamReroutesFragmentedCloudWorkspaceRefusal(t *testing.T) {
+	agentID := "bc-00000000-0000-0000-0000-000000000075"
+	initialRunID := "run-00000000-0000-0000-0000-000000000075"
+	recoveryRunID := "run-00000000-0000-0000-0000-000000000076"
+	toolEnvelope := `{"cursor_external_tool_calls":[{"id":"call_exec","name":"client_external_tool_1","arguments":{"cmd":"pwd && git status","workdir":"/Users/haogege/project"}}]}`
+	recoveryRequest := make(chan createRunRequest, 1)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/agents/"+agentID+"/runs":
+			var request createRunRequest
+			if err := common.DecodeJson(r.Body, &request); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			recoveryRequest <- request
+			_, _ = w.Write([]byte(`{"run":{"id":"` + recoveryRunID + `"}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agents/"+agentID+"/runs/"+recoveryRunID+"/stream":
+			_, _ = w.Write([]byte("event: assistant\ndata: {\"text\":\"" + strings.ReplaceAll(toolEnvelope, `"`, `\"`) + "\"}\n\nevent: result\ndata: {\"runId\":\"" + recoveryRunID + "\",\"status\":\"FINISHED\",\"text\":\"" + strings.ReplaceAll(toolEnvelope, `"`, `\"`) + "\"}\n\n"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Set("id", 1)
+	c.Set(cursorExternalToolsContextKey, map[string]cursorExternalToolSpec{
+		"client_external_tool_1": {Kind: "function", Name: "exec_command"},
+		"exec_command":           {Kind: "function", Name: "exec_command"},
+	})
+	common.SetContextKey(c, common.RequestIdKey, "req-cursor-fragmented-cloud-refusal")
+
+	refusalParts := []string{
+		"无法继续实现：当前 Cloud Agent 的 ",
+		"/agent 为空，且无法访问之前的 /Users/haogege/project 仓库。",
+		"请从具备该仓库访问权限的 Cursor 页面重新启动任务。",
+	}
+	refusal := strings.Join(refusalParts, "")
+	streamEvents := make([]string, 0, len(refusalParts)*3+3)
+	for _, part := range refusalParts {
+		assistantEvent, err := common.Marshal(cursorTextEvent{Text: part})
+		require.NoError(t, err)
+		streamEvents = append(streamEvents, "event: assistant", "data: "+string(assistantEvent), "")
+	}
+	resultEvent, err := common.Marshal(cursorResultEvent{RunID: initialRunID, Status: "FINISHED", Text: refusal})
+	require.NoError(t, err)
+	streamEvents = append(streamEvents, "event: result", "data: "+string(resultEvent), "")
+
+	responseHeader := make(http.Header)
+	responseHeader.Set(cursorAgentIDInternalHeader, agentID)
+	responseHeader.Set(cursorRunIDInternalHeader, initialRunID)
+	responseHeader.Set(cursorPersistentInternalKey, "true")
+	responseHeader.Set(cursorClientStreamHeader, "true")
+	responseHeader.Set(cursorSkipRemoteUsageHeader, "true")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     responseHeader,
+		Body:       io.NopCloser(strings.NewReader(strings.Join(streamEvents, "\n"))),
+	}
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatOpenAIResponses,
+		IsStream:    true,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType:       constant.ChannelTypeCursor,
+			ChannelBaseUrl:    server.URL,
+			ApiKey:            "cursor-secret",
+			UpstreamModelName: "gpt-5.6-sol",
+		},
+	}
+
+	usage, apiErr := (&Adaptor{}).DoResponse(c, resp, info)
+	require.Nil(t, apiErr)
+	require.NotNil(t, usage)
+	recovery := <-recoveryRequest
+	assert.Contains(t, recovery.Prompt.Text, "remote cloud workspace")
+	assert.Contains(t, recovery.Prompt.Text, `client tool alias "client_external_tool_1"`)
+	body := recorder.Body.String()
+	assert.Contains(t, body, `"type":"function_call"`)
+	assert.Contains(t, body, `"name":"exec_command"`)
+	assert.Contains(t, body, "event: response.completed\n")
+	assert.NotContains(t, body, "无法继续实现")
+	assert.NotContains(t, body, "/agent 为空")
 }
 
 func TestCursorResponseFetchesTerminalRunResultForErrorDetail(t *testing.T) {
