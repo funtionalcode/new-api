@@ -75,6 +75,32 @@ func TestPrepareCursorAgentSessionRestoresCodexConversation(t *testing.T) {
 	assert.Equal(t, "0", second.GetHeader(constant.CursorAgentKeyIndexHeader))
 }
 
+func TestPrepareCursorAgentSessionFromWebsocketBodyRestoresChannelPin(t *testing.T) {
+	const modelName = "gpt-5.6-sol"
+	body := []byte(`{"type":"response.create","model":"gpt-5.6-sol","prompt_cache_key":"ws-codex-session"}`)
+	first, _ := gin.CreateTestContext(httptest.NewRecorder())
+	first.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	first.Set("id", 41)
+	common.SetContextKey(first, constant.ContextKeyUsingGroup, "default")
+	PrepareCursorAgentSessionFromBody(first, modelName, body)
+	require.NoError(t, SaveCursorAgentSession(first, CursorAgentSession{
+		AgentID:   "bc-00000000-0000-0000-0000-000000000041",
+		Signature: "v2.websocket-signature",
+		ChannelID: 42,
+		KeyIndex:  3,
+	}))
+
+	second, _ := gin.CreateTestContext(httptest.NewRecorder())
+	second.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	second.Set("id", 41)
+	common.SetContextKey(second, constant.ContextKeyUsingGroup, "default")
+	PrepareCursorAgentSessionFromBody(second, modelName, body)
+
+	assert.Equal(t, "bc-00000000-0000-0000-0000-000000000041", second.GetHeader(constant.CursorAgentIDHeader))
+	assert.Equal(t, "42", second.GetHeader(constant.CursorAgentChannelIDHeader))
+	assert.Equal(t, "3", second.GetHeader(constant.CursorAgentKeyIndexHeader))
+}
+
 func TestCursorAgentSessionIsIsolatedByUserModelAndClaudeSubagent(t *testing.T) {
 	first := newCursorAgentSessionTestContext(t, "/v1/messages", `{
 		"metadata":{"user_id":"shared-session"}

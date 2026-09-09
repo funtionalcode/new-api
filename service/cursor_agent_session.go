@@ -59,13 +59,34 @@ func PrepareCursorAgentSession(c *gin.Context, modelName string) {
 	if c == nil || c.Request == nil || c.Request.Method != http.MethodPost {
 		return
 	}
+	storage, err := common.GetBodyStorage(c)
+	if err != nil {
+		return
+	}
+	body, err := storage.Bytes()
+	if err != nil || len(body) == 0 {
+		return
+	}
+	prepareCursorAgentSessionFromBody(c, modelName, body)
+}
+
+// PrepareCursorAgentSessionFromBody restores a Cursor Agent binding for a
+// Responses WebSocket event, whose JSON body arrives after the HTTP upgrade.
+func PrepareCursorAgentSessionFromBody(c *gin.Context, modelName string, body []byte) {
+	if c == nil || c.Request == nil || len(body) == 0 {
+		return
+	}
+	prepareCursorAgentSessionFromBody(c, modelName, body)
+}
+
+func prepareCursorAgentSessionFromBody(c *gin.Context, modelName string, body []byte) {
 	userID := c.GetInt("id")
 	modelName = strings.TrimSpace(modelName)
 	if userID <= 0 || modelName == "" {
 		return
 	}
 
-	clientKind, clientSessionID, reasoningEffort := cursorAgentClientSession(c)
+	clientKind, clientSessionID, reasoningEffort := cursorAgentClientSession(c, body)
 	if clientSessionID == "" {
 		return
 	}
@@ -102,16 +123,8 @@ func PrepareCursorAgentSession(c *gin.Context, modelName string) {
 	c.Request.Header.Set(constant.CursorAgentKeyIndexHeader, strconv.Itoa(session.KeyIndex))
 }
 
-func cursorAgentClientSession(c *gin.Context) (string, string, string) {
+func cursorAgentClientSession(c *gin.Context, body []byte) (string, string, string) {
 	path := c.Request.URL.Path
-	storage, err := common.GetBodyStorage(c)
-	if err != nil {
-		return "", "", ""
-	}
-	body, err := storage.Bytes()
-	if err != nil || len(body) == 0 {
-		return "", "", ""
-	}
 
 	switch path {
 	case "/v1/messages":

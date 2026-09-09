@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -66,4 +67,32 @@ func TestSetupContextForSelectedCursorChannelRejectsUnavailableSavedKey(t *testi
 
 	require.NotNil(t, apiErr)
 	assert.Contains(t, apiErr.Error(), "saved key index is unavailable")
+}
+
+func TestApplyCursorPersistentChannelKeyRestoresSavedKeyIndex(t *testing.T) {
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	ctx.Request.Header.Set(constant.CursorAgentIDHeader, "bc-00000000-0000-0000-0000-000000000042")
+	ctx.Request.Header.Set(constant.CursorAgentChannelIDHeader, "42")
+	ctx.Request.Header.Set(constant.CursorAgentKeyIndexHeader, "1")
+	channel := &model.Channel{Id: 42, Type: constant.ChannelTypeCursor}
+
+	apiErr := applyCursorPersistentChannelKey(ctx, channel)
+
+	require.Nil(t, apiErr)
+	assert.Equal(t, 1, common.GetContextKeyInt(ctx, constant.ContextKeyChannelKeyIndexOverride))
+}
+
+func TestApplyCursorPersistentChannelKeyRejectsDifferentChannel(t *testing.T) {
+	require.NoError(t, i18n.Init())
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	ctx.Request.Header.Set(constant.CursorAgentIDHeader, "bc-00000000-0000-0000-0000-000000000042")
+	ctx.Request.Header.Set(constant.CursorAgentChannelIDHeader, "42")
+	ctx.Request.Header.Set(constant.CursorAgentKeyIndexHeader, "1")
+
+	apiErr := applyCursorPersistentChannelKey(ctx, &model.Channel{Id: 43, Type: constant.ChannelTypeCursor})
+
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusBadRequest, apiErr.StatusCode)
 }

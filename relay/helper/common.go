@@ -14,6 +14,25 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const responsesStreamWriterContextKey = "responses_stream_writer"
+
+type ResponsesStreamWriter func([]byte) error
+
+func SetResponsesStreamWriter(c *gin.Context, writer ResponsesStreamWriter) func() {
+	if c == nil {
+		return func() {}
+	}
+	previous, existed := c.Get(responsesStreamWriterContextKey)
+	c.Set(responsesStreamWriterContextKey, writer)
+	return func() {
+		if existed {
+			c.Set(responsesStreamWriterContextKey, previous)
+			return
+		}
+		c.Set(responsesStreamWriterContextKey, nil)
+	}
+}
+
 func FlushWriter(c *gin.Context) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -87,6 +106,13 @@ func ClaudeChunkData(c *gin.Context, resp dto.ClaudeResponse, data string) {
 func ResponseChunkData(c *gin.Context, resp dto.ResponsesStreamResponse, data string) error {
 	if requestContextDone(c) {
 		return fmt.Errorf("request context done: %w", c.Request.Context().Err())
+	}
+	if c != nil {
+		if value, exists := c.Get(responsesStreamWriterContextKey); exists {
+			if writer, ok := value.(ResponsesStreamWriter); ok && writer != nil {
+				return writer([]byte(data))
+			}
+		}
 	}
 
 	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("event: %s\n", resp.Type)})

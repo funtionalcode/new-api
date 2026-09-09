@@ -272,16 +272,9 @@ func Distribute() func(c *gin.Context) {
 			}
 		}
 		common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
-		if isCursorPersistentRequestPath(c.Request.URL.Path) && strings.TrimSpace(c.GetHeader(constant.CursorAgentIDHeader)) != "" {
-			savedChannelID := strings.TrimSpace(c.GetHeader(constant.CursorAgentChannelIDHeader))
-			savedKeyIndex := strings.TrimSpace(c.GetHeader(constant.CursorAgentKeyIndexHeader))
-			persistentChannelID, channelErr := strconv.Atoi(savedChannelID)
-			persistentKeyIndex, keyErr := strconv.Atoi(savedKeyIndex)
-			if savedChannelID == "" || savedKeyIndex == "" || channelErr != nil || keyErr != nil || persistentKeyIndex < 0 || channel == nil || channel.Type != constant.ChannelTypeCursor || channel.Id != persistentChannelID {
-				abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidChannelId))
-				return
-			}
-			common.SetContextKey(c, constant.ContextKeyChannelKeyIndexOverride, persistentKeyIndex)
+		if persistentErr := applyCursorPersistentChannelKey(c, channel); persistentErr != nil {
+			abortWithOpenAiMessage(c, persistentErr.StatusCode, persistentErr.Error(), persistentErr.GetErrorCode())
+			return
 		}
 		if newAPIError := SetupContextForSelectedChannel(c, channel, modelRequest.Model); newAPIError != nil {
 			if strings.TrimSpace(c.GetHeader(constant.CursorAgentIDHeader)) != "" {
@@ -423,45 +416,101 @@ func SelectChannelForWebsocketRequest(c *gin.Context, modelName string) (*model.
 
 		var selectGroup string
 		usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
-		if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
-			affinityUsable := false
-			preferred, err := model.CacheGetChannel(preferredChannelID)
-			if err == nil && preferred != nil {
-				if preferred.Status != common.ChannelStatusEnabled {
-					if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
-						return nil, types.NewErrorWithStatusCode(
-							errors.New(i18n.T(c, i18n.MsgDistributorAffinityChannelDisabled)),
-							types.ErrorCodeGetChannelFailed,
-							http.StatusForbidden,
-							types.ErrOptionWithSkipRetry(),
-						)
-					}
-				} else if !channelSupportsRequestPath(preferred, c.Request.URL.Path, modelRequest.Model) {
-					logger.LogDebug(c, "affinity channel %d does not support request path %s, ignore it", preferred.Id, c.Request.URL.Path)
-				} else if !preferred.IsOpenToUser(requestUserId) {
-					logger.LogDebug(c, "affinity channel %d is not open to user %d, ignore it", preferred.Id, requestUserId)
-				} else if usingGroup == "auto" {
-					userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
-					autoGroups := service.GetUserAutoGroup(userGroup)
-					for _, g := range autoGroups {
-						if model.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
-							selectGroup = g
-							common.SetContextKey(c, constant.ContextKeyAutoGroup, g)
-							channel = preferred
-							affinityUsable = true
-							service.MarkChannelAffinityUsed(c, g, preferred.Id)
-							break
-						}
-					}
-				} else if model.IsChannelEnabledForGroupModel(usingGroup, modelRequest.Model, preferred.Id) {
-					channel = preferred
-					selectGroup = usingGroup
-					affinityUsable = true
-					service.MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
-				}
+		if isCursorPersistentRequestPath(c.Request.URL.Path) && strings.TrimSpace(c.GetHeader(constant.CursorAgentIDHeader)) != "" {
+			persistentChannelID, channelErr := strconv.Atoi(strings.TrimSpace(c.GetHeader(constant.CursorAgentChannelIDHeader)))
+			persistentKeyIndex, keyErr := strconv.Atoi(strings.TrimSpace(c.GetHeader(constant.CursorAgentKeyIndexHeader)))
+			preferred, preferredErr := model.CacheGetChannel(persistentChannelID)
+			if channelErr != nil || persistentChannelID <= 0 || keyErr != nil || persistentKeyIndex < 0 || preferredErr != nil || preferred == nil || preferred.Type != constant.ChannelTypeCursor {
+				return nil, types.NewErrorWithStatusCode(
+					errors.New(i18n.T(c, i18n.MsgDistributorInvalidChannelId)),
+					types.ErrorCodeInvalidRequest,
+					http.StatusBadRequest,
+					types.ErrOptionWithSkipRetry(),
+				)
 			}
-			if !affinityUsable && !service.ShouldKeepChannelAffinityOnChannelDisabled() {
-				service.ClearCurrentChannelAffinityCache(c)
+			if preferred.Status != common.ChannelStatusEnabled {
+				return nil, types.NewErrorWithStatusCode(
+					errors.New(i18n.T(c, i18n.MsgDistributorChannelDisabled)),
+					types.ErrorCodeGetChannelFailed,
+					http.StatusForbidden,
+					types.ErrOptionWithSkipRetry(),
+				)
+			}
+			if !preferred.IsOpenToUser(requestUserId) {
+				return nil, types.NewErrorWithStatusCode(errors.New("该渠道未开放给当前用户"), types.ErrorCodeAccessDenied, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+			}
+			if ok, kind := model.ChannelSatisfiesFilters(preferred, modelRequest.Model, constraints.Filters); !ok {
+				return nil, types.NewErrorWithStatusCode(
+					fmt.Errorf("channel does not satisfy %s constraint", kind),
+					types.ErrorCodeAccessDenied,
+					http.StatusForbidden,
+					types.ErrOptionWithSkipRetry(),
+				)
+			}
+			if usingGroup == "auto" {
+				userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+				for _, candidateGroup := range service.GetRequestAutoGroups(c, userGroup) {
+					if model.IsChannelEnabledForGroupModel(candidateGroup, modelRequest.Model, preferred.Id) {
+						selectGroup = candidateGroup
+						common.SetContextKey(c, constant.ContextKeyAutoGroup, candidateGroup)
+						break
+					}
+				}
+			} else if model.IsChannelEnabledForGroupModel(usingGroup, modelRequest.Model, preferred.Id) {
+				selectGroup = usingGroup
+			}
+			if selectGroup == "" {
+				return nil, types.NewErrorWithStatusCode(
+					errors.New(i18n.T(c, i18n.MsgDistributorUserModelForbidden, map[string]any{"Model": modelRequest.Model})),
+					types.ErrorCodeAccessDenied,
+					http.StatusForbidden,
+					types.ErrOptionWithSkipRetry(),
+				)
+			}
+			channel = preferred
+			c.Set("specific_channel_id", strconv.Itoa(preferred.Id))
+		}
+		if channel == nil {
+			if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
+				affinityUsable := false
+				preferred, err := model.CacheGetChannel(preferredChannelID)
+				if err == nil && preferred != nil {
+					if preferred.Status != common.ChannelStatusEnabled {
+						if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
+							return nil, types.NewErrorWithStatusCode(
+								errors.New(i18n.T(c, i18n.MsgDistributorAffinityChannelDisabled)),
+								types.ErrorCodeGetChannelFailed,
+								http.StatusForbidden,
+								types.ErrOptionWithSkipRetry(),
+							)
+						}
+					} else if !channelSupportsRequestPath(preferred, c.Request.URL.Path, modelRequest.Model) {
+						logger.LogDebug(c, "affinity channel %d does not support request path %s, ignore it", preferred.Id, c.Request.URL.Path)
+					} else if !preferred.IsOpenToUser(requestUserId) {
+						logger.LogDebug(c, "affinity channel %d is not open to user %d, ignore it", preferred.Id, requestUserId)
+					} else if usingGroup == "auto" {
+						userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+						autoGroups := service.GetUserAutoGroup(userGroup)
+						for _, g := range autoGroups {
+							if model.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
+								selectGroup = g
+								common.SetContextKey(c, constant.ContextKeyAutoGroup, g)
+								channel = preferred
+								affinityUsable = true
+								service.MarkChannelAffinityUsed(c, g, preferred.Id)
+								break
+							}
+						}
+					} else if model.IsChannelEnabledForGroupModel(usingGroup, modelRequest.Model, preferred.Id) {
+						channel = preferred
+						selectGroup = usingGroup
+						affinityUsable = true
+						service.MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
+					}
+				}
+				if !affinityUsable && !service.ShouldKeepChannelAffinityOnChannelDisabled() {
+					service.ClearCurrentChannelAffinityCache(c)
+				}
 			}
 		}
 
@@ -498,10 +547,33 @@ func SelectChannelForWebsocketRequest(c *gin.Context, modelName string) (*model.
 	}
 
 	common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
+	if persistentErr := applyCursorPersistentChannelKey(c, channel); persistentErr != nil {
+		return nil, persistentErr
+	}
 	if newAPIError := SetupContextForSelectedChannel(c, channel, modelRequest.Model); newAPIError != nil {
 		return nil, newAPIError
 	}
 	return channel, nil
+}
+
+func applyCursorPersistentChannelKey(c *gin.Context, channel *model.Channel) *types.NewAPIError {
+	if c == nil || c.Request == nil || !isCursorPersistentRequestPath(c.Request.URL.Path) || strings.TrimSpace(c.GetHeader(constant.CursorAgentIDHeader)) == "" {
+		return nil
+	}
+	savedChannelID := strings.TrimSpace(c.GetHeader(constant.CursorAgentChannelIDHeader))
+	savedKeyIndex := strings.TrimSpace(c.GetHeader(constant.CursorAgentKeyIndexHeader))
+	persistentChannelID, channelErr := strconv.Atoi(savedChannelID)
+	persistentKeyIndex, keyErr := strconv.Atoi(savedKeyIndex)
+	if savedChannelID == "" || savedKeyIndex == "" || channelErr != nil || keyErr != nil || persistentKeyIndex < 0 || channel == nil || channel.Type != constant.ChannelTypeCursor || channel.Id != persistentChannelID {
+		return types.NewErrorWithStatusCode(
+			errors.New(i18n.T(c, i18n.MsgDistributorInvalidChannelId)),
+			types.ErrorCodeInvalidRequest,
+			http.StatusBadRequest,
+			types.ErrOptionWithSkipRetry(),
+		)
+	}
+	common.SetContextKey(c, constant.ContextKeyChannelKeyIndexOverride, persistentKeyIndex)
+	return nil
 }
 
 // channelSupportsRequestPath reports whether a channel can serve the request path.

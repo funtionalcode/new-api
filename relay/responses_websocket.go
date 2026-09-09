@@ -35,6 +35,8 @@ type responsesWebsocketTurn struct {
 	info            *relaycommon.RelayInfo
 	upstreamPayload []byte
 	prewarm         bool
+	httpFallback    bool
+	streamID        string
 }
 
 type ResponsesWebsocketChannelSelector func(c *gin.Context, modelName string) (int, *types.NewAPIError)
@@ -84,6 +86,7 @@ func ResponsesWebsocketHelper(c *gin.Context, clientWs *websocket.Conn, selectCh
 				continue
 			}
 
+			service.PrepareCursorAgentSessionFromBody(c, explicitModelName, payload)
 			channelID, selectErr := selectChannel(c, explicitModelName)
 			if selectErr != nil {
 				writeResponsesWebsocketAPIError(c, clientWs, selectErr)
@@ -104,6 +107,25 @@ func ResponsesWebsocketHelper(c *gin.Context, clientWs *websocket.Conn, selectCh
 				selectedChannelID = 0
 			}
 			writeResponsesWebsocketAPIError(c, clientWs, newAPIError)
+			continue
+		}
+		if turn.httpFallback {
+			if turn.prewarm {
+				if err := completeResponsesWebsocketFallbackPrewarm(clientWs, turn); err != nil {
+					return types.NewError(err, types.ErrorCodeBadResponse)
+				}
+				continue
+			}
+			usage, fallbackErr := forwardResponsesWebsocketHTTPFallback(c, clientWs, turn)
+			if fallbackErr != nil {
+				refundResponsesWebsocketTurn(c, turn)
+				writeResponsesWebsocketAPIError(c, clientWs, fallbackErr)
+				continue
+			}
+			service.PostTextConsumeQuota(c, turn.info, usage, nil)
+			if selectedChannelID > 0 {
+				service.RecordChannelAffinity(c, selectedChannelID)
+			}
 			continue
 		}
 
@@ -219,7 +241,17 @@ func prepareResponsesWebsocketTurn(c *gin.Context, clientWs *websocket.Conn, pay
 	}
 	adaptor.Init(info)
 
-	upstreamPayload, newAPIError := normalizeResponsesWebsocketUpstreamPayload(c, adaptor, info, requestPayload, request)
+	streamID := strings.TrimSpace(gjson.GetBytes(requestPayload, "stream_id").String())
+	if prewarm && info.ChannelType == appconstant.ChannelTypeCursor {
+		return &responsesWebsocketTurn{
+			info:         info,
+			prewarm:      true,
+			httpFallback: true,
+			streamID:     streamID,
+		}, nil
+	}
+
+	upstreamPayload, httpFallback, newAPIError := normalizeResponsesWebsocketUpstreamPayload(c, adaptor, info, requestPayload, request)
 	if newAPIError != nil {
 		return nil, newAPIError
 	}
@@ -234,19 +266,38 @@ func prepareResponsesWebsocketTurn(c *gin.Context, clientWs *websocket.Conn, pay
 		info:            info,
 		upstreamPayload: upstreamPayload,
 		prewarm:         prewarm,
+		httpFallback:    httpFallback,
+		streamID:        streamID,
 	}, nil
 }
 
-func normalizeResponsesWebsocketUpstreamPayload(c *gin.Context, adaptor channel.Adaptor, info *relaycommon.RelayInfo, payload []byte, request *dto.OpenAIResponsesRequest) ([]byte, *types.NewAPIError) {
+func normalizeResponsesWebsocketUpstreamPayload(c *gin.Context, adaptor channel.Adaptor, info *relaycommon.RelayInfo, payload []byte, request *dto.OpenAIResponsesRequest) ([]byte, bool, *types.NewAPIError) {
 	converted, err := adaptor.ConvertOpenAIResponsesRequest(c, info, *request)
 	if err != nil {
-		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+		return nil, false, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 	}
 	relaycommon.AppendRequestConversionFromRequest(info, converted)
 
 	convertedRequest, ok := responsesRequestFromConverted(converted)
 	if !ok {
-		return nil, types.NewErrorWithStatusCode(
+		if info.ChannelType == appconstant.ChannelTypeCursor {
+			jsonData, marshalErr := appcommon.Marshal(converted)
+			if marshalErr != nil {
+				return nil, false, types.NewError(marshalErr, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+			}
+			jsonData, err = relaycommon.RemoveDisabledFields(jsonData, info.ChannelOtherSettings, false)
+			if err != nil {
+				return nil, false, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+			}
+			if len(info.ParamOverride) > 0 {
+				jsonData, err = relaycommon.ApplyParamOverrideWithRelayInfo(jsonData, info)
+				if err != nil {
+					return nil, false, newAPIErrorFromParamOverride(err)
+				}
+			}
+			return jsonData, true, nil
+		}
+		return nil, false, types.NewErrorWithStatusCode(
 			fmt.Errorf("responses websocket does not support converted upstream request type %T", converted),
 			types.ErrorCodeConvertRequestFailed,
 			http.StatusBadRequest,
@@ -258,7 +309,7 @@ func normalizeResponsesWebsocketUpstreamPayload(c *gin.Context, adaptor channel.
 	var errSet error
 	jsonData, errSet = sjson.SetBytes(jsonData, "model", convertedRequest.Model)
 	if errSet != nil {
-		return nil, types.NewError(errSet, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+		return nil, false, types.NewError(errSet, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 	}
 	if info.ApiType == appconstant.APITypeXai {
 		jsonData, _ = sjson.DeleteBytes(jsonData, "stream")
@@ -269,23 +320,23 @@ func normalizeResponsesWebsocketUpstreamPayload(c *gin.Context, adaptor channel.
 	if len(convertedRequest.Instructions) > 0 {
 		jsonData, errSet = sjson.SetRawBytes(jsonData, "instructions", convertedRequest.Instructions)
 		if errSet != nil {
-			return nil, types.NewError(errSet, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+			return nil, false, types.NewError(errSet, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 		}
 	}
 	if convertedRequest.Reasoning != nil {
 		reasoningJSON, err := appcommon.Marshal(convertedRequest.Reasoning)
 		if err != nil {
-			return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+			return nil, false, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 		}
 		jsonData, errSet = sjson.SetRawBytes(jsonData, "reasoning", reasoningJSON)
 		if errSet != nil {
-			return nil, types.NewError(errSet, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+			return nil, false, types.NewError(errSet, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 		}
 	}
 	if len(convertedRequest.Store) > 0 {
 		jsonData, errSet = sjson.SetRawBytes(jsonData, "store", convertedRequest.Store)
 		if errSet != nil {
-			return nil, types.NewError(errSet, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+			return nil, false, types.NewError(errSet, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 		}
 	}
 	if info.ApiType == appconstant.APITypeCodex {
@@ -299,18 +350,117 @@ func normalizeResponsesWebsocketUpstreamPayload(c *gin.Context, adaptor channel.
 
 	jsonData, err = relaycommon.RemoveDisabledFields(jsonData, info.ChannelOtherSettings, info.ChannelSetting.PassThroughBodyEnabled)
 	if err != nil {
-		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+		return nil, false, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 	}
 
 	if len(info.ParamOverride) > 0 {
 		jsonData, err = relaycommon.ApplyParamOverrideWithRelayInfo(jsonData, info)
 		if err != nil {
-			return nil, newAPIErrorFromParamOverride(err)
+			return nil, false, newAPIErrorFromParamOverride(err)
 		}
 	}
 
 	logger.LogDebug(c, "responses websocket requestBody: %s", jsonData)
-	return jsonData, nil
+	return jsonData, false, nil
+}
+
+func completeResponsesWebsocketFallbackPrewarm(clientWs *websocket.Conn, turn *responsesWebsocketTurn) error {
+	if turn == nil || turn.info == nil {
+		return errors.New("responses websocket fallback prewarm is missing relay info")
+	}
+	responseID := "resp_" + appcommon.NewRequestId()
+	createdAt := int(time.Now().Unix())
+	response := &dto.OpenAIResponsesResponse{
+		ID:        responseID,
+		Object:    "response",
+		CreatedAt: createdAt,
+		Status:    []byte(`"in_progress"`),
+		Model:     turn.info.OriginModelName,
+		Output:    []dto.ResponsesOutput{},
+		Tools:     []map[string]any{},
+		Usage:     &dto.Usage{},
+	}
+	created, err := appcommon.Marshal(dto.ResponsesStreamResponse{
+		Type:           "response.created",
+		SequenceNumber: appcommon.GetPointer(0),
+		Response:       response,
+	})
+	if err != nil {
+		return err
+	}
+	if err := writeResponsesWebsocketFallbackEvent(clientWs, turn.streamID, created); err != nil {
+		return err
+	}
+	response.Status = []byte(`"completed"`)
+	completed, err := appcommon.Marshal(dto.ResponsesStreamResponse{
+		Type:           "response.completed",
+		SequenceNumber: appcommon.GetPointer(1),
+		Response:       response,
+	})
+	if err != nil {
+		return err
+	}
+	return writeResponsesWebsocketFallbackEvent(clientWs, turn.streamID, completed)
+}
+
+func forwardResponsesWebsocketHTTPFallback(c *gin.Context, clientWs *websocket.Conn, turn *responsesWebsocketTurn) (*dto.Usage, *types.NewAPIError) {
+	if turn == nil || turn.info == nil {
+		return nil, types.NewError(errors.New("responses websocket HTTP fallback is missing relay info"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+	}
+	adaptor := GetAdaptor(turn.info.ApiType)
+	if adaptor == nil {
+		return nil, types.NewError(fmt.Errorf("invalid api type: %d", turn.info.ApiType), types.ErrorCodeInvalidApiType, types.ErrOptionWithSkipRetry())
+	}
+	adaptor.Init(turn.info)
+	body, closer, err := relaycommon.NewOutboundJSONBody(turn.upstreamPayload)
+	if err != nil {
+		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+	}
+	defer closer.Close()
+
+	turn.info.DisablePing = true
+	response, err := adaptor.DoRequest(c, turn.info, body)
+	if err != nil {
+		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed)
+	}
+	httpResponse, ok := response.(*http.Response)
+	if !ok || httpResponse == nil {
+		return nil, types.NewError(fmt.Errorf("invalid HTTP fallback upstream response: %T", response), types.ErrorCodeBadResponse, types.ErrOptionWithSkipRetry())
+	}
+	if httpResponse.StatusCode < http.StatusOK || httpResponse.StatusCode >= http.StatusMultipleChoices {
+		newAPIError := service.RelayErrorHandler(c.Request.Context(), httpResponse, false)
+		service.ResetStatusCode(newAPIError, c.GetString("status_code_mapping"))
+		return nil, newAPIError
+	}
+
+	restoreWriter := helper.SetResponsesStreamWriter(c, func(data []byte) error {
+		return writeResponsesWebsocketFallbackEvent(clientWs, turn.streamID, data)
+	})
+	defer restoreWriter()
+	usageValue, newAPIError := adaptor.DoResponse(c, httpResponse, turn.info)
+	if newAPIError != nil {
+		service.ResetStatusCode(newAPIError, c.GetString("status_code_mapping"))
+		return nil, newAPIError
+	}
+	usage, ok := usageValue.(*dto.Usage)
+	if !ok || usage == nil {
+		return nil, types.NewError(fmt.Errorf("invalid HTTP fallback usage: %T", usageValue), types.ErrorCodeBadResponse, types.ErrOptionWithSkipRetry())
+	}
+	return usage, nil
+}
+
+func writeResponsesWebsocketFallbackEvent(clientWs *websocket.Conn, streamID string, data []byte) error {
+	if clientWs == nil {
+		return errors.New("responses websocket connection is nil")
+	}
+	if streamID != "" {
+		var err error
+		data, err = sjson.SetBytes(data, "stream_id", streamID)
+		if err != nil {
+			return err
+		}
+	}
+	return clientWs.WriteMessage(websocket.TextMessage, data)
 }
 
 func responsesRequestFromConverted(converted any) (dto.OpenAIResponsesRequest, bool) {
