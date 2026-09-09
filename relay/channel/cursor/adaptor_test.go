@@ -1927,6 +1927,7 @@ func TestCursorAdaptorWaitsForBusySerializedPersistentAgentBeforeRetry(t *testin
 	persistentAgentID := "bc-00000000-0000-0000-0000-000000000011"
 	requests := make([]string, 0, 5)
 	createRunCalls := 0
+	getAgentCalls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests = append(requests, r.Method+" "+r.URL.RequestURI())
 		switch {
@@ -1940,9 +1941,12 @@ func TestCursorAdaptorWaitsForBusySerializedPersistentAgentBeforeRetry(t *testin
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"run":{"id":"run-2"}}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/agents/"+persistentAgentID:
-			_, _ = w.Write([]byte(`{"id":"` + persistentAgentID + `","status":"ACTIVE","latestRunId":"run-1"}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/agents/"+persistentAgentID+"/runs/run-1":
-			_, _ = w.Write([]byte(`{"id":"run-1","agentId":"` + persistentAgentID + `","status":"CANCELLED"}`))
+			getAgentCalls++
+			status := "ACTIVE"
+			if getAgentCalls > 1 {
+				status = "IDLE"
+			}
+			_, _ = w.Write([]byte(`{"id":"` + persistentAgentID + `","status":"` + status + `","latestRunId":"run-not-queryable"}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/agents/"+persistentAgentID+"/runs/run-2/stream":
 			w.Header().Set("Content-Type", "text/event-stream")
 			_, _ = w.Write([]byte("event: result\ndata: {\"runId\":\"run-2\",\"status\":\"FINISHED\",\"text\":\"continued\"}\n\n"))
@@ -1990,7 +1994,7 @@ func TestCursorAdaptorWaitsForBusySerializedPersistentAgentBeforeRetry(t *testin
 	assert.Equal(t, []string{
 		"POST /v1/agents/" + persistentAgentID + "/runs",
 		"GET /v1/agents/" + persistentAgentID,
-		"GET /v1/agents/" + persistentAgentID + "/runs/run-1",
+		"GET /v1/agents/" + persistentAgentID,
 		"POST /v1/agents/" + persistentAgentID + "/runs",
 		"GET /v1/agents/" + persistentAgentID + "/runs/run-2/stream",
 	}, requests)

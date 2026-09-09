@@ -77,8 +77,8 @@ type createRunResponse struct {
 }
 
 type cursorAgentResponse struct {
-	ID          string `json:"id"`
-	LatestRunID string `json:"latestRunId"`
+	ID     string `json:"id"`
+	Status string `json:"status"`
 }
 
 type cursorMetadata struct {

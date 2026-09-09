@@ -1017,29 +1017,53 @@ func (a *Adaptor) waitCursorAgentActiveRun(c *gin.Context, info *relaycommon.Rel
 	if c == nil || c.Request == nil {
 		return errors.New("cursor channel: request context is required while waiting for an active run")
 	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), cursorRunPollTimeout)
+	defer cancel()
 	agentPath := "/v1/agents/" + url.PathEscape(agentID)
-	response, err := a.doCursorAPIRequest(c.Request.Context(), c, info, http.MethodGet, agentPath, nil, false)
-	if err != nil {
-		return fmt.Errorf("get Agent: %w", err)
+	pollCount := 0
+	for {
+		response, err := a.doCursorAPIRequest(ctx, c, info, http.MethodGet, agentPath, nil, false)
+		if err != nil {
+			return fmt.Errorf("get Agent: %w", err)
+		}
+		responseBody, readErr := io.ReadAll(response.Body)
+		service.CloseResponseBodyGracefully(response)
+		if readErr != nil {
+			return fmt.Errorf("read Agent response: %w", readErr)
+		}
+		if response.StatusCode != http.StatusOK {
+			return fmt.Errorf("get Agent returned status %d", response.StatusCode)
+		}
+		var agent cursorAgentResponse
+		if err := common.Unmarshal(responseBody, &agent); err != nil {
+			return fmt.Errorf("decode Agent response: %w", err)
+		}
+		if strings.TrimSpace(agent.ID) == "" {
+			return errors.New("Agent response is missing id")
+		}
+		switch strings.ToUpper(strings.TrimSpace(agent.Status)) {
+		case "IDLE":
+			return nil
+		case "ACTIVE":
+		case "ARCHIVED":
+			return errors.New("Agent is archived")
+		default:
+			return fmt.Errorf("Agent returned unknown status %q", agent.Status)
+		}
+
+		pollCount++
+		if info != nil && info.IsStream && pollCount%10 == 0 {
+			helper.SetEventStreamHeaders(c)
+			if err := helper.PingData(c); err != nil {
+				return err
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("wait for Agent idle: %w", ctx.Err())
+		case <-time.After(cursorRunPollInterval):
+		}
 	}
-	responseBody, readErr := io.ReadAll(response.Body)
-	service.CloseResponseBodyGracefully(response)
-	if readErr != nil {
-		return fmt.Errorf("read Agent response: %w", readErr)
-	}
-	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("get Agent returned status %d", response.StatusCode)
-	}
-	var agent cursorAgentResponse
-	if err := common.Unmarshal(responseBody, &agent); err != nil {
-		return fmt.Errorf("decode Agent response: %w", err)
-	}
-	runID := strings.TrimSpace(agent.LatestRunID)
-	if runID == "" {
-		return errors.New("active Agent response is missing latestRunId")
-	}
-	_, err = a.waitCursorRun(c, info, agentID, runID)
-	return err
 }
 
 func (a *Adaptor) DeletePersistentAgent(c *gin.Context, info *relaycommon.RelayInfo, agentID string) error {
