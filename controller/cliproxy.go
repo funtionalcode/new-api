@@ -51,6 +51,7 @@ type cliproxyAuthFileBindingRequest struct {
 	AuthIndex    string `json:"auth_index"`
 	AuthName     string `json:"auth_name"`
 	AuthFile     string `json:"auth_file"`
+	Provider     string `json:"provider"`
 	Note         string `json:"note"`
 	AccountId    string `json:"account_id"`
 	LastPlanType string `json:"last_plan_type"`
@@ -61,6 +62,7 @@ type cliproxyUsageRefreshBody struct {
 	UsedTokens               int
 	Quota                    int
 	PlanType                 string
+	AntigravityQuota         string
 	FiveHourPercent          int
 	FiveHourResetAt          int64
 	WeeklyPercent            int
@@ -138,6 +140,7 @@ func CreateCliproxyAuthFileBinding(c *gin.Context) {
 		AuthIndex:    update.AuthIndex,
 		AuthName:     update.AuthName,
 		AuthFile:     update.AuthFile,
+		Provider:     update.Provider,
 		Note:         update.Note,
 		AccountId:    update.AccountId,
 		LastPlanType: update.LastPlanType,
@@ -261,10 +264,14 @@ func RefreshCliproxyAuthFileBindingUsage(c *gin.Context) {
 	if isCliproxyClaudeAuthFile(binding) {
 		usage.PlanType = firstNonEmpty(fetchCliproxyClaudeProfilePlan(c.Request.Context(), client, binding.AuthIndex), binding.LastPlanType, usage.PlanType)
 	}
+	if isCliproxyAntigravityAuthFile(binding) {
+		usage.PlanType = firstNonEmpty(binding.LastPlanType, usage.PlanType)
+	}
 	updatedBinding, err := model.UpdateCliproxyAuthFileBindingUsage(id, model.CliproxyUsageRefreshUpdate{
 		LastUsageTokens:           usage.UsedTokens,
 		LastUsageQuota:            usage.Quota,
 		LastPlanType:              usage.PlanType,
+		LastAntigravityQuota:      usage.AntigravityQuota,
 		LastFiveHourPercent:       usage.FiveHourPercent,
 		LastFiveHourResetAt:       usage.FiveHourResetAt,
 		LastWeeklyPercent:         usage.WeeklyPercent,
@@ -342,6 +349,7 @@ func decodeCliproxyAuthFileBindingRequest(c *gin.Context) (model.CliproxyAuthFil
 		AuthIndex:    strings.TrimSpace(request.AuthIndex),
 		AuthName:     strings.TrimSpace(request.AuthName),
 		AuthFile:     request.AuthFile,
+		Provider:     strings.ToLower(strings.TrimSpace(request.Provider)),
 		Note:         request.Note,
 		AccountId:    strings.TrimSpace(request.AccountId),
 		LastPlanType: strings.TrimSpace(request.LastPlanType),
@@ -362,6 +370,19 @@ func newCliproxyClientFromOptions() (*service.CliproxyAPIClient, error) {
 }
 
 func buildCliproxyUsageRefreshRequest(binding *model.CliproxyAuthFileBinding) service.CliproxyAPICallRequest {
+	if isCliproxyAntigravityAuthFile(binding) {
+		return service.CliproxyAPICallRequest{
+			AuthIndex: binding.AuthIndex,
+			Method:    http.MethodPost,
+			URL:       "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
+			Header: map[string]string{
+				"Authorization": "Bearer $TOKEN$",
+				"Content-Type":  "application/json",
+				"User-Agent":    "antigravity/cli/1.0.13 (aidev_client; os_type=darwin; arch=arm64)",
+			},
+			Data: `{"project":"aicode-consumers"}`,
+		}
+	}
 	if isCliproxyXAIAuthFile(binding) {
 		return buildCliproxyXAIBillingRequest(binding.AuthIndex)
 	}
@@ -541,6 +562,9 @@ func extractCliproxyUsage(result *service.CliproxyAPICallResponse) (cliproxyUsag
 	}
 	if len(body) == 0 {
 		return cliproxyUsageRefreshBody{}, fmt.Errorf("刷新结果缺少用量数据")
+	}
+	if _, ok := body["groups"]; ok {
+		return extractCliproxyAntigravityUsage(body)
 	}
 	if xaiUsage, ok := resolveCliproxyXAIUsage(body); ok {
 		return xaiUsage, nil
@@ -922,6 +946,9 @@ func isCliproxyClaudeAuthFile(binding *model.CliproxyAuthFileBinding) bool {
 	if binding == nil {
 		return false
 	}
+	if binding.Provider != "" {
+		return normalizeCliproxyPlan(binding.Provider) == "claude"
+	}
 	if isCliproxyClaudePlanType(binding.LastPlanType) {
 		return true
 	}
@@ -931,6 +958,9 @@ func isCliproxyClaudeAuthFile(binding *model.CliproxyAuthFileBinding) bool {
 func isCliproxyXAIAuthFile(binding *model.CliproxyAuthFileBinding) bool {
 	if binding == nil {
 		return false
+	}
+	if binding.Provider != "" {
+		return normalizeCliproxyPlan(binding.Provider) == "xai"
 	}
 	switch normalizeCliproxyPlan(binding.LastPlanType) {
 	case "xai", "xaifree", "supergroklite", "supergrok", "supergrokplus", "supergrokheavy", "xpremium+", "xpremiumplus", "subscriptiontiersupergroklite", "subscriptiontiersupergrok", "subscriptiontiersupergrokplus", "subscriptiontiersupergrokheavy":

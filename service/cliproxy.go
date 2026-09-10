@@ -91,6 +91,7 @@ type CliproxyAPICallRequest struct {
 	Method    string            `json:"method"`
 	URL       string            `json:"url"`
 	Header    map[string]string `json:"header"`
+	Data      string            `json:"data,omitempty"`
 }
 
 type CliproxyAPICallResponse struct {
@@ -215,12 +216,17 @@ func cliproxyAuthFileNameType(value string) string {
 		return "claude"
 	case strings.HasPrefix(name, "xai-"), strings.HasPrefix(name, "xai_"):
 		return "xai"
+	case strings.HasPrefix(name, "antigravity-"), strings.HasPrefix(name, "antigravity_"):
+		return "antigravity"
 	default:
 		return ""
 	}
 }
 
 func cliproxyProviderPlanType(provider string, fileType string) string {
+	if normalizeCliproxyPlan(provider) == "antigravity" || normalizeCliproxyPlan(fileType) == "antigravity" {
+		return "antigravity"
+	}
 	if normalizeCliproxyPlan(provider) == "claude" || normalizeCliproxyPlan(fileType) == "claude" {
 		return CliproxyClaudePlan
 	}

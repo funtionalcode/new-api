@@ -18,6 +18,7 @@ type CliproxyAuthFileBinding struct {
 	AuthIndex                    string `json:"auth_index" gorm:"size:128;uniqueIndex;not null"`
 	AuthName                     string `json:"auth_name" gorm:"size:255;default:''"`
 	AuthFile                     string `json:"auth_file" gorm:"type:text"`
+	Provider                     string `json:"provider" gorm:"size:32;default:''"`
 	Note                         string `json:"note" gorm:"type:text"`
 	AccountId                    string `json:"account_id" gorm:"size:128;index;default:''"`
 	Enabled                      bool   `json:"enabled" gorm:"default:true"`
@@ -25,6 +26,7 @@ type CliproxyAuthFileBinding struct {
 	LastUsageTokens              int    `json:"last_usage_tokens" gorm:"default:0"`
 	LastUsageQuota               int    `json:"last_usage_quota" gorm:"default:0"`
 	LastPlanType                 string `json:"last_plan_type" gorm:"size:64;default:''"`
+	LastAntigravityQuota         string `json:"last_antigravity_quota" gorm:"type:text"`
 	LastFiveHourPercent          int    `json:"last_five_hour_percent" gorm:"default:0"`
 	LastFiveHourResetAt          int64  `json:"last_five_hour_reset_at" gorm:"bigint;default:0"`
 	LastWeeklyPercent            int    `json:"last_weekly_percent" gorm:"default:0"`
@@ -61,6 +63,7 @@ type CliproxyAuthFileBindingUpdate struct {
 	AuthIndex    string
 	AuthName     string
 	AuthFile     string
+	Provider     string
 	Note         string
 	AccountId    string
 	LastPlanType string
@@ -71,6 +74,7 @@ type CliproxyUsageRefreshUpdate struct {
 	LastUsageTokens              int
 	LastUsageQuota               int
 	LastPlanType                 string
+	LastAntigravityQuota         string
 	LastFiveHourPercent          int
 	LastFiveHourResetAt          int64
 	LastWeeklyPercent            int
@@ -260,6 +264,7 @@ func UpdateCliproxyAuthFileBinding(id int, update CliproxyAuthFileBindingUpdate)
 		AuthIndex:                    update.AuthIndex,
 		AuthName:                     update.AuthName,
 		AuthFile:                     update.AuthFile,
+		Provider:                     firstNonEmpty(update.Provider, binding.Provider),
 		Note:                         update.Note,
 		AccountId:                    update.AccountId,
 		Enabled:                      update.Enabled,
@@ -267,6 +272,7 @@ func UpdateCliproxyAuthFileBinding(id int, update CliproxyAuthFileBindingUpdate)
 		LastUsageTokens:              binding.LastUsageTokens,
 		LastUsageQuota:               binding.LastUsageQuota,
 		LastPlanType:                 firstNonEmpty(update.LastPlanType, binding.LastPlanType),
+		LastAntigravityQuota:         binding.LastAntigravityQuota,
 		LastFiveHourPercent:          binding.LastFiveHourPercent,
 		LastFiveHourResetAt:          binding.LastFiveHourResetAt,
 		LastWeeklyPercent:            binding.LastWeeklyPercent,
@@ -301,6 +307,7 @@ func UpdateCliproxyAuthFileBindingUsage(id int, update CliproxyUsageRefreshUpdat
 		update.LastUsageTokens = binding.LastUsageTokens
 		update.LastUsageQuota = binding.LastUsageQuota
 		update.LastPlanType = binding.LastPlanType
+		update.LastAntigravityQuota = binding.LastAntigravityQuota
 		update.LastFiveHourPercent = binding.LastFiveHourPercent
 		update.LastFiveHourResetAt = binding.LastFiveHourResetAt
 		update.LastWeeklyPercent = binding.LastWeeklyPercent
@@ -333,6 +340,7 @@ func UpdateCliproxyAuthFileBindingUsage(id int, update CliproxyUsageRefreshUpdat
 		AuthIndex:                    binding.AuthIndex,
 		AuthName:                     binding.AuthName,
 		AuthFile:                     binding.AuthFile,
+		Provider:                     binding.Provider,
 		Note:                         binding.Note,
 		AccountId:                    binding.AccountId,
 		Enabled:                      binding.Enabled,
@@ -340,6 +348,7 @@ func UpdateCliproxyAuthFileBindingUsage(id int, update CliproxyUsageRefreshUpdat
 		LastUsageTokens:              update.LastUsageTokens,
 		LastUsageQuota:               update.LastUsageQuota,
 		LastPlanType:                 update.LastPlanType,
+		LastAntigravityQuota:         update.LastAntigravityQuota,
 		LastFiveHourPercent:          update.LastFiveHourPercent,
 		LastFiveHourResetAt:          update.LastFiveHourResetAt,
 		LastWeeklyPercent:            update.LastWeeklyPercent,
@@ -761,6 +770,11 @@ func resolveUserTokenDailyUsageOrder(query UserTokenUsageQuery) string {
 }
 
 func ValidateCliproxyAuthFileBindingUpdate(update CliproxyAuthFileBindingUpdate) error {
+	switch update.Provider {
+	case "", "codex", "claude", "xai", "antigravity":
+	default:
+		return errors.New("认证文件提供商无效")
+	}
 	if update.UserId == 0 {
 		return errors.New("用户不能为空")
 	}

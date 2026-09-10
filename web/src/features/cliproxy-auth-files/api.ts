@@ -17,6 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
+
+import { getCliproxyAuthFileType } from './lib/auth-file-type'
 import type {
   ApiResponse,
   CliproxyAuthFile,
@@ -79,6 +81,13 @@ export function toBindingFormData(
     auth_index: authFile.authIndex,
     auth_name: authFile.name,
     auth_file: authFile.authFile || '',
+    provider: getCliproxyAuthFileType({
+      provider: authFile.provider,
+      type: authFile.type,
+      auth_name: authFile.name,
+      auth_file: authFile.authFile,
+      last_plan_type: authFile.planType,
+    }),
     description: '',
     account_id: authFile.accountId || '',
     last_plan_type: authFile.planType || '',

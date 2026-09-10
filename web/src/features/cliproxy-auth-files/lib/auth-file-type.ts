@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-export type CliproxyAuthFileType = 'codex' | 'claude' | 'xai'
+export type CliproxyAuthFileType = 'codex' | 'claude' | 'xai' | 'antigravity'
 
 const claudePlanTypes = new Set([
   'claude',
@@ -51,6 +51,8 @@ const xaiPlanTypes = new Set([
 ])
 
 interface CliproxyAuthFileTypeSource {
+  provider?: string
+  type?: string
   auth_name?: string
   auth_file?: string
   last_plan_type?: string
@@ -117,6 +119,24 @@ function hasAuthFileNamePrefix(
 export function getCliproxyAuthFileType(
   source: CliproxyAuthFileTypeSource
 ): CliproxyAuthFileType {
+  for (const value of [source.provider, source.type]) {
+    const provider = normalizeCliproxyPlan(value)
+    if (
+      provider === 'antigravity' ||
+      provider === 'claude' ||
+      provider === 'xai' ||
+      provider === 'codex'
+    ) {
+      return provider
+    }
+  }
+  if (
+    normalizeCliproxyPlan(source.last_plan_type) === 'antigravity' ||
+    hasAuthFileNamePrefix(source.auth_file, 'antigravity') ||
+    hasAuthFileNamePrefix(source.auth_name, 'antigravity')
+  ) {
+    return 'antigravity'
+  }
   if (
     isXAIPlanType(source.last_plan_type) ||
     hasAuthFileNamePrefix(source.auth_file, 'xai') ||
@@ -139,6 +159,7 @@ export function getCliproxyAuthFileTypeLabel(
 ): string {
   if (type === 'claude') return 'Claude'
   if (type === 'xai') return 'xAI'
+  if (type === 'antigravity') return 'Antigravity'
   return 'Codex'
 }
 
@@ -155,7 +176,7 @@ function getAuthFileBaseName(value?: string): string {
 function emailFromAuthFileName(value?: string): string {
   const name = getAuthFileBaseName(value)
     .replace(/\.json$/i, '')
-    .replace(/^(codex|claude|xai)[-_]/i, '')
+    .replace(/^(codex|claude|xai|antigravity)[-_]/i, '')
     .replace(emailPlanSuffixPattern, '')
   return emailPattern.test(name) ? name : ''
 }

@@ -102,6 +102,7 @@ import {
   toBindingFormData,
   updateCliproxyAuthFileBinding,
 } from './api'
+import { AntigravityUsageCell } from './components/antigravity-usage-cell'
 import {
   getCliproxyAuthFileEmail,
   getCliproxyAuthFileType,
@@ -192,6 +193,8 @@ function AuthFileTypeBadge(props: { binding: CliproxyAuthFileBinding }) {
 
 function AuthFileTypeLabel(props: {
   source: {
+    provider?: string
+    type?: string
     auth_name?: string
     auth_file?: string
     last_plan_type?: string
@@ -207,6 +210,9 @@ function AuthFileTypeLabel(props: {
   } else if (type === 'xai') {
     className =
       'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-200'
+  } else if (type === 'antigravity') {
+    className =
+      'border-orange-300 bg-orange-50 text-orange-800 dark:border-orange-700 dark:bg-orange-950/35 dark:text-orange-200'
   }
 
   return (
@@ -224,6 +230,8 @@ function AuthFileTypeLabel(props: {
 
 function RemoteAuthFilePlanCell(props: { authFile: CliproxyAuthFile }) {
   const source = {
+    provider: props.authFile.provider,
+    type: props.authFile.type,
     auth_name: props.authFile.name,
     auth_file: props.authFile.authFile,
     last_plan_type: props.authFile.planType,
@@ -329,6 +337,7 @@ export function BindingUsageCell({
 }) {
   const { t } = useTranslation()
   const type = getCliproxyAuthFileType(binding)
+  if (type === 'antigravity') return <AntigravityUsageCell binding={binding} />
   if (type === 'xai') {
     const xaiSummary = buildCliproxyXAIUsageSummary(binding)
     const xaiUsageLabels = {
@@ -531,6 +540,7 @@ function buildFormFromDialog(state: BindingDialogState): BindingFormState {
       auth_index: binding.auth_index,
       auth_name: binding.auth_name,
       auth_file: binding.auth_file,
+      provider: binding.provider,
       description: binding.description,
       account_id: binding.account_id,
       last_plan_type: binding.last_plan_type,
@@ -717,6 +727,7 @@ function BindingDialog({
       auth_index: form.auth_index.trim(),
       auth_name: form.auth_name.trim(),
       auth_file: form.auth_file,
+      provider: form.provider,
       description: form.description,
       account_id: form.account_id.trim(),
       last_plan_type: form.last_plan_type.trim(),

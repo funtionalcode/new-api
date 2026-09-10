@@ -36,6 +36,8 @@ export interface CliproxyAuthFile {
   authFile?: string
   accountId?: string
   planType?: string
+  provider?: string
+  type?: string
   enabled: boolean
 }
 
@@ -47,6 +49,7 @@ export interface CliproxyAuthFileBinding {
   auth_index: string
   auth_name: string
   auth_file: string
+  provider?: string
   description: string
   account_id: string
   enabled: boolean
@@ -54,6 +57,7 @@ export interface CliproxyAuthFileBinding {
   last_usage_tokens: number
   last_usage_quota: number
   last_plan_type: string
+  last_antigravity_quota?: string
   last_five_hour_percent: number
   last_five_hour_reset_at: number
   last_weekly_percent: number
@@ -96,6 +100,7 @@ export interface CliproxyAuthFileBindingFormData {
   auth_index: string
   auth_name: string
   auth_file: string
+  provider?: string
   description: string
   account_id: string
   last_plan_type: string
