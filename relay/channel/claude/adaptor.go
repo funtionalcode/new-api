@@ -6,7 +6,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -28,6 +30,30 @@ func (a *Adaptor) ConvertGeminiRequest(*gin.Context, *relaycommon.RelayInfo, *dt
 }
 
 func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.ClaudeRequest) (any, error) {
+	systemContent, err := normalizeClaudeSystemContent(request.System)
+	if err != nil {
+		return nil, err
+	}
+	filteredMessages := make([]dto.ClaudeMessage, 0, len(request.Messages))
+	for _, message := range request.Messages {
+		role := strings.ToLower(strings.TrimSpace(message.Role))
+		if role == "system" || role == "developer" {
+			messageSystemContent, err := normalizeClaudeSystemContent(message.Content)
+			if err != nil {
+				return nil, err
+			}
+			systemContent = append(systemContent, messageSystemContent...)
+			continue
+		}
+		filteredMessages = append(filteredMessages, message)
+	}
+	if len(systemContent) == 0 {
+		request.System = nil
+	} else {
+		request.System = systemContent
+	}
+	request.Messages = filteredMessages
+
 	if request.MaxTokens != nil && *request.MaxTokens == 0 {
 		request.MaxTokens = nil
 	}
@@ -45,6 +71,46 @@ func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayIn
 		info.UpstreamModelName = request.Model
 	}
 	return request, nil
+}
+
+func normalizeClaudeSystemContent(content any) ([]dto.ClaudeMediaMessage, error) {
+	switch value := content.(type) {
+	case nil:
+		return nil, nil
+	case string:
+		if strings.TrimSpace(value) == "" {
+			return nil, nil
+		}
+		block := dto.ClaudeMediaMessage{Type: dto.ContentTypeText}
+		block.SetText(value)
+		return []dto.ClaudeMediaMessage{block}, nil
+	}
+
+	encoded, err := common.Marshal(content)
+	if err != nil {
+		return nil, fmt.Errorf("encode Claude system content: %w", err)
+	}
+	var blocks []dto.ClaudeMediaMessage
+	if err := common.Unmarshal(encoded, &blocks); err != nil {
+		return nil, fmt.Errorf("decode Claude system content: %w", err)
+	}
+	filtered := make([]dto.ClaudeMediaMessage, 0, len(blocks))
+	for _, block := range blocks {
+		blockType := strings.TrimSpace(block.Type)
+		text := strings.TrimSpace(block.GetText())
+		if blockType == "" && text == "" {
+			continue
+		}
+		if blockType == "" {
+			block.Type = dto.ContentTypeText
+			blockType = dto.ContentTypeText
+		}
+		if blockType == dto.ContentTypeText && text == "" {
+			continue
+		}
+		filtered = append(filtered, block)
+	}
+	return filtered, nil
 }
 
 func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.AudioRequest) (io.Reader, error) {
