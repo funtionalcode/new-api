@@ -71,6 +71,7 @@ type CliproxyAuthFileBindingUpdate struct {
 }
 
 type CliproxyUsageRefreshUpdate struct {
+	Provider                     string
 	LastUsageTokens              int
 	LastUsageQuota               int
 	LastPlanType                 string
@@ -340,7 +341,7 @@ func UpdateCliproxyAuthFileBindingUsage(id int, update CliproxyUsageRefreshUpdat
 		AuthIndex:                    binding.AuthIndex,
 		AuthName:                     binding.AuthName,
 		AuthFile:                     binding.AuthFile,
-		Provider:                     binding.Provider,
+		Provider:                     firstNonEmpty(update.Provider, binding.Provider),
 		Note:                         binding.Note,
 		AccountId:                    binding.AccountId,
 		Enabled:                      binding.Enabled,

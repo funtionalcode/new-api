@@ -45,6 +45,17 @@ export function getCliproxyPlanLabelConfig(
   const key = normalizeCliproxyPlanKey(planLabel)
   if (!key) return null
 
+  if (type === 'antigravity') {
+    if (key === 'antigravity' || key === 'oauth') return null
+    if (key === 'googleaipro' || key === 'g1protier' || key === 'pro') {
+      return {
+        label: 'Pro',
+        className:
+          'border-indigo-300 bg-indigo-50 text-indigo-800 dark:border-indigo-700 dark:bg-indigo-950/35 dark:text-indigo-200',
+      }
+    }
+  }
+
   if (type === 'claude') {
     switch (key) {
       case 'claudemax20x':

@@ -5659,7 +5659,7 @@
     "Use your Passkey": "使用您的通行金鑰",
     "used": "已使用",
     "Used": "已使用",
-    "Used {{percent}}%": "Used {{percent}}%",
+    "Used {{percent}}%": "已用 {{percent}}%",
     "Used / Remaining": "已使用 / 剩餘",
     "Used as SuccessURL on the new product. You'll be prompted to confirm if left blank.": "用作新產品的 SuccessURL。若留空，系統會要求你確認。",
     "Used by route auth templates": "用於路由認證模板",

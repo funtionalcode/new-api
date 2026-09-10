@@ -13,16 +13,22 @@ import { formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { parseAntigravityQuota } from '../lib/antigravity-quota'
+import { getCliproxyPlanLabelConfig } from '../lib/plan-label'
 import type { CliproxyAuthFileBinding } from '../types'
 
 export function AntigravityUsageCell(props: {
   binding: Pick<
     CliproxyAuthFileBinding,
     'last_antigravity_quota' | 'last_error'
-  >
+  > &
+    Partial<Pick<CliproxyAuthFileBinding, 'last_plan_type'>>
 }) {
   const { t, i18n } = useTranslation()
   const buckets = parseAntigravityQuota(props.binding.last_antigravity_quota)
+  const plan = getCliproxyPlanLabelConfig(
+    'antigravity',
+    props.binding.last_plan_type
+  )
   const numberFormat = new Intl.NumberFormat(
     toIntlLocale(i18n.resolvedLanguage),
     {
@@ -40,14 +46,21 @@ export function AntigravityUsageCell(props: {
       )
       const remaining = bucket?.remaining_fraction
       const available = !!bucket && !bucket.disabled && remaining !== undefined
-      const percent = available ? remaining * 100 : 0
+      const percent = available ? (1 - remaining) * 100 : 0
+      let progressColor = '[&_[data-slot=progress-indicator]]:bg-emerald-500'
+      if (percent >= 90) {
+        progressColor = '[&_[data-slot=progress-indicator]]:bg-rose-500'
+      } else if (percent >= 70) {
+        progressColor = '[&_[data-slot=progress-indicator]]:bg-amber-500'
+      }
       return {
         key: window,
         label: window === '5h' ? t('5-Hour Window') : t('Weekly Window'),
         available,
         percent,
+        progressColor,
         value: available
-          ? `${t('Remaining')} ${numberFormat.format(percent)}%`
+          ? t('Used {{percent}}%', { percent: numberFormat.format(percent) })
           : t('Unavailable'),
         resetAt: bucket?.reset_at || 0,
       }
@@ -85,24 +98,34 @@ export function AntigravityUsageCell(props: {
                   </div>
                   {window.available ? (
                     <Progress
-                      aria-label={`${groups[0].label} ${window.label} ${t('Remaining')}`}
+                      aria-label={`${groups[0].label} ${window.label} ${t('Used')}`}
                       value={window.percent}
-                      className={cn(
-                        'h-1.5',
-                        window.percent <= 10
-                          ? '[&_[data-slot=progress-indicator]]:bg-rose-500'
-                          : '[&_[data-slot=progress-indicator]]:bg-emerald-500'
-                      )}
+                      className={cn('h-1.5', window.progressColor)}
                     />
                   ) : null}
                 </div>
               ))}
             </div>
           )}
-          {props.binding.last_error ? (
-            <Badge variant='destructive' className='h-5 px-1.5 text-[11px]'>
-              {t('Error')}
-            </Badge>
+          {plan || props.binding.last_error ? (
+            <div className='flex items-center gap-2'>
+              {plan ? (
+                <Badge
+                  variant='outline'
+                  className={cn(
+                    'inline-flex h-6 items-center gap-1 rounded-md px-2 font-mono text-[11px] font-semibold tracking-normal',
+                    plan.className
+                  )}
+                >
+                  {plan.label}
+                </Badge>
+              ) : null}
+              {props.binding.last_error ? (
+                <Badge variant='destructive' className='h-5 px-1.5 text-[11px]'>
+                  {t('Error')}
+                </Badge>
+              ) : null}
+            </div>
           ) : null}
         </TooltipTrigger>
         <TooltipContent

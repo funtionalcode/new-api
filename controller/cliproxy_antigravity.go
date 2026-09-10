@@ -1,12 +1,15 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"math"
+	"net/http"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 )
 
 type cliproxyAntigravityQuotaBucket struct {
@@ -14,6 +17,39 @@ type cliproxyAntigravityQuotaBucket struct {
 	RemainingFraction *float64 `json:"remaining_fraction,omitempty"`
 	ResetAt           int64    `json:"reset_at"`
 	Disabled          bool     `json:"disabled,omitempty"`
+}
+
+func fetchCliproxyAntigravityPlan(ctx context.Context, caller cliproxyAPICaller, authIndex string) string {
+	result, err := caller.CallAPI(ctx, service.CliproxyAPICallRequest{
+		AuthIndex: authIndex,
+		Method:    http.MethodPost,
+		URL:       "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
+		Header: map[string]string{
+			"Authorization": "Bearer $TOKEN$",
+			"Content-Type":  "application/json",
+			"User-Agent":    "antigravity/cli/1.0.13 (aidev_client; os_type=darwin; arch=arm64)",
+		},
+		Data: `{"metadata":{"ideType":"ANTIGRAVITY"}}`,
+	})
+	if err != nil || result == nil || result.Status >= http.StatusBadRequest || result.StatusCode >= http.StatusBadRequest {
+		return ""
+	}
+	body := result.Body
+	if len(body) == 0 {
+		body = result.Data
+	}
+	// 付费账号的 currentTier 仍可能是 free-tier，优先使用 paidTier。
+	for _, key := range []string{"paidTier", "currentTier"} {
+		tier := mapFromMap(body, key)
+		id := stringFromMap(tier, "id")
+		if id == "free-tier" {
+			return "Free"
+		}
+		if plan := firstNonEmpty(stringFromMap(tier, "name"), id); plan != "" {
+			return plan
+		}
+	}
+	return ""
 }
 
 func isCliproxyAntigravityAuthFile(binding *model.CliproxyAuthFileBinding) bool {

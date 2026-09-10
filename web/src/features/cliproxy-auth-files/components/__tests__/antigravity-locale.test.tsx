@@ -12,7 +12,11 @@ test.each(['zhCN', 'zhTW'])(
     await i18n.use(initReactI18next).init({
       lng: language,
       fallbackLng: false,
-      resources: { [language]: { translation: { Remaining: '剩余' } } },
+      resources: {
+        [language]: {
+          translation: { 'Used {{percent}}%': '已用 {{percent}}%' },
+        },
+      },
       interpolation: { escapeValue: false },
     })
     render(
@@ -27,10 +31,9 @@ test.each(['zhCN', 'zhTW'])(
       </I18nextProvider>
     )
 
-    expect(screen.getByText('剩余 99.17%')).toBeInTheDocument()
-    expect(screen.getByRole('progressbar')).toHaveAttribute(
-      'aria-valuenow',
-      '99.17125'
-    )
+    expect(screen.getByText('已用 0.83%')).toBeInTheDocument()
+    expect(
+      Number(screen.getByRole('progressbar').getAttribute('aria-valuenow'))
+    ).toBeCloseTo(0.82875)
   }
 )

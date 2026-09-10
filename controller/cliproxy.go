@@ -264,10 +264,13 @@ func RefreshCliproxyAuthFileBindingUsage(c *gin.Context) {
 	if isCliproxyClaudeAuthFile(binding) {
 		usage.PlanType = firstNonEmpty(fetchCliproxyClaudeProfilePlan(c.Request.Context(), client, binding.AuthIndex), binding.LastPlanType, usage.PlanType)
 	}
+	usageProvider := binding.Provider
 	if isCliproxyAntigravityAuthFile(binding) {
-		usage.PlanType = firstNonEmpty(binding.LastPlanType, usage.PlanType)
+		usage.PlanType = firstNonEmpty(fetchCliproxyAntigravityPlan(c.Request.Context(), client, binding.AuthIndex), binding.LastPlanType, usage.PlanType)
+		usageProvider = "antigravity"
 	}
 	updatedBinding, err := model.UpdateCliproxyAuthFileBindingUsage(id, model.CliproxyUsageRefreshUpdate{
+		Provider:                  usageProvider,
 		LastUsageTokens:           usage.UsedTokens,
 		LastUsageQuota:            usage.Quota,
 		LastPlanType:              usage.PlanType,
