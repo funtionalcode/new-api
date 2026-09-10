@@ -31,7 +31,7 @@ test.each(['zhCN', 'zhTW'])(
       </I18nextProvider>
     )
 
-    expect(screen.getByText('已用 0.83%')).toBeInTheDocument()
+    expect(screen.getByText('0.83%')).toBeInTheDocument()
     expect(
       Number(screen.getByRole('progressbar').getAttribute('aria-valuenow'))
     ).toBeCloseTo(0.82875)

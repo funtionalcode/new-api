@@ -60,7 +60,7 @@ export function AntigravityUsageCell(props: {
         percent,
         progressColor,
         value: available
-          ? t('Used {{percent}}%', { percent: numberFormat.format(percent) })
+          ? `${numberFormat.format(percent)}%`
           : t('Unavailable'),
         resetAt: bucket?.reset_at || 0,
       }

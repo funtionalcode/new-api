@@ -17,7 +17,7 @@ describe('Antigravity 额度展示', () => {
       />
     )
     expect(screen.getByText('Pro')).toBeInTheDocument()
-    expect(screen.getByText('Used 1.96%')).toBeInTheDocument()
+    expect(screen.getByText('1.96%')).toBeInTheDocument()
     expect(screen.queryByText('20x')).not.toBeInTheDocument()
   })
 
@@ -60,8 +60,8 @@ describe('Antigravity 额度展示', () => {
         }}
       />
     )
-    expect(screen.getByText('Used 0.14%')).toBeInTheDocument()
-    expect(screen.getByText('Used 0.83%')).toBeInTheDocument()
+    expect(screen.getByText('0.14%')).toBeInTheDocument()
+    expect(screen.getByText('0.83%')).toBeInTheDocument()
     expect(screen.queryByText('Claude and GPT models')).not.toBeInTheDocument()
     expect(screen.queryByText(/^Reset:/)).not.toBeInTheDocument()
     expect(screen.getAllByRole('progressbar')).toHaveLength(2)
@@ -71,8 +71,8 @@ describe('Antigravity 额度展示', () => {
     const thirdParty = within(
       details.getByRole('region', { name: 'Claude and GPT models' })
     )
-    expect(thirdParty.getByText('Used 0%')).toBeInTheDocument()
-    expect(thirdParty.getByText('Used 100%')).toBeInTheDocument()
+    expect(thirdParty.getByText('0%')).toBeInTheDocument()
+    expect(thirdParty.getByText('100%')).toBeInTheDocument()
     expect(details.getAllByText(/^Reset:/)).toHaveLength(4)
   })
 
@@ -97,7 +97,7 @@ describe('Antigravity 额度展示', () => {
           }}
         />
       )
-      expect(screen.getByText(`Used ${used}%`)).toBeInTheDocument()
+      expect(screen.getByText(`${used}%`)).toBeInTheDocument()
       const progress = screen.getByRole('progressbar', {
         name: 'Gemini Models 5-Hour Window Used',
       })
