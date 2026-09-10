@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 
 import { Progress } from '@/components/ui/progress'
+import { toIntlLocale } from '@/i18n/languages'
 import { formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -19,9 +20,12 @@ export function AntigravityUsageCell(props: {
     { prefix: 'gemini-', label: t('Gemini Models') },
     { prefix: '3p-', label: t('Claude and GPT models') },
   ]
-  const numberFormat = new Intl.NumberFormat(i18n.resolvedLanguage, {
-    maximumFractionDigits: 2,
-  })
+  const numberFormat = new Intl.NumberFormat(
+    toIntlLocale(i18n.resolvedLanguage),
+    {
+      maximumFractionDigits: 2,
+    }
+  )
 
   return (
     <div className='max-w-[480px] min-w-[300px] space-y-2'>
