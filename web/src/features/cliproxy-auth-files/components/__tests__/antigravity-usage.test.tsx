@@ -1,10 +1,12 @@
 import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, test } from 'vitest'
 
 import { AntigravityUsageCell } from '../antigravity-usage-cell'
 
 describe('Antigravity 额度展示', () => {
-  test('按模型组区分四个窗口并保留剩余百分比小数', () => {
+  test('表格仅展示 Gemini 两个窗口，悬浮时显示四个窗口与重置时间', async () => {
+    const user = userEvent.setup()
     render(
       <AntigravityUsageCell
         binding={{
@@ -30,16 +32,20 @@ describe('Antigravity 额度展示', () => {
         }}
       />
     )
-    const gemini = within(screen.getByRole('region', { name: 'Gemini Models' }))
-    expect(gemini.getByText('Remaining 99.86%')).toBeInTheDocument()
-    expect(gemini.getByText('Remaining 99.17%')).toBeInTheDocument()
+    expect(screen.getByText('Remaining 99.86%')).toBeInTheDocument()
+    expect(screen.getByText('Remaining 99.17%')).toBeInTheDocument()
+    expect(screen.queryByText('Claude and GPT models')).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Reset:/)).not.toBeInTheDocument()
+    expect(screen.getAllByRole('progressbar')).toHaveLength(2)
+
+    await user.hover(screen.getByRole('button', { name: 'Antigravity' }))
+    const details = within(await screen.findByRole('tooltip'))
     const thirdParty = within(
-      screen.getByRole('region', { name: 'Claude and GPT models' })
+      details.getByRole('region', { name: 'Claude and GPT models' })
     )
     expect(thirdParty.getByText('Remaining 100%')).toBeInTheDocument()
     expect(thirdParty.getByText('Remaining 0%')).toBeInTheDocument()
-    expect(screen.getAllByText(/^Reset:/)).toHaveLength(4)
-    expect(screen.getAllByRole('progressbar')).toHaveLength(4)
+    expect(details.getAllByText(/^Reset:/)).toHaveLength(4)
   })
 
   test('缺失和禁用窗口显示不可用，不伪造满额', () => {
@@ -52,15 +58,21 @@ describe('Antigravity 额度展示', () => {
         }}
       />
     )
-    expect(screen.getAllByText('Unavailable')).toHaveLength(4)
+    expect(screen.getAllByText('Unavailable')).toHaveLength(2)
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
   })
 
-  test('首次刷新失败展示空状态和错误', () => {
+  test('首次刷新失败显示错误标记，键盘聚焦后显示错误详情', async () => {
+    const user = userEvent.setup()
     render(
       <AntigravityUsageCell binding={{ last_error: 'upstream unavailable' }} />
     )
     expect(screen.getByText('No quota data')).toBeInTheDocument()
-    expect(screen.getByRole('alert')).toHaveTextContent('upstream unavailable')
+    expect(screen.getByText('Error')).toBeInTheDocument()
+    expect(screen.queryByText('upstream unavailable')).not.toBeInTheDocument()
+    await user.tab()
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      'upstream unavailable'
+    )
   })
 })
