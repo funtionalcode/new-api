@@ -160,7 +160,9 @@ func geminiDefaultEffort(model string) Effort {
 	switch {
 	case model == "gemini-flash-latest",
 		strings.HasPrefix(model, "gemini-3.5-flash") && !strings.HasPrefix(model, "gemini-3.5-flash-lite"),
-		strings.HasPrefix(model, "gemini-3.6-flash"):
+		strings.HasPrefix(model, "gemini-3.6-flash"),
+		strings.HasPrefix(model, "gemini-3.7-flash"),
+		strings.HasPrefix(model, "gemini-3.8-flash"):
 		return EffortMedium
 	case model == "gemini-flash-lite-latest",
 		strings.HasPrefix(model, "gemini-3.5-flash-lite"),
@@ -330,7 +332,10 @@ func geminiLevelForEffort(model string, effort Effort) (string, error) {
 			return string(EffortLow), nil
 		}
 		return string(EffortHigh), nil
-	case strings.HasPrefix(model, "gemini-3.1-pro"), model == "gemini-pro-latest":
+	case strings.HasPrefix(model, "gemini-3.1-pro"), model == "gemini-pro-latest",
+		strings.HasPrefix(model, "gemini-3.7-flash"),
+		strings.HasPrefix(model, "gemini-3.8-flash"):
+		// 这些型号的最低思考等级为 low，跨协议转换时将 minimal 映射到该等级。
 		if effort == EffortMinimal {
 			return string(EffortLow), nil
 		}
