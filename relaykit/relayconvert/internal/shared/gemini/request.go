@@ -150,7 +150,7 @@ func ApplyThinkingConfig(geminiRequest *dto.GeminiChatRequest, info convmeta.Met
 		if explicit.IncludeThoughts != nil {
 			geminiRequest.GenerationConfig.ThinkingConfig.IncludeThoughts = explicit.IncludeThoughts
 		}
-		effort, err := reasoning.ValidateGeminiThinkingConfig(baseModel, geminiRequest.GenerationConfig.ThinkingConfig)
+		effort, err := reasoning.NormalizeGeminiThinkingConfig(baseModel, geminiRequest.GenerationConfig.ThinkingConfig)
 		if err != nil {
 			return err
 		}

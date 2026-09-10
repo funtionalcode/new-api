@@ -71,3 +71,36 @@ func TestResolveGeminiFlashDefaultEffort(t *testing.T) {
 		})
 	}
 }
+
+func TestNormalizeGeminiThinkingConfigMapsNativeMinimalForNewFlashModels(t *testing.T) {
+	for _, tt := range []struct{ model, want string }{
+		{"gemini-3.7-flash", "low"},
+		{"gemini-3.8-flash-high", "low"},
+		{"gemini-3.6-flash", "minimal"},
+	} {
+		t.Run(tt.model, func(t *testing.T) {
+			includeThoughts := false
+			config := &dto.GeminiThinkingConfig{ThinkingLevel: "minimal", IncludeThoughts: &includeThoughts}
+			effort, err := NormalizeGeminiThinkingConfig(tt.model, config)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, config.ThinkingLevel)
+			assert.Equal(t, Effort(tt.want), effort)
+			require.NotNil(t, config.IncludeThoughts)
+			assert.False(t, *config.IncludeThoughts)
+			assert.Nil(t, config.ThinkingBudget)
+		})
+	}
+}
+
+func TestNormalizeGeminiThinkingConfigPreservesInvalidRequestForRejection(t *testing.T) {
+	budget := 0
+	for _, config := range []*dto.GeminiThinkingConfig{
+		{ThinkingLevel: "invalid"},
+		{ThinkingLevel: "minimal", ThinkingBudget: &budget},
+	} {
+		original := *config
+		_, err := NormalizeGeminiThinkingConfig("gemini-3.8-flash-high", config)
+		require.Error(t, err)
+		assert.Equal(t, original, *config)
+	}
+}

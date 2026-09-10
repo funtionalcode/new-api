@@ -52,3 +52,44 @@ func TestGeminiAdaptorNormalizesMinimalForMappedFlashModel(t *testing.T) {
 		})
 	}
 }
+
+func TestGeminiAdaptorNormalizesNativeMinimalThinkingConfig(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		format types.RelayFormat
+		effort string
+	}{
+		{"extra_body", types.RelayFormatOpenAI, ""},
+		{"extra_body_with_reasoning_effort", types.RelayFormatOpenAI, "minimal"},
+		{"native_gemini", types.RelayFormatGemini, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			info := &relaycommon.RelayInfo{
+				RelayFormat:     tt.format,
+				OriginModelName: "gemini-3.8-flash-high",
+				ChannelMeta:     &relaycommon.ChannelMeta{UpstreamModelName: "gemini-3.8-flash-high"},
+			}
+			var converted any
+			var err error
+			if tt.format == types.RelayFormatOpenAI {
+				converted, err = (&Adaptor{}).ConvertOpenAIRequest(nil, info, &dto.GeneralOpenAIRequest{
+					Model:           "gemini-3.8-flash-high",
+					Messages:        []dto.Message{{Role: "user", Content: "hello"}},
+					ReasoningEffort: tt.effort,
+					ExtraBody:       []byte(`{"google":{"thinking_config":{"thinking_level":"minimal","include_thoughts":false}}}`),
+				})
+			} else {
+				var request dto.GeminiChatRequest
+				require.NoError(t, common.UnmarshalJsonStr(`{"contents":[{"role":"user","parts":[{"text":"hello"}]}],"generationConfig":{"thinkingConfig":{"thinkingLevel":"minimal","includeThoughts":false}}}`, &request))
+				converted, err = (&Adaptor{}).ConvertGeminiRequest(nil, info, &request)
+			}
+			require.NoError(t, err)
+			body, err := common.Marshal(converted)
+			require.NoError(t, err)
+			assert.Equal(t, "low", gjson.GetBytes(body, "generationConfig.thinkingConfig.thinkingLevel").String())
+			assert.Equal(t, "false", gjson.GetBytes(body, "generationConfig.thinkingConfig.includeThoughts").Raw)
+			assert.False(t, gjson.GetBytes(body, "generationConfig.thinkingConfig.thinkingBudget").Exists())
+			assert.Equal(t, "low", info.GetReasoningEffort())
+		})
+	}
+}

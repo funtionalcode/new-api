@@ -178,6 +178,23 @@ func geminiDefaultEffort(model string) Effort {
 	}
 }
 
+// NormalizeGeminiThinkingConfig 兼容仍发送 minimal 的 Gemini 客户端，
+// 并在校验通过后更新配置，确保原生请求和跨协议请求使用相同的最低等级。
+func NormalizeGeminiThinkingConfig(model string, config *dto.GeminiThinkingConfig) (Effort, error) {
+	normalizedModel := strings.ToLower(model)
+	if config != nil && config.ThinkingLevel == string(EffortMinimal) &&
+		(strings.HasPrefix(normalizedModel, "gemini-3.7-flash") || strings.HasPrefix(normalizedModel, "gemini-3.8-flash")) {
+		normalized := *config
+		normalized.ThinkingLevel = string(EffortLow)
+		effort, err := ValidateGeminiThinkingConfig(model, &normalized)
+		if err == nil {
+			*config = normalized
+		}
+		return effort, err
+	}
+	return ValidateGeminiThinkingConfig(model, config)
+}
+
 func ValidateGeminiThinkingConfig(model string, config *dto.GeminiThinkingConfig) (Effort, error) {
 	if config == nil {
 		return "", nil
