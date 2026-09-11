@@ -25,6 +25,7 @@ import type {
 import { formatMessageForAPI, isValidMessage } from '../message/message-utils'
 
 const GLM_5_3_DEFAULT_MAX_TOKENS = 65536
+const SONNET_5_DEFAULT_MAX_TOKENS = 128000
 
 /**
  * Build API request payload from messages and config
@@ -63,6 +64,12 @@ export function buildChatCompletionPayload(
       normalizedModel.startsWith('glm-5.3-')
     ) {
       payload.max_tokens = GLM_5_3_DEFAULT_MAX_TOKENS
+    } else if (
+      normalizedModel === 'claude-sonnet-5' ||
+      normalizedModel.startsWith('claude-sonnet-5-')
+    ) {
+      // Claude 转换要求 max_tokens；自动模式显式发送模型上限，避免回落到 8192。
+      payload.max_tokens = SONNET_5_DEFAULT_MAX_TOKENS
     }
   }
 

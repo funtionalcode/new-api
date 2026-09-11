@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import assert from 'node:assert/strict'
 
-import { describe, test } from 'vitest'
+import { describe, expect, test } from 'vitest'
 
 import { DEFAULT_CONFIG, DEFAULT_PARAMETER_ENABLED } from '../../../constants'
 import type { Message } from '../../../types'
@@ -33,6 +33,49 @@ const messages: Message[] = [
 ]
 
 describe('playground chat completion payload', () => {
+  test.each([
+    'claude-sonnet-5',
+    'claude-sonnet-5-high',
+    'claude-sonnet-5-thinking',
+  ])(
+    'uses the Sonnet 5 output limit for %s when max tokens is automatic',
+    (model) => {
+      const payload = buildChatCompletionPayload(
+        messages,
+        { ...DEFAULT_CONFIG, model },
+        { ...DEFAULT_PARAMETER_ENABLED, max_tokens: false }
+      )
+
+      expect(payload.max_tokens).toBe(128000)
+    }
+  )
+
+  test.each([0, 8192, 32768])(
+    'preserves the explicit Sonnet 5 max tokens limit of %i',
+    (maxTokens) => {
+      const payload = buildChatCompletionPayload(
+        messages,
+        { ...DEFAULT_CONFIG, model: 'claude-sonnet-5', max_tokens: maxTokens },
+        { ...DEFAULT_PARAMETER_ENABLED, max_tokens: true }
+      )
+
+      expect(payload.max_tokens).toBe(maxTokens)
+    }
+  )
+
+  test.each(['claude-sonnet-50', 'claude-sonnet-4-6', 'claude-3-5-sonnet'])(
+    'does not apply the Sonnet 5 output limit to %s',
+    (model) => {
+      const payload = buildChatCompletionPayload(
+        messages,
+        { ...DEFAULT_CONFIG, model },
+        { ...DEFAULT_PARAMETER_ENABLED, max_tokens: false }
+      )
+
+      expect(payload.max_tokens).toBeUndefined()
+    }
+  )
+
   test('uses the GLM 5.3 long-output default when max tokens is automatic', () => {
     const payload = buildChatCompletionPayload(
       messages,
