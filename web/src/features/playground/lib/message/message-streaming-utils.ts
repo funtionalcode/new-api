@@ -26,11 +26,8 @@ import {
   completeReasoningTiming,
   startReasoningTiming,
 } from './message-timing-utils'
-import {
-  getCurrentVersion,
-  hasMessageContent,
-  updateCurrentVersionContent,
-} from './message-utils'
+import { updateAssistantMessageWithError } from './message-update-utils'
+import { getCurrentVersion, updateCurrentVersionContent } from './message-utils'
 
 /**
  * Process content chunk during streaming.
@@ -229,26 +226,12 @@ export function sanitizeMessagesOnLoad(messages: Message[]): Message[] {
   if (targetIndex === -1) return messages
 
   const finalized = finalizeMessage(messages[targetIndex])
-  const hasContent = hasMessageContent(finalized)
-  const hasReasoning = finalized.reasoning?.content?.trim()
-
-  const sanitized: Message =
-    hasContent || hasReasoning
-      ? completeAssistantTiming({
-          ...finalized,
-          status: MESSAGE_STATUS.COMPLETE,
-          isReasoningStreaming: false,
-        })
-      : completeAssistantTiming({
-          ...updateCurrentVersionContent(
-            finalized,
-            `${t(ERROR_MESSAGES.API_REQUEST_ERROR)}: ${t(
-              ERROR_MESSAGES.INTERRUPTED
-            )}`
-          ),
-          status: MESSAGE_STATUS.ERROR,
-          isReasoningStreaming: false,
-        })
+  const sanitized = updateAssistantMessageWithError(
+    [finalized],
+    t(ERROR_MESSAGES.INTERRUPTED),
+    undefined,
+    t(ERROR_MESSAGES.API_REQUEST_ERROR)
+  )[0]
 
   const result = [...messages]
   result[targetIndex] = sanitized

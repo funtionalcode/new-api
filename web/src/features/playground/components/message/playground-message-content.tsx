@@ -84,6 +84,8 @@ export function PlaygroundMessageContent({
     sources,
   } = getMessageContentState(message, versionContent)
   const isError = isErrorMessage(message)
+  const showPartialResponse =
+    isError && !!message.errorMessage && showMessageContent
   const generatedImageUrls = extractGeneratedImageUrls(displayContent, {
     allowRawBase64: message.mode === 'image',
   })
@@ -150,15 +152,16 @@ export function PlaygroundMessageContent({
         </div>
       )}
 
-      {isError && (
+      {isError && <MessageError message={message} className='mb-2' />}
+
+      {isError && !showPartialResponse && (
         <>
-          <MessageError message={message} className='mb-2' />
           <MessageMetadata alignment={alignment} message={message} />
           {errorActions}
         </>
       )}
 
-      {!isError &&
+      {(!isError || showPartialResponse) &&
         (showMessageContent || hasAttachedImages || hasAttachedAudio) && (
           <>
             {isSourceVisible ? (
@@ -191,11 +194,11 @@ export function PlaygroundMessageContent({
                         src={url}
                       />
                     ))}
-                    {attachedAudioAttachments.map((attachment, index) =>
+                    {attachedAudioAttachments.map((attachment) =>
                       attachment.url ? (
                         <div
                           className='border-border/60 bg-muted/30 rounded-lg border p-3'
-                          key={`${attachment.url}-${index}`}
+                          key={attachment.url}
                         >
                           <div className='text-muted-foreground mb-2 text-xs'>
                             {attachment.filename || t('Audio')}
@@ -246,7 +249,7 @@ export function PlaygroundMessageContent({
               </MessageContent>
             )}
             <MessageMetadata alignment={alignment} message={message} />
-            {actions}
+            {isError ? errorActions : actions}
           </>
         )}
     </div>

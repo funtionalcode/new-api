@@ -97,16 +97,18 @@ export function getStreamReadyStateError(
   eventReadyState: number | undefined,
   source: unknown
 ): string | null {
-  const status = (source as { status?: number }).status
-
   if (
-    eventReadyState !== undefined &&
-    eventReadyState >= STREAM_CLOSED_READY_STATE &&
-    status !== undefined &&
-    status !== 200
+    eventReadyState === undefined ||
+    eventReadyState < STREAM_CLOSED_READY_STATE
   ) {
+    return null
+  }
+
+  const status = (source as { status?: number }).status
+  if (status !== undefined && status !== 200) {
     return `HTTP ${status}: ${ERROR_MESSAGES.CONNECTION_CLOSED}`
   }
 
-  return null
+  // 调用方已排除正常完成和主动取消；HTTP 200 只代表流已开始。
+  return ERROR_MESSAGES.CONNECTION_CLOSED
 }
