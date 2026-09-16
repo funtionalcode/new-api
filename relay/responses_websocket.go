@@ -530,6 +530,15 @@ func forwardResponsesWebsocketTurn(c *gin.Context, clientWs *websocket.Conn, tar
 	for {
 		messageType, message, err := targetWs.ReadMessage()
 		if err != nil {
+			var closeErr *websocket.CloseError
+			if errors.As(err, &closeErr) && closeErr.Code != websocket.CloseNoStatusReceived &&
+				closeErr.Code != websocket.CloseAbnormalClosure && closeErr.Code != websocket.CloseTLSHandshake {
+				// 保留上游关闭码，客户端才能识别大报文限制并回退到 HTTP。
+				if closeWriteErr := clientWs.WriteControl(websocket.CloseMessage,
+					websocket.FormatCloseMessage(closeErr.Code, closeErr.Text), time.Now().Add(5*time.Second)); closeWriteErr != nil {
+					logger.LogDebug(c, "responses websocket forward upstream close failed: %s", closeWriteErr.Error())
+				}
+			}
 			return usage, false, fmt.Errorf("read upstream websocket failed: %w", err)
 		}
 		info.SetFirstResponseTime()

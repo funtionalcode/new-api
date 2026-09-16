@@ -45,6 +45,37 @@ func newResponsesWebsocketPair(t *testing.T) (*websocket.Conn, *websocket.Conn) 
 	return serverConn, clientConn
 }
 
+func TestResponsesWebsocketForwardsUpstreamClose(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		code   int
+		reason string
+	}{
+		{name: "large_compaction_replay", code: websocket.CloseMessageTooBig, reason: "message too big"},
+		{name: "http_replay_required", code: websocket.CloseServiceRestart, reason: "upstream requires HTTP replay"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			upstream, targetWs := newResponsesWebsocketPair(t)
+			serverWs, clientWs := newResponsesWebsocketPair(t)
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			require.NoError(t, upstream.WriteControl(websocket.CloseMessage,
+				websocket.FormatCloseMessage(tc.code, tc.reason), time.Now().Add(time.Second)))
+
+			_, completed, err := forwardResponsesWebsocketTurn(c, serverWs, targetWs, &relaycommon.RelayInfo{})
+			require.Error(t, err)
+			assert.False(t, completed)
+			// 模拟请求处理结束，客户端仍应收到上游关闭码而非异常 EOF。
+			require.NoError(t, serverWs.Close())
+			require.NoError(t, clientWs.SetReadDeadline(time.Now().Add(time.Second)))
+			_, _, readErr := clientWs.ReadMessage()
+			var closeErr *websocket.CloseError
+			require.ErrorAs(t, readErr, &closeErr)
+			assert.Equal(t, tc.code, closeErr.Code)
+			assert.Equal(t, tc.reason, closeErr.Text)
+		})
+	}
+}
+
 func TestNormalizeResponsesWebsocketUpstreamPayloadRemovesXAITransportFields(t *testing.T) {
 	payload := []byte(`{"type":"response.create","model":"grok-4.5","input":[],"stream":true,"background":true}`)
 	request := &dto.OpenAIResponsesRequest{}
