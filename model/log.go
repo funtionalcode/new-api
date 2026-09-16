@@ -148,12 +148,13 @@ func FormatAdminLogs(logs []*Log) {
 	}
 }
 
-func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
+func GetLogByTokenId(tokenId int, visibleChannelIDs []int) (logs []*Log, err error) {
 	order := "id desc"
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		order = clickHouseLogOrder("")
 	}
-	err = LOG_DB.Model(&Log{}).Where("token_id = ?", tokenId).Order(order).Limit(common.MaxRecentItems).Find(&logs).Error
+	tx := applyResolvedLogChannelFilter(LOG_DB.Model(&Log{}), "channel_id", visibleChannelIDs, true)
+	err = tx.Where("token_id = ?", tokenId).Order(order).Limit(common.MaxRecentItems).Find(&logs).Error
 	formatUserLogs(logs, 0)
 	return logs, err
 }
@@ -464,7 +465,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 }
 
-func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, channelName string, group string, ip string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
+func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, channelName string, group string, ip string, requestId string, upstreamRequestId string, visibleChannelIDs []int) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB
@@ -501,6 +502,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 		tx = tx.Where("logs.created_at <= ?", endTimestamp)
 	}
 	tx = applyResolvedLogChannelFilter(tx, "logs.channel_id", matchedChannelIds, channelFilterActive)
+	tx = applyResolvedLogChannelFilter(tx, "logs.channel_id", visibleChannelIDs, true)
 	if group != "" {
 		tx = tx.Where("logs."+logGroupCol+" = ?", group)
 	}
@@ -586,7 +588,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 
 const logSearchCountLimit = 10000
 
-func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, ip string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
+func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, ip string, requestId string, upstreamRequestId string, visibleChannelIDs []int) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB.Where("logs.user_id = ?", userId)
@@ -618,6 +620,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	if group != "" {
 		tx = tx.Where("logs."+logGroupCol+" = ?", group)
 	}
+	tx = applyResolvedLogChannelFilter(tx, "logs.channel_id", visibleChannelIDs, true)
 	err = tx.Model(&Log{}).Limit(logSearchCountLimit).Count(&total).Error
 	if err != nil {
 		common.SysError("failed to count user logs: " + err.Error())
@@ -728,7 +731,7 @@ func applyResolvedLogChannelFilter(tx *gorm.DB, column string, channelIds []int,
 	return tx.Where(column+" IN ?", channelIds)
 }
 
-func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, channelName string, group string, ip string, avgStartTimestamp int64, avgEndTimestamp int64, requestId string, upstreamRequestId string) (stat Stat, err error) {
+func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, channelName string, group string, ip string, avgStartTimestamp int64, avgEndTimestamp int64, requestId string, upstreamRequestId string, visibleChannelIDs []int) (stat Stat, err error) {
 	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
 
 	// 为rpm和tpm创建单独的查询
@@ -796,6 +799,9 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	tx = applyResolvedLogChannelFilter(tx, "channel_id", channelIds, channelFilterActive)
 	rpmTpmQuery = applyResolvedLogChannelFilter(rpmTpmQuery, "channel_id", channelIds, channelFilterActive)
 	avgUseTimeQuery = applyResolvedLogChannelFilter(avgUseTimeQuery, "channel_id", channelIds, channelFilterActive)
+	tx = applyResolvedLogChannelFilter(tx, "channel_id", visibleChannelIDs, true)
+	rpmTpmQuery = applyResolvedLogChannelFilter(rpmTpmQuery, "channel_id", visibleChannelIDs, true)
+	avgUseTimeQuery = applyResolvedLogChannelFilter(avgUseTimeQuery, "channel_id", visibleChannelIDs, true)
 	if group != "" {
 		tx = tx.Where(logGroupCol+" = ?", group)
 		rpmTpmQuery = rpmTpmQuery.Where(logGroupCol+" = ?", group)

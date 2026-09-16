@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -77,12 +78,16 @@ func GetTaskArtifacts(c *gin.Context) {
 }
 
 func GetDashboardTaskArtifacts(c *gin.Context) {
+	channelIDs, ok := getLogChannelIDs(c)
+	if !ok {
+		return
+	}
 	task, exists, err := getTaskForArtifactRequest(c, c.Param("task_id"))
 	if err != nil {
 		writeTaskArtifactError(c, http.StatusInternalServerError, "artifact_internal_error", "Failed to query task")
 		return
 	}
-	if !exists || task == nil {
+	if !exists || task == nil || !slices.Contains(channelIDs, task.ChannelId) {
 		writeTaskArtifactError(c, http.StatusNotFound, "artifact_not_found", "Task or artifact not found")
 		return
 	}
@@ -372,10 +377,15 @@ func taskArtifactClientHeaders(headers http.Header) map[string]string {
 */
 
 func GetAllTask(c *gin.Context) {
+	channelIDs, ok := getLogChannelIDs(c)
+	if !ok {
+		return
+	}
 	pageInfo := common.GetPageQuery(c)
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 	queryParams := model.SyncTaskQueryParams{Platform: constant.TaskPlatform(c.Query("platform")), TaskID: c.Query("task_id"), Status: c.Query("status"), Action: c.Query("action"), StartTimestamp: startTimestamp, EndTimestamp: endTimestamp, ChannelID: c.Query("channel_id")}
+	queryParams.VisibleChannelIDs = channelIDs
 	items := model.TaskGetAllTasks(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
 	pageInfo.SetTotal(int(model.TaskCountAllTasks(queryParams)))
 	pageInfo.SetItems(tasksToDto(items, true, c.GetInt("role")))
@@ -383,11 +393,16 @@ func GetAllTask(c *gin.Context) {
 }
 
 func GetUserTask(c *gin.Context) {
+	channelIDs, ok := getLogChannelIDs(c)
+	if !ok {
+		return
+	}
 	pageInfo := common.GetPageQuery(c)
 	userID := c.GetInt("id")
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 	queryParams := model.SyncTaskQueryParams{Platform: constant.TaskPlatform(c.Query("platform")), TaskID: c.Query("task_id"), Status: c.Query("status"), Action: c.Query("action"), StartTimestamp: startTimestamp, EndTimestamp: endTimestamp}
+	queryParams.VisibleChannelIDs = channelIDs
 	items := model.TaskGetAllUserTask(userID, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
 	pageInfo.SetTotal(int(model.TaskCountAllUserTask(userID, queryParams)))
 	pageInfo.SetItems(tasksToDto(items, false, common.RoleCommonUser))

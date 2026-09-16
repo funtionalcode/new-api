@@ -30,10 +30,11 @@ type Midjourney struct {
 
 // TaskQueryParams 用于包含所有搜索条件的结构体，可以根据需求添加更多字段
 type TaskQueryParams struct {
-	ChannelID      string
-	MjID           string
-	StartTimestamp string
-	EndTimestamp   string
+	VisibleChannelIDs []int
+	ChannelID         string
+	MjID              string
+	StartTimestamp    string
+	EndTimestamp      string
 }
 
 func GetAllUserTask(userId int, startIdx int, num int, queryParams TaskQueryParams) []*Midjourney {
@@ -42,6 +43,7 @@ func GetAllUserTask(userId int, startIdx int, num int, queryParams TaskQueryPara
 
 	// 初始化查询构建器
 	query := DB.Where("user_id = ?", userId)
+	query = applyResolvedLogChannelFilter(query, "channel_id", queryParams.VisibleChannelIDs, queryParams.VisibleChannelIDs != nil)
 
 	if queryParams.MjID != "" {
 		query = query.Where("mj_id = ?", queryParams.MjID)
@@ -69,6 +71,7 @@ func GetAllTasks(startIdx int, num int, queryParams TaskQueryParams) []*Midjourn
 
 	// 初始化查询构建器
 	query := DB
+	query = applyResolvedLogChannelFilter(query, "channel_id", queryParams.VisibleChannelIDs, queryParams.VisibleChannelIDs != nil)
 
 	// 添加过滤条件
 	if queryParams.ChannelID != "" {
@@ -215,6 +218,7 @@ func MjBulkUpdateByTaskIds(taskIDs []int, params map[string]any) error {
 func CountAllTasks(queryParams TaskQueryParams) int64 {
 	var total int64
 	query := DB.Model(&Midjourney{})
+	query = applyResolvedLogChannelFilter(query, "channel_id", queryParams.VisibleChannelIDs, queryParams.VisibleChannelIDs != nil)
 	if queryParams.ChannelID != "" {
 		query = query.Where("channel_id = ?", queryParams.ChannelID)
 	}
@@ -235,6 +239,7 @@ func CountAllTasks(queryParams TaskQueryParams) int64 {
 func CountAllUserTask(userId int, queryParams TaskQueryParams) int64 {
 	var total int64
 	query := DB.Model(&Midjourney{}).Where("user_id = ?", userId)
+	query = applyResolvedLogChannelFilter(query, "channel_id", queryParams.VisibleChannelIDs, queryParams.VisibleChannelIDs != nil)
 	if queryParams.MjID != "" {
 		query = query.Where("mj_id = ?", queryParams.MjID)
 	}

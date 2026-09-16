@@ -207,15 +207,17 @@ func (p TaskPrivateData) Value() (driver.Value, error) {
 
 // SyncTaskQueryParams 用于包含所有搜索条件的结构体，可以根据需求添加更多字段
 type SyncTaskQueryParams struct {
-	Platform       constant.TaskPlatform
-	ChannelID      string
-	TaskID         string
-	UserID         string
-	Action         string
-	Status         string
-	StartTimestamp int64
-	EndTimestamp   int64
-	UserIDs        []int
+	// VisibleChannelIDs 由日志接口按查看者解析；内部任务处理留空。
+	VisibleChannelIDs []int
+	Platform          constant.TaskPlatform
+	ChannelID         string
+	TaskID            string
+	UserID            string
+	Action            string
+	Status            string
+	StartTimestamp    int64
+	EndTimestamp      int64
+	UserIDs           []int
 }
 
 func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) *Task {
@@ -263,6 +265,7 @@ func TaskGetAllUserTask(userId int, startIdx int, num int, queryParams SyncTaskQ
 
 	// 初始化查询构建器
 	query := DB.Where("user_id = ?", userId)
+	query = applyResolvedLogChannelFilter(query, "channel_id", queryParams.VisibleChannelIDs, queryParams.VisibleChannelIDs != nil)
 
 	if queryParams.TaskID != "" {
 		query = query.Where("task_id = ?", queryParams.TaskID)
@@ -299,6 +302,7 @@ func TaskGetAllTasks(startIdx int, num int, queryParams SyncTaskQueryParams) []*
 
 	// 初始化查询构建器
 	query := DB
+	query = applyResolvedLogChannelFilter(query, "channel_id", queryParams.VisibleChannelIDs, queryParams.VisibleChannelIDs != nil)
 
 	// 添加过滤条件
 	if queryParams.ChannelID != "" {
@@ -547,6 +551,7 @@ type TaskQuotaUsage struct {
 func TaskCountAllTasks(queryParams SyncTaskQueryParams) int64 {
 	var total int64
 	query := DB.Model(&Task{})
+	query = applyResolvedLogChannelFilter(query, "channel_id", queryParams.VisibleChannelIDs, queryParams.VisibleChannelIDs != nil)
 	if queryParams.ChannelID != "" {
 		query = query.Where("channel_id = ?", queryParams.ChannelID)
 	}
@@ -582,6 +587,7 @@ func TaskCountAllTasks(queryParams SyncTaskQueryParams) int64 {
 func TaskCountAllUserTask(userId int, queryParams SyncTaskQueryParams) int64 {
 	var total int64
 	query := DB.Model(&Task{}).Where("user_id = ?", userId)
+	query = applyResolvedLogChannelFilter(query, "channel_id", queryParams.VisibleChannelIDs, queryParams.VisibleChannelIDs != nil)
 	if queryParams.TaskID != "" {
 		query = query.Where("task_id = ?", queryParams.TaskID)
 	}

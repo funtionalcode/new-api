@@ -60,6 +60,7 @@ func TestSumUsedQuotaReturnsAverageUseTimeForConfiguredWindow(t *testing.T) {
 		now,
 		"",
 		"",
+		[]int{3},
 	)
 	require.NoError(t, err)
 
@@ -106,6 +107,7 @@ func TestSumUsedQuotaAppliesRequestFiltersToAllStats(t *testing.T) {
 		now,
 		"req-match",
 		"up-match",
+		[]int{0},
 	)
 	require.NoError(t, err)
 
@@ -149,6 +151,7 @@ func TestSumUsedQuotaAppliesLogTypeFilterToAverageUseTime(t *testing.T) {
 		now,
 		"",
 		"",
+		[]int{0},
 	)
 	require.NoError(t, err)
 
@@ -199,6 +202,7 @@ func TestLogQueriesFilterByChannelName(t *testing.T) {
 		"",
 		"",
 		"",
+		[]int{31, 32},
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total)
@@ -221,6 +225,7 @@ func TestLogQueriesFilterByChannelName(t *testing.T) {
 		now,
 		"",
 		"",
+		[]int{31, 32},
 	)
 	require.NoError(t, err)
 	require.Equal(t, 100, stat.Quota)
