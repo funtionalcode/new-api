@@ -1024,6 +1024,14 @@ export function DetailsDialog(props: DetailsDialogProps) {
           </DetailSection>
         )}
 
+        {props.isAdmin && other?.admin_info?.typesafe && (
+          <div className='space-y-2'>
+            <h4 className='text-sm font-medium'>{t('TypeSafe evaluations')}</h4>
+            <pre className='max-h-72 overflow-auto rounded-md border p-3 text-xs break-all whitespace-pre-wrap'>
+              {JSON.stringify(other.admin_info.typesafe, null, 2)}
+            </pre>
+          </div>
+        )}
         {/* Quota saturation marker (admin only) */}
         {props.isAdmin && other?.admin_info?.quota_saturation && (
           <DetailSection

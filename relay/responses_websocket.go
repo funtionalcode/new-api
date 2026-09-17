@@ -109,6 +109,13 @@ func ResponsesWebsocketHelper(c *gin.Context, clientWs *websocket.Conn, selectCh
 			writeResponsesWebsocketAPIError(c, clientWs, newAPIError)
 			continue
 		}
+		if !turn.prewarm {
+			if value, exists := c.Get("typesafe_prepare"); exists {
+				if prepare, ok := value.(func(*gin.Context, *relaycommon.RelayInfo)); ok {
+					prepare(c, turn.info)
+				}
+			}
+		}
 		if turn.httpFallback {
 			if turn.prewarm {
 				if err := completeResponsesWebsocketFallbackPrewarm(clientWs, turn); err != nil {
@@ -434,6 +441,9 @@ func forwardResponsesWebsocketHTTPFallback(c *gin.Context, clientWs *websocket.C
 	}
 
 	restoreWriter := helper.SetResponsesStreamWriter(c, func(data []byte) error {
+		if turn.info.TypeSafeObserve != nil {
+			turn.info.TypeSafeObserve(data)
+		}
 		return writeResponsesWebsocketFallbackEvent(clientWs, turn.streamID, data)
 	})
 	defer restoreWriter()
@@ -542,6 +552,9 @@ func forwardResponsesWebsocketTurn(c *gin.Context, clientWs *websocket.Conn, tar
 			return usage, false, fmt.Errorf("read upstream websocket failed: %w", err)
 		}
 		info.SetFirstResponseTime()
+		if info.TypeSafeObserve != nil {
+			info.TypeSafeObserve(message)
+		}
 		if err := clientWs.WriteMessage(messageType, message); err != nil {
 			return usage, false, fmt.Errorf("write client websocket failed: %w", err)
 		}

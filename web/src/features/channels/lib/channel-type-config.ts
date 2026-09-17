@@ -173,6 +173,17 @@ export const CHANNEL_TYPE_CONFIGS: Record<number, ChannelTypeConfig> = {
       key: 'Cursor API Key',
     },
   },
+  66: {
+    id: 66,
+    name: CHANNEL_TYPES[66],
+    icon: '',
+    defaultBaseUrl: 'https://api.typesafe.ai',
+    supportedModels: ['jev-latest', 'jev-preview', 'jev-1.13.0'],
+    hints: {
+      models:
+        'Structured evaluation via /v1/systemone: classification, scoring, and probability.',
+    },
+  },
   65: {
     id: 65,
     name: CHANNEL_TYPES[65],

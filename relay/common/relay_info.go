@@ -84,6 +84,9 @@ type TokenCountMeta struct {
 }
 
 type RelayInfo struct {
+	TypeSafeResults   []map[string]any
+	TypeSafeAfter     func()
+	TypeSafeObserve   func([]byte)
 	TokenId           int
 	TokenKey          string
 	TokenGroup        string
@@ -610,6 +613,9 @@ func GenRelayInfo(c *gin.Context, relayFormat types.RelayFormat, request dto.Req
 	var info *RelayInfo
 	var err error
 	switch relayFormat {
+	case types.RelayFormatTypeSafe:
+		info = genBaseRelayInfo(c, request)
+		info.RelayFormat = types.RelayFormatTypeSafe
 	case types.RelayFormatOpenAI:
 		info = GenRelayInfoOpenAI(c, request)
 	case types.RelayFormatOpenAIAudio:

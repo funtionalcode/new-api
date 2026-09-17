@@ -13,6 +13,7 @@ const (
 	EndpointTypeAnthropic             EndpointType = "anthropic"
 	EndpointTypeGemini                EndpointType = "gemini"
 	EndpointTypeJinaRerank            EndpointType = "jina-rerank"
+	EndpointTypeTypeSafe              EndpointType = "typesafe"
 	EndpointTypeImageGeneration       EndpointType = "image-generation"
 	EndpointTypeEmbeddings            EndpointType = "embeddings"
 	EndpointTypeAudioTranscription    EndpointType = "audio-transcription"

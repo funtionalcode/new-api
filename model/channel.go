@@ -96,6 +96,9 @@ func (channel *Channel) SupportsRequestPath(requestPath string, requestModel str
 		return false
 	}
 	requestPath = normalizeChannelRequestPath(requestPath)
+	if channel.Type == constant.ChannelTypeTypeSafe {
+		return requestPath == "/v1/systemone"
+	}
 	if channel.Type == constant.ChannelTypeCursor {
 		return requestPath == "/v1/chat/completions" || requestPath == "/v1/messages" || requestPath == "/v1/responses"
 	}
@@ -1176,6 +1179,21 @@ func SearchTags(keyword string, group string, model string, idSort bool) ([]*str
 }
 
 func (channel *Channel) ValidateSettings() error {
+	if channel.ParamOverride != nil && strings.TrimSpace(*channel.ParamOverride) != "" {
+		var override map[string]json.RawMessage
+		if err := common.UnmarshalJsonStr(*channel.ParamOverride, &override); err != nil {
+			return err
+		}
+		if raw, exists := override["_typesafe"]; exists {
+			var integration dto.TypeSafeIntegration
+			if err := common.Unmarshal(raw, &integration); err != nil {
+				return err
+			}
+			if err := integration.Validate(); err != nil {
+				return err
+			}
+		}
+	}
 	channelParams := &dto.ChannelSettings{}
 	if channel.Setting != nil && *channel.Setting != "" {
 		err := common.Unmarshal([]byte(*channel.Setting), channelParams)

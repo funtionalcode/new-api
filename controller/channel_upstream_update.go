@@ -429,7 +429,7 @@ func fetchChannelUpstreamModelIDs(channel *model.Channel) ([]string, error) {
 		} else {
 			url = fmt.Sprintf("%s/v1/models", baseURL)
 		}
-	case constant.ChannelTypeElevenLabs:
+	case constant.ChannelTypeElevenLabs, constant.ChannelTypeTypeSafe:
 		if strings.HasSuffix(baseURL, "/v1") {
 			url = fmt.Sprintf("%s/models", baseURL)
 		} else {
@@ -486,6 +486,25 @@ func fetchChannelUpstreamModelIDs(channel *model.Channel) ([]string, error) {
 		ids = normalizeModelNames(ids)
 		if len(ids) == 0 {
 			return nil, errors.New("ElevenLabs Models response contains no text-to-speech models")
+		}
+		return ids, nil
+	}
+	if channel.Type == constant.ChannelTypeTypeSafe {
+		var result struct {
+			Models []struct {
+				Name string `json:"name"`
+			} `json:"models"`
+		}
+		if err := common.Unmarshal(body, &result); err != nil {
+			return nil, err
+		}
+		ids := make([]string, 0, len(result.Models))
+		for _, item := range result.Models {
+			ids = append(ids, item.Name)
+		}
+		ids = normalizeModelNames(ids)
+		if len(ids) == 0 {
+			return nil, errors.New("TypeSafe response contains no models")
 		}
 		return ids, nil
 	}

@@ -10,6 +10,8 @@ import (
 func GetEndpointTypesByChannelType(channelType int, modelName string) []constant.EndpointType {
 	var endpointTypes []constant.EndpointType
 	switch channelType {
+	case constant.ChannelTypeTypeSafe:
+		return []constant.EndpointType{constant.EndpointTypeTypeSafe}
 	case constant.ChannelTypeJina:
 		endpointTypes = []constant.EndpointType{constant.EndpointTypeJinaRerank}
 	//case constant.ChannelTypeMidjourney, constant.ChannelTypeMidjourneyPlus:
@@ -44,6 +46,9 @@ func GetEndpointTypesByChannelType(channelType int, modelName string) []constant
 			constant.EndpointTypeAnthropic,
 			constant.EndpointTypeGemini,
 			constant.EndpointTypeOpenAIAlphaSearch,
+		}
+		if channelType == constant.ChannelTypeNewAPI {
+			endpointTypes = append(endpointTypes, constant.EndpointTypeTypeSafe)
 		}
 	case constant.ChannelTypeCodex:
 		endpointTypes = []constant.EndpointType{

@@ -165,6 +165,7 @@ export const ENDPOINT_TEMPLATES: Record<
   anthropic: { path: '/v1/messages', method: 'POST' },
   gemini: { path: '/v1beta/models/{model}:generateContent', method: 'POST' },
   'jina-rerank': { path: '/rerank', method: 'POST' },
+  typesafe: { path: '/v1/systemone', method: 'POST' },
   'image-generation': { path: '/v1/images/generations', method: 'POST' },
   embeddings: { path: '/v1/embeddings', method: 'POST' },
   'audio-transcription': { path: '/v1/audio/transcriptions', method: 'POST' },

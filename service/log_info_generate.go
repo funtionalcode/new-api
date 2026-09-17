@@ -101,6 +101,9 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	}
 
 	adminInfo := make(map[string]interface{})
+	if len(relayInfo.TypeSafeResults) > 0 {
+		adminInfo["typesafe"] = relayInfo.TypeSafeResults
+	}
 	adminInfo["use_channel"] = ctx.GetStringSlice("use_channel")
 	if billingModel := relayInfo.GetBillingModelName(); billingModel != "" && billingModel != relayInfo.OriginModelName {
 		adminInfo["billing_model"] = billingModel

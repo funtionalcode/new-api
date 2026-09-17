@@ -192,6 +192,7 @@ const endpointTypeOptions: Array<{ value: string; label: string }> = [
     label: 'Gemini (/v1beta/models/{model}:generateContent)',
   },
   { value: 'jina-rerank', label: 'Jina Rerank (/v1/rerank)' },
+  { value: 'typesafe', label: 'TypeSafe (/v1/systemone)' },
   {
     value: 'image-generation',
     label: 'Image Generation (/v1/images/generations)',
@@ -209,6 +210,7 @@ const STREAM_INCOMPATIBLE_ENDPOINTS = new Set([
   'image-generation',
   'audio-transcription',
   'jina-rerank',
+  'typesafe',
   'openai-response-compact',
 ])
 

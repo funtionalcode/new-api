@@ -38,6 +38,8 @@ import (
 func relayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
 	var err *types.NewAPIError
 	switch info.RelayMode {
+	case relayconstant.RelayModeTypeSafe:
+		return relay.TypeSafeHelper(c, info)
 	case relayconstant.RelayModeImagesGenerations, relayconstant.RelayModeImagesEdits:
 		err = relay.ImageHelper(c, info)
 	case relayconstant.RelayModeAudioSpeech:
@@ -227,6 +229,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			break
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
+		originalWriter := c.Writer
+		if !isClaudeCountTokens {
+			prepareTypeSafeIntegration(c, relayInfo)
+		}
 
 		switch relayFormat {
 		case types.RelayFormatOpenAIRealtime:
@@ -242,6 +248,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		default:
 			newAPIError = relayHandler(c, relayInfo)
 		}
+		c.Writer = originalWriter
 
 		if newAPIError == nil {
 			relayInfo.LastError = nil
@@ -271,6 +278,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 }
 
 func RelayResponsesWebsocket(c *gin.Context) {
+	c.Set("typesafe_prepare", prepareTypeSafeIntegration)
 	requestId := c.GetString(common.RequestIdKey)
 	ws, err := responsesWebsocketUpgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {

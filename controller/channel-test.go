@@ -59,6 +59,9 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 	if channel != nil && channel.Type == constant.ChannelTypeCursor {
 		return string(constant.EndpointTypeOpenAI)
 	}
+	if channel != nil && channel.Type == constant.ChannelTypeTypeSafe {
+		return string(constant.EndpointTypeTypeSafe)
+	}
 	return normalized
 }
 
@@ -212,6 +215,8 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 			relayFormat = types.RelayFormatGemini
 		case constant.EndpointTypeJinaRerank:
 			relayFormat = types.RelayFormatRerank
+		case constant.EndpointTypeTypeSafe:
+			relayFormat = types.RelayFormatTypeSafe
 		case constant.EndpointTypeImageGeneration:
 			relayFormat = types.RelayFormatOpenAIImage
 		case constant.EndpointTypeEmbeddings:
@@ -364,6 +369,8 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 				newAPIError: types.NewError(errors.New("invalid rerank request type"), types.ErrorCodeConvertRequestFailed),
 			}
 		}
+	case relayconstant.RelayModeTypeSafe:
+		convertedRequest = request
 	case relayconstant.RelayModeResponses:
 		// Response 请求 - request 已经是正确的类型
 		if responseReq, ok := request.(*dto.OpenAIResponsesRequest); ok {
@@ -729,6 +736,10 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 	// 根据端点类型构建不同的测试请求
 	if endpointType != "" {
 		switch constant.EndpointType(endpointType) {
+		case constant.EndpointTypeTypeSafe:
+			return &dto.TypeSafeRequest{Model: model, State: json.RawMessage(`"The sky is blue."`), Questions: map[string]dto.TypeSafeQuestion{
+				"is_blue": {Type: "noul", Instructions: json.RawMessage(`"Is the sky blue?"`)},
+			}}
 		case constant.EndpointTypeEmbeddings:
 			// 返回 EmbeddingRequest
 			return &dto.EmbeddingRequest{

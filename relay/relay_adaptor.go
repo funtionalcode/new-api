@@ -43,6 +43,7 @@ import (
 	jspluginadaptor "github.com/QuantumNous/new-api/relay/channel/task/jsplugin"
 	taskxai "github.com/QuantumNous/new-api/relay/channel/task/xai"
 	"github.com/QuantumNous/new-api/relay/channel/tencent"
+	"github.com/QuantumNous/new-api/relay/channel/typesafe"
 	"github.com/QuantumNous/new-api/relay/channel/vertex"
 	"github.com/QuantumNous/new-api/relay/channel/volcengine"
 	"github.com/QuantumNous/new-api/relay/channel/xai"
@@ -136,6 +137,8 @@ func GetAdaptor(apiType int) channel.Adaptor {
 		return &cursor.Adaptor{}
 	case constant.APITypeElevenLabs:
 		return &elevenlabs.Adaptor{}
+	case constant.APITypeTypeSafe:
+		return &typesafe.Adaptor{}
 	}
 	return nil
 }

@@ -494,6 +494,27 @@ function buildSample(
   endpointType: string,
   ctx: SampleContext
 ): string {
+  if (endpointType === 'typesafe') {
+    const url = `${ctx.baseUrl}${ctx.endpointPath}`
+    const body = JSON.stringify(
+      {
+        model: ctx.modelName,
+        state: 'The sky is blue.',
+        questions: {
+          is_blue: { type: 'noul', instructions: 'Is the sky blue?' },
+        },
+      },
+      null,
+      2
+    )
+    if (lang === 'curl') {
+      return `curl '${url}' \\\n  -H "Authorization: Bearer $${ctx.apiKeyEnv}" \\\n  -H 'Content-Type: application/json' \\\n  --data '${body}'`
+    }
+    if (lang === 'python') {
+      return `import os\nimport requests\n\nresponse = requests.post(\n    "${url}",\n    headers={"Authorization": "Bearer " + os.environ["${ctx.apiKeyEnv}"]},\n    json=${body},\n)\nresponse.raise_for_status()\nprint(response.json()["answers"])`
+    }
+    return `const response = await fetch('${url}', {\n  method: 'POST',\n  headers: { Authorization: \`Bearer \${process.env.${ctx.apiKeyEnv}}\`, 'Content-Type': 'application/json' },\n  body: JSON.stringify(${body}),\n})\nconsole.log((await response.json()).answers)`
+  }
   if (endpointType === 'anthropic') return buildAnthropicSample(lang, ctx)
   if (endpointType === 'gemini') return buildGeminiSample(lang, ctx)
   if (endpointType === 'embeddings' || endpointType === 'jina-rerank') {

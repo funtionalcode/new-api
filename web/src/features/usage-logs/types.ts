@@ -117,6 +117,18 @@ export interface ToolSurchargeItem {
 
 export interface LogOtherData {
   admin_info?: {
+    typesafe?: Array<{
+      stage?: string
+      channel_id?: number
+      model?: string
+      status?: string
+      reason?: string
+      truncated?: boolean
+      request_id?: string
+      parent_request_id?: string
+      answers?: Record<string, unknown>
+      usage?: Record<string, unknown>
+    }>
     is_multi_key?: boolean
     multi_key_index?: number
     use_channel?: number[]

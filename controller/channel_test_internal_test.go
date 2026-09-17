@@ -145,7 +145,7 @@ func TestMultiprotocolGatewayEndpointTypes(t *testing.T) {
 		constant.EndpointTypeOpenAIAlphaSearch,
 	}
 
-	assert.Equal(t, want, common.GetEndpointTypesByChannelType(constant.ChannelTypeNewAPI, "gpt-5"))
+	assert.Equal(t, append(append([]constant.EndpointType{}, want...), constant.EndpointTypeTypeSafe), common.GetEndpointTypesByChannelType(constant.ChannelTypeNewAPI, "gpt-5"))
 	assert.Equal(t, want, common.GetEndpointTypesByChannelType(constant.ChannelTypeSub2API, "gpt-5"))
 }
 

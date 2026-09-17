@@ -142,6 +142,15 @@ func NewAPIErrorFromParamOverride(err *ParamOverrideReturnError) *types.NewAPIEr
 }
 
 func ApplyParamOverride(jsonData []byte, paramOverride map[string]interface{}, conditionContext map[string]interface{}) ([]byte, error) {
+	if _, exists := paramOverride["_typesafe"]; exists {
+		filtered := make(map[string]interface{}, len(paramOverride))
+		for key, value := range paramOverride {
+			if key != "_typesafe" {
+				filtered[key] = value
+			}
+		}
+		paramOverride = filtered
+	}
 	if len(paramOverride) == 0 {
 		return jsonData, nil
 	}
