@@ -45,6 +45,7 @@ func TypeSafeHelper(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIEr
 		}
 	}
 	// new-api 上游使用相同原生协议与响应解析。
+	info.TypeSafeExchange = &relaycommon.TypeSafeExchange{Request: relaycommon.CaptureTypeSafeLogBody(data)}
 	adaptor := GetAdaptor(constant.APITypeTypeSafe)
 	adaptor.Init(info)
 	response, err := adaptor.DoRequest(c, info, bytes.NewReader(data))

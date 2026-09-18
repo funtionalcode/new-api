@@ -115,8 +115,20 @@ export interface ToolSurchargeItem {
   price: number
 }
 
+export interface TypeSafeLogBody {
+  body: string
+  bytes?: number
+  truncated?: boolean
+}
+
+export interface TypeSafeExchange {
+  request?: TypeSafeLogBody
+  response?: TypeSafeLogBody
+}
+
 export interface LogOtherData {
   admin_info?: {
+    typesafe_exchange?: TypeSafeExchange
     typesafe?: Array<{
       stage?: string
       channel_id?: number

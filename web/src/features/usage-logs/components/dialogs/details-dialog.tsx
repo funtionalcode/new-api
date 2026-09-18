@@ -96,6 +96,7 @@ import {
 } from '../../lib/utils'
 import { USAGE_BILLING_PATH, type LogOtherData } from '../../types'
 import { PluginAuthorLink } from '../plugin-author-link'
+import { TypeSafeIODetails } from '../typesafe-io-details'
 
 // Maps a channel-update changed-field token (as recorded by the backend audit)
 // to its i18n label key for display in the audit details.
@@ -1032,6 +1033,13 @@ export function DetailsDialog(props: DetailsDialogProps) {
             </pre>
           </div>
         )}
+        {props.isAdmin &&
+          (other?.request_path === '/v1/systemone' ||
+            other?.admin_info?.typesafe_exchange) && (
+            <TypeSafeIODetails
+              exchange={other?.admin_info?.typesafe_exchange}
+            />
+          )}
         {/* Quota saturation marker (admin only) */}
         {props.isAdmin && other?.admin_info?.quota_saturation && (
           <DetailSection

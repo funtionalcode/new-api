@@ -101,6 +101,9 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	}
 
 	adminInfo := make(map[string]interface{})
+	if relayInfo.TypeSafeExchange != nil {
+		adminInfo["typesafe_exchange"] = relayInfo.TypeSafeExchange
+	}
 	if len(relayInfo.TypeSafeResults) > 0 {
 		adminInfo["typesafe"] = relayInfo.TypeSafeResults
 	}

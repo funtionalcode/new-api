@@ -39,6 +39,7 @@ func TestTaskPluginLogVisibilityIsRoleSeparated(t *testing.T) {
 	other := common.MapToJsonStr(map[string]interface{}{
 		"model_price": 1.25,
 		"admin_info": map[string]interface{}{
+			"typesafe_exchange": map[string]any{"request": map[string]any{"body": "private input"}},
 			"task_plugin": map[string]interface{}{
 				"key":     "document-parser",
 				"name":    "Document Parser",
@@ -60,6 +61,7 @@ func TestTaskPluginLogVisibilityIsRoleSeparated(t *testing.T) {
 		parsed, err := common.StrToMap(logs[0].Other)
 		require.NoError(t, err)
 		assert.NotContains(t, parsed, "admin_info")
+		assert.NotContains(t, logs[0].Other, "private input")
 		assert.NotContains(t, parsed, "root_info")
 		assert.Equal(t, 1.25, parsed["model_price"])
 	})

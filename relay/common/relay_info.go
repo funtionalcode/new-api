@@ -84,6 +84,7 @@ type TokenCountMeta struct {
 }
 
 type RelayInfo struct {
+	TypeSafeExchange  *TypeSafeExchange
 	TypeSafeResults   []map[string]any
 	TypeSafeAfter     func()
 	TypeSafeObserve   func([]byte)

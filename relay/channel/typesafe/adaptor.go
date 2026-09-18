@@ -47,6 +47,10 @@ func (a *Adaptor) DoResponse(c *gin.Context, response *http.Response, info *rela
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponse)
 	}
+	if info.TypeSafeExchange == nil {
+		info.TypeSafeExchange = &relaycommon.TypeSafeExchange{}
+	}
+	info.TypeSafeExchange.Response = relaycommon.CaptureTypeSafeLogBody(body)
 	info.SetFirstResponseTime()
 	c.Data(response.StatusCode, "application/json", body)
 	return usage, nil

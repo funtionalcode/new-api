@@ -64,6 +64,7 @@ func TestTypeSafeIntegrationBeforeAfterAndBilling(t *testing.T) {
 		}
 		var body map[string]any
 		if assert.NoError(t, common.DecodeJson(r.Body, &body)) {
+			assert.Equal(t, "jev-1.13.0", body["model"])
 			states <- body["state"].(map[string]any)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -76,6 +77,7 @@ func TestTypeSafeIntegrationBeforeAfterAndBilling(t *testing.T) {
 	require.NoError(t, err)
 	parentChannel := &model.Channel{Id: 903, Type: constant.ChannelTypeOpenAI, Name: "main", Models: "chat-model", Group: "default", Status: 1, Key: "main-secret", ParamOverride: common.GetPointer(string(override))}
 	target := &model.Channel{Id: 904, Type: constant.ChannelTypeTypeSafe, Name: "eval", Models: "jev-latest", Group: "default", Status: 1, Key: "typesafe-secret", BaseURL: &upstream.URL, OpenUserIds: model.ChannelOpenUserIds{901}}
+	target.ModelMapping = common.GetPointer(`{"jev-latest":"jev-1.13.0"}`)
 	require.NoError(t, db.Create(parentChannel).Error)
 	require.NoError(t, db.Create(target).Error)
 	recorder := httptest.NewRecorder()
@@ -99,7 +101,8 @@ func TestTypeSafeIntegrationBeforeAfterAndBilling(t *testing.T) {
 	prepareTypeSafeIntegration(c, info)
 	require.Len(t, info.TypeSafeResults, 1)
 	require.Equal(t, "success", info.TypeSafeResults[0]["status"], "%+v", info.TypeSafeResults)
-	assert.Contains(t, (<-states)["request"], "hello")
+	beforeState := <-states
+	assert.Contains(t, beforeState["request"], "hello")
 	c.Header("Content-Type", "text/event-stream")
 	stream := []byte("data: {\"choices\":[{\"delta\":{\"content\":\"world\"}}]}\n\ndata: [DONE]\n\n")
 	_, err = c.Writer.Write(stream)
@@ -108,7 +111,8 @@ func TestTypeSafeIntegrationBeforeAfterAndBilling(t *testing.T) {
 	info.TypeSafeAfter()
 	require.Len(t, info.TypeSafeResults, 2)
 	require.Equal(t, "success", info.TypeSafeResults[1]["status"], "%+v", info.TypeSafeResults)
-	assert.Equal(t, "world", (<-states)["response"])
+	afterState := <-states
+	assert.Equal(t, "world", afterState["response"])
 	assert.Equal(t, stream, recorder.Body.Bytes())
 	var logs []model.Log
 	require.NoError(t, db.Where("channel_id = ?", 904).Find(&logs).Error)
@@ -117,6 +121,24 @@ func TestTypeSafeIntegrationBeforeAfterAndBilling(t *testing.T) {
 		assert.Equal(t, 21, log.Quota)
 		assert.Equal(t, 1000, log.PromptTokens)
 		assert.Contains(t, log.Other, "parent-typesafe-test")
+		var other map[string]any
+		require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
+		admin, ok := other["admin_info"].(map[string]any)
+		require.True(t, ok)
+		exchange, ok := admin["typesafe_exchange"].(map[string]any)
+		require.True(t, ok, "TypeSafe 子请求日志必须记录实际输入输出")
+		input := exchange["request"].(map[string]any)
+		output := exchange["response"].(map[string]any)
+		var capturedRequest dto.TypeSafeRequest
+		require.NoError(t, common.UnmarshalJsonStr(input["body"].(string), &capturedRequest))
+		var capturedState map[string]any
+		require.NoError(t, common.Unmarshal(capturedRequest.State, &capturedState))
+		stage := admin["typesafe"].([]any)[0].(map[string]any)["stage"].(string)
+		assert.Equal(t, map[string]map[string]any{"before": beforeState, "after": afterState}[stage], capturedState)
+		assert.Contains(t, input["body"], `"model":"jev-1.13.0"`)
+		assert.Contains(t, input["body"], `"instructions":"Is this helpful?"`)
+		assert.JSONEq(t, `{"model":"jev-latest","answers":{"check":{"type":"noul","noul":0.9}},"usage":{"input_tokens":1000,"output_tokens":20}}`, output["body"].(string))
+		assert.NotContains(t, log.Other, "typesafe-secret")
 	}
 	var user model.User
 	require.NoError(t, db.First(&user, 901).Error)
