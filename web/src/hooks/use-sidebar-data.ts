@@ -35,6 +35,7 @@ import {
   RotateCcw,
   ServerCog,
   Settings,
+  ShieldCheck,
   Ticket,
   User,
   Users,
@@ -104,6 +105,11 @@ export function useSidebarData(): SidebarData {
             title: t('Usage Logs'),
             url: '/usage-logs/common',
             icon: FileText,
+          },
+          {
+            title: t('TypeSafe evaluations'),
+            url: '/typesafe-evaluations',
+            icon: ShieldCheck,
           },
           {
             title: t('Task Logs'),

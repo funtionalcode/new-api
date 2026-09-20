@@ -126,21 +126,24 @@ export interface TypeSafeExchange {
   response?: TypeSafeLogBody
 }
 
+export interface TypeSafeEvaluationResult {
+  stage?: string
+  channel_id?: number
+  model?: string
+  status?: string
+  reason?: string
+  truncated?: boolean
+  request_id?: string
+  parent_request_id?: string
+  answers?: Record<string, unknown>
+  usage?: Record<string, unknown>
+}
+
 export interface LogOtherData {
+  typesafe?: TypeSafeEvaluationResult[]
   admin_info?: {
     typesafe_exchange?: TypeSafeExchange
-    typesafe?: Array<{
-      stage?: string
-      channel_id?: number
-      model?: string
-      status?: string
-      reason?: string
-      truncated?: boolean
-      request_id?: string
-      parent_request_id?: string
-      answers?: Record<string, unknown>
-      usage?: Record<string, unknown>
-    }>
+    typesafe?: TypeSafeEvaluationResult[]
     is_multi_key?: boolean
     multi_key_index?: number
     use_channel?: number[]

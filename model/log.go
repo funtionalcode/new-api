@@ -121,6 +121,7 @@ func formatUserLogs(logs []*Log, startIdx int) {
 		var otherMap map[string]interface{}
 		otherMap, _ = common.StrToMap(logs[i].Other)
 		if otherMap != nil {
+			promoteTypeSafeSummary(otherMap)
 			// Remove admin-only debug fields.
 			delete(otherMap, "admin_info")
 			// Remove diagnostics reserved for root.

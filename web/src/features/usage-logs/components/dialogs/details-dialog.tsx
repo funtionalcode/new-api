@@ -60,6 +60,8 @@ import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Label } from '@/components/ui/label'
 import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-pricing-breakdown'
 import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
+import { TypeSafeBeforeAfter } from '@/features/typesafe-evaluations/components/before-after'
+import { splitTypeSafeStages } from '@/features/typesafe-evaluations/lib/answers'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import {
@@ -602,6 +604,9 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const details = props.log.content ?? ''
   const other = parseLogOther(props.log.other)
   const typeConfig = getLogTypeConfig(props.log.type)
+  const typesafeResults =
+    other?.typesafe ?? (props.isAdmin ? other?.admin_info?.typesafe : undefined)
+  const typesafeStages = splitTypeSafeStages(typesafeResults)
 
   const isViolation = isViolationFeeLog(other)
   const isRefund = props.log.type === 6
@@ -1025,12 +1030,13 @@ export function DetailsDialog(props: DetailsDialogProps) {
           </DetailSection>
         )}
 
-        {props.isAdmin && other?.admin_info?.typesafe && (
+        {(typesafeStages.before || typesafeStages.after) && (
           <div className='space-y-2'>
             <h4 className='text-sm font-medium'>{t('TypeSafe evaluations')}</h4>
-            <pre className='max-h-72 overflow-auto rounded-md border p-3 text-xs break-all whitespace-pre-wrap'>
-              {JSON.stringify(other.admin_info.typesafe, null, 2)}
-            </pre>
+            <TypeSafeBeforeAfter
+              before={typesafeStages.before}
+              after={typesafeStages.after}
+            />
           </div>
         )}
         {props.isAdmin &&

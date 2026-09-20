@@ -94,6 +94,13 @@ export function SidebarModulesCard() {
           description: t('API usage records'),
         },
         {
+          key: 'typesafeEvaluations',
+          title: t('TypeSafe evaluations'),
+          description: t(
+            'Show before and after answers for each TypeSafe question.'
+          ),
+        },
+        {
           key: 'midjourney',
           title: t('Drawing Logs'),
           description: t('Drawing task records'),

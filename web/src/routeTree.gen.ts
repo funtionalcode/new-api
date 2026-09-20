@@ -56,6 +56,7 @@ import { Route as AuthenticatedSubscriptionsIndexRouteImport } from './routes/_a
 import { Route as AuthenticatedSystemInfoIndexRouteImport } from './routes/_authenticated/system-info/index'
 import { Route as AuthenticatedSystemSettingsIndexRouteImport } from './routes/_authenticated/system-settings/index'
 import { Route as AuthenticatedTaskPluginsIndexRouteImport } from './routes/_authenticated/task-plugins/index'
+import { Route as AuthenticatedTypesafeEvaluationsIndexRouteImport } from './routes/_authenticated/typesafe-evaluations/index'
 import { Route as AuthenticatedUsageLogsIndexRouteImport } from './routes/_authenticated/usage-logs/index'
 import { Route as AuthenticatedUsageLogsSectionRouteImport } from './routes/_authenticated/usage-logs/$section'
 import { Route as AuthenticatedUserConsumptionIndexRouteImport } from './routes/_authenticated/user-consumption/index'
@@ -331,6 +332,12 @@ const AuthenticatedTaskPluginsIndexRoute =
     path: '/task-plugins/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedTypesafeEvaluationsIndexRoute =
+  AuthenticatedTypesafeEvaluationsIndexRouteImport.update({
+    id: '/typesafe-evaluations/',
+    path: '/typesafe-evaluations/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedUsageLogsIndexRoute =
   AuthenticatedUsageLogsIndexRouteImport.update({
     id: '/usage-logs/',
@@ -503,6 +510,7 @@ export interface FileRoutesByFullPath {
   '/system-info/': typeof AuthenticatedSystemInfoIndexRoute
   '/system-settings/': typeof AuthenticatedSystemSettingsIndexRoute
   '/task-plugins/': typeof AuthenticatedTaskPluginsIndexRoute
+  '/typesafe-evaluations/': typeof AuthenticatedTypesafeEvaluationsIndexRoute
   '/usage-logs/': typeof AuthenticatedUsageLogsIndexRoute
   '/user-consumption/': typeof AuthenticatedUserConsumptionIndexRoute
   '/users/': typeof AuthenticatedUsersIndexRoute
@@ -570,6 +578,7 @@ export interface FileRoutesByTo {
   '/system-info': typeof AuthenticatedSystemInfoIndexRoute
   '/system-settings': typeof AuthenticatedSystemSettingsIndexRoute
   '/task-plugins': typeof AuthenticatedTaskPluginsIndexRoute
+  '/typesafe-evaluations': typeof AuthenticatedTypesafeEvaluationsIndexRoute
   '/usage-logs': typeof AuthenticatedUsageLogsIndexRoute
   '/user-consumption': typeof AuthenticatedUserConsumptionIndexRoute
   '/users': typeof AuthenticatedUsersIndexRoute
@@ -641,6 +650,7 @@ export interface FileRoutesById {
   '/_authenticated/system-info/': typeof AuthenticatedSystemInfoIndexRoute
   '/_authenticated/system-settings/': typeof AuthenticatedSystemSettingsIndexRoute
   '/_authenticated/task-plugins/': typeof AuthenticatedTaskPluginsIndexRoute
+  '/_authenticated/typesafe-evaluations/': typeof AuthenticatedTypesafeEvaluationsIndexRoute
   '/_authenticated/usage-logs/': typeof AuthenticatedUsageLogsIndexRoute
   '/_authenticated/user-consumption/': typeof AuthenticatedUserConsumptionIndexRoute
   '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
@@ -711,6 +721,7 @@ export interface FileRouteTypes {
     | '/system-info/'
     | '/system-settings/'
     | '/task-plugins/'
+    | '/typesafe-evaluations/'
     | '/usage-logs/'
     | '/user-consumption/'
     | '/users/'
@@ -778,6 +789,7 @@ export interface FileRouteTypes {
     | '/system-info'
     | '/system-settings'
     | '/task-plugins'
+    | '/typesafe-evaluations'
     | '/usage-logs'
     | '/user-consumption'
     | '/users'
@@ -848,6 +860,7 @@ export interface FileRouteTypes {
     | '/_authenticated/system-info/'
     | '/_authenticated/system-settings/'
     | '/_authenticated/task-plugins/'
+    | '/_authenticated/typesafe-evaluations/'
     | '/_authenticated/usage-logs/'
     | '/_authenticated/user-consumption/'
     | '/_authenticated/users/'
@@ -1221,6 +1234,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTaskPluginsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/typesafe-evaluations/': {
+      id: '/_authenticated/typesafe-evaluations/'
+      path: '/typesafe-evaluations'
+      fullPath: '/typesafe-evaluations/'
+      preLoaderRoute: typeof AuthenticatedTypesafeEvaluationsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/usage-logs/': {
       id: '/_authenticated/usage-logs/'
       path: '/usage-logs'
@@ -1478,6 +1498,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedSubscriptionsIndexRoute: typeof AuthenticatedSubscriptionsIndexRoute
   AuthenticatedSystemInfoIndexRoute: typeof AuthenticatedSystemInfoIndexRoute
   AuthenticatedTaskPluginsIndexRoute: typeof AuthenticatedTaskPluginsIndexRoute
+  AuthenticatedTypesafeEvaluationsIndexRoute: typeof AuthenticatedTypesafeEvaluationsIndexRoute
   AuthenticatedUsageLogsIndexRoute: typeof AuthenticatedUsageLogsIndexRoute
   AuthenticatedUserConsumptionIndexRoute: typeof AuthenticatedUserConsumptionIndexRoute
   AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
@@ -1512,6 +1533,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSubscriptionsIndexRoute: AuthenticatedSubscriptionsIndexRoute,
   AuthenticatedSystemInfoIndexRoute: AuthenticatedSystemInfoIndexRoute,
   AuthenticatedTaskPluginsIndexRoute: AuthenticatedTaskPluginsIndexRoute,
+  AuthenticatedTypesafeEvaluationsIndexRoute:
+    AuthenticatedTypesafeEvaluationsIndexRoute,
   AuthenticatedUsageLogsIndexRoute: AuthenticatedUsageLogsIndexRoute,
   AuthenticatedUserConsumptionIndexRoute:
     AuthenticatedUserConsumptionIndexRoute,

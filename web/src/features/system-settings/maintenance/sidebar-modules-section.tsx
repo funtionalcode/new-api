@@ -110,6 +110,12 @@ export function SidebarModulesSection({
         title: t('Usage logs'),
         description: t('Detailed request logs for investigations.'),
       },
+      typesafeEvaluations: {
+        title: t('TypeSafe evaluations'),
+        description: t(
+          'Show before and after answers for each TypeSafe question.'
+        ),
+      },
       midjourney: {
         title: t('Drawing logs'),
         description: t('History of MjProxy-style image tasks.'),

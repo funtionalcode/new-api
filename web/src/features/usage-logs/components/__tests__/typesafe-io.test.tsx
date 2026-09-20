@@ -138,6 +138,61 @@ describe('TypeSafe input and output in log details', () => {
     ).toBeInTheDocument()
   })
 
+  test('non-admin views show sanitized TypeSafe answers', () => {
+    const log: UsageLog = {
+      id: 2,
+      user_id: 1,
+      created_at: 1,
+      type: 2,
+      content: '',
+      username: 'user',
+      remark: '',
+      token_name: 'test',
+      model_name: 'gpt-4.1',
+      quota: 1,
+      prompt_tokens: 1,
+      completion_tokens: 1,
+      use_time: 1,
+      is_stream: false,
+      channel: 1,
+      channel_name: '',
+      token_id: 1,
+      group: 'default',
+      ip: '',
+      request_id: 'chat-request',
+      upstream_request_id: '',
+      other: JSON.stringify({
+        typesafe: [
+          {
+            stage: 'before',
+            status: 'success',
+            answers: { category: { type: 'choice', choice: 'coding' } },
+          },
+        ],
+      }),
+    }
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <DetailsDialog
+          log={log}
+          isAdmin={false}
+          isRoot={false}
+          open
+          onOpenChange={() => {}}
+        />
+      </QueryClientProvider>
+    )
+    expect(screen.getByText('TypeSafe evaluations')).toBeInTheDocument()
+    expect(screen.getByText('coding')).toBeInTheDocument()
+    expect(
+      screen.queryByText('TypeSafe input and output')
+    ).not.toBeInTheDocument()
+  })
+
   test('non-admin views never show TypeSafe payloads', () => {
     renderDetails(
       { request: { body: requestBody }, response: { body: responseBody } },

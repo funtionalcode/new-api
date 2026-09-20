@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -106,6 +107,9 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	}
 	if len(relayInfo.TypeSafeResults) > 0 {
 		adminInfo["typesafe"] = relayInfo.TypeSafeResults
+		if summary := model.SanitizeTypeSafeResults(relayInfo.TypeSafeResults); len(summary) > 0 {
+			other["typesafe"] = summary
+		}
 	}
 	adminInfo["use_channel"] = ctx.GetStringSlice("use_channel")
 	if billingModel := relayInfo.GetBillingModelName(); billingModel != "" && billingModel != relayInfo.OriginModelName {

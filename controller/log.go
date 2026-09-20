@@ -78,6 +78,27 @@ func GetUserLogs(c *gin.Context) {
 	return
 }
 
+func GetUserTypeSafeEvaluations(c *gin.Context) {
+	channelIDs, ok := getLogChannelIDs(c)
+	if !ok {
+		return
+	}
+	pageInfo := common.GetPageQuery(c)
+	userId := c.GetInt("id")
+	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	modelName := c.Query("model_name")
+	requestId := c.Query("request_id")
+	items, total, err := model.GetUserTypeSafeEvaluations(userId, startTimestamp, endTimestamp, modelName, requestId, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channelIDs)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(items)
+	common.ApiSuccess(c, pageInfo)
+}
+
 // Deprecated: SearchAllLogs 已废弃，前端未使用该接口。
 func SearchAllLogs(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
