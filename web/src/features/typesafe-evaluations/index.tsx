@@ -38,6 +38,8 @@ import { formatTimestampToDate } from '@/lib/format'
 
 import { getTypeSafeEvaluations } from './api'
 import { TypeSafeBeforeAfter } from './components/before-after'
+import { EvaluationDetailDialog } from './components/evaluation-detail-dialog'
+import type { TypeSafeStage } from './types'
 
 const PAGE_SIZE = 20
 
@@ -48,6 +50,10 @@ export function TypeSafeEvaluationsPage() {
   const [requestId, setRequestId] = useState('')
   const [appliedModelName, setAppliedModelName] = useState('')
   const [appliedRequestId, setAppliedRequestId] = useState('')
+  const [detail, setDetail] = useState<{
+    requestId: string
+    stage: TypeSafeStage
+  } | null>(null)
 
   const query = useQuery({
     queryKey: [
@@ -206,6 +212,9 @@ export function TypeSafeEvaluationsPage() {
                       <TypeSafeBeforeAfter
                         before={item.before}
                         after={item.after}
+                        onViewDetails={(stage) =>
+                          setDetail({ requestId: item.request_id, stage })
+                        }
                       />
                     </CardContent>
                   </Card>
@@ -240,6 +249,14 @@ export function TypeSafeEvaluationsPage() {
             </div>
           ) : null}
         </div>
+        {detail ? (
+          <EvaluationDetailDialog
+            key={`${detail.requestId}-${detail.stage}`}
+            requestId={detail.requestId}
+            stage={detail.stage}
+            onClose={() => setDetail(null)}
+          />
+        ) : null}
       </SectionPageLayout.Content>
     </SectionPageLayout>
   )

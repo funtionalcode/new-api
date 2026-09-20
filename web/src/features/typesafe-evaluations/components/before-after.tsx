@@ -20,10 +20,11 @@ import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 import { listTypeSafeAnswers } from '../lib/answers'
-import type { TypeSafeStageSummary } from '../types'
+import type { TypeSafeStage, TypeSafeStageSummary } from '../types'
 
 function statusVariant(
   status?: string
@@ -45,6 +46,7 @@ function statusLabel(status: string | undefined, t: TFunction) {
 function TypeSafeStagePanel(props: {
   title: string
   stage?: TypeSafeStageSummary
+  onViewDetails?: () => void
 }) {
   const { t } = useTranslation()
   const answers = listTypeSafeAnswers(props.stage?.answers)
@@ -87,6 +89,18 @@ function TypeSafeStagePanel(props: {
         {props.stage?.truncated && !notEvaluated ? (
           <Badge variant='outline'>{t('Evaluation content truncated')}</Badge>
         ) : null}
+        {props.onViewDetails &&
+        (props.stage?.status === 'success' || answers.length > 0) ? (
+          <Button
+            type='button'
+            size='sm'
+            variant='ghost'
+            className='ml-auto'
+            onClick={props.onViewDetails}
+          >
+            {t('View evaluation details')}
+          </Button>
+        ) : null}
       </div>
       {answers.length > 0 ? (
         <dl className='space-y-1.5'>
@@ -122,12 +136,27 @@ export function TypeSafeBeforeAfter(props: {
   before?: TypeSafeStageSummary
   after?: TypeSafeStageSummary
   className?: string
+  onViewDetails?: (stage: TypeSafeStage) => void
 }) {
   const { t } = useTranslation()
   return (
     <div className={cn('grid gap-3 md:grid-cols-2', props.className)}>
-      <TypeSafeStagePanel title={t('Before')} stage={props.before} />
-      <TypeSafeStagePanel title={t('After')} stage={props.after} />
+      <TypeSafeStagePanel
+        title={t('Before')}
+        stage={props.before}
+        onViewDetails={
+          props.onViewDetails
+            ? () => props.onViewDetails?.('before')
+            : undefined
+        }
+      />
+      <TypeSafeStagePanel
+        title={t('After')}
+        stage={props.after}
+        onViewDetails={
+          props.onViewDetails ? () => props.onViewDetails?.('after') : undefined
+        }
+      />
     </div>
   )
 }

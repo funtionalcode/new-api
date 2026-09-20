@@ -26,6 +26,14 @@ export interface TypeSafeStageSummary {
   parent_request_id?: string
 }
 
+export type TypeSafeStage = 'before' | 'after'
+
+export interface TypeSafeEvaluationDetail extends TypeSafeStageSummary {
+  stage: TypeSafeStage
+  request?: { body: string; bytes?: number; truncated?: boolean }
+  response?: { body: string; bytes?: number; truncated?: boolean }
+}
+
 export interface TypeSafeUserEvaluation {
   created_at: number
   model_name: string

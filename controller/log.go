@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func getLogChannelIDs(c *gin.Context) ([]int, bool) {
@@ -97,6 +99,30 @@ func GetUserTypeSafeEvaluations(c *gin.Context) {
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(items)
 	common.ApiSuccess(c, pageInfo)
+}
+
+func GetUserTypeSafeEvaluationDetail(c *gin.Context) {
+	requestID, stage := c.Query("request_id"), c.Query("stage")
+	if requestID == "" || (stage != "before" && stage != "after") {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "无效的评估详情参数"})
+		return
+	}
+	channelIDs, ok := getLogChannelIDs(c)
+	if !ok {
+		return
+	}
+	detail, err := model.GetUserTypeSafeEvaluationDetail(c.GetInt("id"), requestID, stage, channelIDs)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "评估详情不存在或无权查看"})
+		return
+	}
+	if err != nil {
+		common.SysError("failed to read typesafe evaluation details: " + err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "查询评估详情失败"})
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	common.ApiSuccess(c, detail)
 }
 
 // Deprecated: SearchAllLogs 已废弃，前端未使用该接口。

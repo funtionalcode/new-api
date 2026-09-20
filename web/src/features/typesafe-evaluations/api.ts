@@ -21,7 +21,23 @@ import { api } from '@/lib/api'
 import type {
   GetTypeSafeEvaluationsParams,
   GetTypeSafeEvaluationsResponse,
+  TypeSafeEvaluationDetail,
+  TypeSafeStage,
 } from './types'
+
+export async function getTypeSafeEvaluationDetail(
+  requestId: string,
+  stage: TypeSafeStage
+): Promise<TypeSafeEvaluationDetail> {
+  const search = new URLSearchParams({ request_id: requestId, stage })
+  const res = await api.get(
+    `/api/log/self/typesafe/detail?${search.toString()}`
+  )
+  if (!res.data?.success || !res.data.data) {
+    throw new Error('Evaluation details unavailable')
+  }
+  return res.data.data
+}
 
 export async function getTypeSafeEvaluations(
   params: GetTypeSafeEvaluationsParams = {}
