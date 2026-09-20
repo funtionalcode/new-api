@@ -40,7 +40,7 @@ func TestSanitizeTypeSafeResultsOmitsChildAndAdminFields(t *testing.T) {
 	assert.Equal(t, true, summary[0]["truncated"])
 	assert.Equal(t, map[string]any{"category": map[string]any{"type": "choice", "choice": "coding"}}, summary[0]["answers"])
 	assert.NotContains(t, summary[0], "channel_id")
-	assert.NotContains(t, summary[0], "model")
+	assert.Equal(t, "jev-latest", summary[0]["model"])
 	assert.NotContains(t, summary[0], "request_id")
 	assert.NotContains(t, summary[0], "usage")
 	assert.Equal(t, "after", summary[1]["stage"])
@@ -50,12 +50,14 @@ func TestSanitizeTypeSafeResultsOmitsChildAndAdminFields(t *testing.T) {
 func TestFormatUserLogsPromotesTypeSafeSummaryWithoutExchange(t *testing.T) {
 	other := common.MapToJsonStr(map[string]interface{}{
 		"model_price": 0.01,
+		"typesafe":    []any{map[string]any{"stage": "before", "status": "success"}},
 		"admin_info": map[string]interface{}{
 			"typesafe": []any{
 				map[string]any{
 					"stage":      "before",
 					"status":     "success",
 					"channel_id": 9,
+					"model":      "jev-latest",
 					"answers":    map[string]any{"check": map[string]any{"type": "noul", "noul": 0.9}},
 				},
 				map[string]any{
@@ -86,6 +88,7 @@ func TestFormatUserLogsPromotesTypeSafeSummaryWithoutExchange(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "before", item["stage"])
 	assert.NotContains(t, item, "channel_id")
+	assert.Equal(t, "jev-latest", item["model"])
 	answers, ok := item["answers"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, map[string]any{"type": "noul", "noul": 0.9}, answers["check"])
@@ -102,6 +105,7 @@ func TestBuildTypeSafeUserEvaluationGroupsBeforeAndAfter(t *testing.T) {
 			"typesafe": []any{
 				map[string]any{
 					"stage":   "before",
+					"model":   "jev-latest",
 					"status":  "success",
 					"answers": map[string]any{"category": map[string]any{"type": "choice", "choice": "coding"}},
 				},
@@ -119,6 +123,7 @@ func TestBuildTypeSafeUserEvaluationGroupsBeforeAndAfter(t *testing.T) {
 	assert.Equal(t, "gpt-4.1", evaluation.ModelName)
 	require.NotNil(t, evaluation.Before)
 	assert.Equal(t, "success", evaluation.Before.Status)
+	assert.Equal(t, "jev-latest", evaluation.Before.Model)
 	assert.Equal(t, "coding", evaluation.Before.Answers["category"].(map[string]any)["choice"])
 	require.NotNil(t, evaluation.After)
 	assert.Equal(t, "skipped", evaluation.After.Status)

@@ -54,11 +54,13 @@ describe('TypeSafe evaluations page', () => {
             request_id: 'req-1',
             before: {
               stage: 'before',
+              model: 'jev-latest',
               status: 'success',
               answers: { category: { type: 'choice', choice: 'coding' } },
             },
             after: {
               stage: 'after',
+              model: 'jev-latest',
               status: 'success',
               answers: { relevance: { type: 'score', score: 2 } },
             },
@@ -72,8 +74,77 @@ describe('TypeSafe evaluations page', () => {
     expect(await screen.findByText('coding')).toBeInTheDocument()
     expect(screen.getByText('relevance')).toBeInTheDocument()
     expect(screen.getByText('2')).toBeInTheDocument()
-    expect(screen.getByText('gpt-4.1')).toBeInTheDocument()
+    expect(screen.getByText('Evaluation model: jev-latest')).toBeInTheDocument()
+    expect(screen.getByText('Evaluated model: gpt-4.1')).toBeInTheDocument()
     expect(screen.queryByText('private input')).not.toBeInTheDocument()
+  })
+
+  test('permission failures explain that no evaluation ran and keep the evaluator distinct', async () => {
+    vi.mocked(getTypeSafeEvaluations).mockResolvedValue({
+      success: true,
+      data: {
+        page: 1,
+        page_size: 20,
+        total: 1,
+        items: [
+          {
+            created_at: 1710000000,
+            model_name: 'grok-4.6',
+            token_name: 'canary',
+            request_id: 'req-denied',
+            before: {
+              model: 'jev-latest',
+              status: 'error',
+              reason: 'channel_unavailable_or_forbidden',
+            },
+            after: { status: 'skipped', reason: 'no_text_output' },
+          },
+        ],
+      },
+    })
+    renderPage()
+    expect(
+      await screen.findByText('Evaluation model: jev-latest')
+    ).toBeInTheDocument()
+    expect(screen.getByText('Evaluated model: grok-4.6')).toBeInTheDocument()
+    expect(screen.getByText('Not evaluated')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'The evaluation channel is unavailable or you do not have access. No evaluation was run.'
+      )
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('No answer text was available for evaluation.')
+    ).toBeInTheDocument()
+  })
+
+  test('missing evaluator metadata is not inferred from the main model', async () => {
+    vi.mocked(getTypeSafeEvaluations).mockResolvedValue({
+      success: true,
+      data: {
+        page: 1,
+        page_size: 20,
+        total: 1,
+        items: [
+          {
+            created_at: 1710000000,
+            model_name: 'grok-4.6',
+            token_name: '',
+            request_id: 'req-legacy',
+            before: {
+              status: 'success',
+              answers: { coding: { type: 'noul', noul: 0.95 } },
+            },
+          },
+        ],
+      },
+    })
+    renderPage()
+    expect(
+      await screen.findByText('Evaluation model not recorded')
+    ).toBeInTheDocument()
+    expect(screen.getByText('Evaluated model: grok-4.6')).toBeInTheDocument()
+    expect(screen.getByText('0.95')).toBeInTheDocument()
   })
 
   test('shows an empty state when there are no evaluations', async () => {

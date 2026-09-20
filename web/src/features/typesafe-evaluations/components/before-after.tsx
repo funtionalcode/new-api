@@ -48,18 +48,44 @@ function TypeSafeStagePanel(props: {
 }) {
   const { t } = useTranslation()
   const answers = listTypeSafeAnswers(props.stage?.answers)
+  const reason = props.stage?.reason
+  const notEvaluated =
+    reason === 'channel_unavailable_or_forbidden' ||
+    reason === 'model_not_allowed' ||
+    reason === 'model_or_group_not_allowed'
+  let reasonText = reason
+  if (reason === 'channel_unavailable_or_forbidden') {
+    reasonText = t(
+      'The evaluation channel is unavailable or you do not have access. No evaluation was run.'
+    )
+  } else if (reason === 'no_text_output') {
+    reasonText = t('No answer text was available for evaluation.')
+  } else if (
+    reason === 'model_not_allowed' ||
+    reason === 'model_or_group_not_allowed'
+  ) {
+    reasonText = t(
+      'The evaluation model is not allowed for this user, token, or group.'
+    )
+  }
 
   return (
     <section className='bg-background min-w-0 rounded-lg border p-3'>
       <div className='mb-2 flex flex-wrap items-center gap-2'>
         <h3 className='text-sm font-medium'>{props.title}</h3>
         {props.stage?.status ? (
-          <Badge variant={statusVariant(props.stage.status)}>
-            {statusLabel(props.stage.status, t)}
+          <Badge
+            variant={
+              notEvaluated ? 'warning' : statusVariant(props.stage.status)
+            }
+          >
+            {notEvaluated
+              ? t('Not evaluated')
+              : statusLabel(props.stage.status, t)}
           </Badge>
         ) : null}
-        {props.stage?.truncated ? (
-          <Badge variant='outline'>{t('Truncated')}</Badge>
+        {props.stage?.truncated && !notEvaluated ? (
+          <Badge variant='outline'>{t('Evaluation content truncated')}</Badge>
         ) : null}
       </div>
       {answers.length > 0 ? (
@@ -80,14 +106,12 @@ function TypeSafeStagePanel(props: {
         </dl>
       ) : (
         <p className='text-muted-foreground text-sm'>
-          {props.stage?.reason
-            ? `${t('Reason')}: ${props.stage.reason}`
-            : t('No answers')}
+          {reasonText ? reasonText : t('No answers')}
         </p>
       )}
       {answers.length > 0 && props.stage?.reason ? (
         <p className='text-muted-foreground mt-2 text-xs'>
-          {t('Reason')}: {props.stage.reason}
+          {t('Reason')}: {reasonText}
         </p>
       ) : null}
     </section>

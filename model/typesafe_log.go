@@ -22,6 +22,7 @@ type TypeSafeUserEvaluation struct {
 }
 
 type TypeSafeUserStage struct {
+	Model     string         `json:"model,omitempty"`
 	Status    string         `json:"status"`
 	Reason    string         `json:"reason,omitempty"`
 	Truncated bool           `json:"truncated,omitempty"`
@@ -38,7 +39,10 @@ func SanitizeTypeSafeResults(raw any) []map[string]any {
 		if _, hasParent := item["parent_request_id"]; hasParent {
 			continue
 		}
-		summary := make(map[string]any, 5)
+		summary := make(map[string]any, 6)
+		if model, ok := item["model"].(string); ok && model != "" {
+			summary["model"] = model
+		}
 		if stage, ok := item["stage"].(string); ok && stage != "" {
 			summary["stage"] = stage
 		}
@@ -75,10 +79,9 @@ func promoteTypeSafeSummary(otherMap map[string]interface{}) {
 	}
 	delete(otherMap, "typesafe_exchange")
 	raw := otherMap["typesafe"]
-	if raw == nil {
-		if admin, ok := otherMap["admin_info"].(map[string]interface{}); ok && admin != nil {
-			raw = admin["typesafe"]
-		}
+	// 原始评估记录保留模型信息；兼容旧日志中已过滤模型的公开摘要。
+	if admin, ok := otherMap["admin_info"].(map[string]interface{}); ok && admin["typesafe"] != nil {
+		raw = admin["typesafe"]
 	}
 	summary := SanitizeTypeSafeResults(raw)
 	if len(summary) == 0 {
@@ -165,6 +168,9 @@ func buildTypeSafeUserEvaluation(log *Log) *TypeSafeUserEvaluation {
 
 func typeSafeUserStageFromMap(item map[string]any) *TypeSafeUserStage {
 	stage := &TypeSafeUserStage{}
+	if model, ok := item["model"].(string); ok {
+		stage.Model = model
+	}
 	if status, ok := item["status"].(string); ok {
 		stage.Status = status
 	}

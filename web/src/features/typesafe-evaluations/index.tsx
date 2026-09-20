@@ -120,8 +120,8 @@ export function TypeSafeEvaluationsPage() {
             <Input
               value={modelName}
               onChange={(event) => setModelName(event.target.value)}
-              placeholder={t('Model name')}
-              aria-label={t('Model name')}
+              placeholder={t('Evaluated model')}
+              aria-label={t('Evaluated model')}
             />
             <Input
               value={requestId}
@@ -171,34 +171,46 @@ export function TypeSafeEvaluationsPage() {
 
           {items.length > 0 ? (
             <div className='space-y-3'>
-              {items.map((item) => (
-                <Card key={`${item.request_id}-${item.created_at}`} size='sm'>
-                  <CardHeader className='gap-2'>
-                    <CardTitle className='text-sm font-medium'>
-                      {item.model_name || t('Model')}
-                    </CardTitle>
-                    <div className='text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-xs'>
-                      <span>{formatTimestampToDate(item.created_at)}</span>
-                      {item.token_name ? (
+              {items.map((item) => {
+                const evaluationModels = [
+                  ...new Set(
+                    [item.before?.model, item.after?.model].filter(Boolean)
+                  ),
+                ]
+                return (
+                  <Card key={`${item.request_id}-${item.created_at}`} size='sm'>
+                    <CardHeader className='gap-2'>
+                      <CardTitle className='text-sm font-medium'>
+                        {evaluationModels.length > 0
+                          ? `${t('Evaluation model')}: ${evaluationModels.join(' / ')}`
+                          : t('Evaluation model not recorded')}
+                      </CardTitle>
+                      <div className='text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-xs'>
+                        <span>{formatTimestampToDate(item.created_at)}</span>
                         <span>
-                          {t('Token Name')}: {item.token_name}
+                          {t('Evaluated model')}: {item.model_name || '-'}
                         </span>
-                      ) : null}
-                      {item.request_id ? (
-                        <span className='font-mono'>
-                          {t('Request ID')}: {item.request_id}
-                        </span>
-                      ) : null}
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <TypeSafeBeforeAfter
-                      before={item.before}
-                      after={item.after}
-                    />
-                  </CardContent>
-                </Card>
-              ))}
+                        {item.token_name ? (
+                          <span>
+                            {t('Token Name')}: {item.token_name}
+                          </span>
+                        ) : null}
+                        {item.request_id ? (
+                          <span className='font-mono'>
+                            {t('Request ID')}: {item.request_id}
+                          </span>
+                        ) : null}
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <TypeSafeBeforeAfter
+                        before={item.before}
+                        after={item.after}
+                      />
+                    </CardContent>
+                  </Card>
+                )
+              })}
             </div>
           ) : null}
 
