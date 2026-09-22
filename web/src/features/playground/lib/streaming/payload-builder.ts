@@ -26,6 +26,8 @@ import { formatMessageForAPI, isValidMessage } from '../message/message-utils'
 
 const GLM_5_3_DEFAULT_MAX_TOKENS = 65536
 const SONNET_5_DEFAULT_MAX_TOKENS = 128000
+const GROK_4_7_CHAT_INSTRUCTIONS =
+  'You are a helpful chat assistant. Answer the user directly in this conversation. When asked to create code or a document, include the complete requested content in your response, not just a plan or an announcement. You do not have access to a terminal, filesystem, or tools.'
 
 /**
  * Build API request payload from messages and config
@@ -39,6 +41,19 @@ export function buildChatCompletionPayload(
   const processedMessages = messages
     .filter(isValidMessage)
     .map(formatMessageForAPI)
+  const normalizedModel = config.model.trim().toLowerCase()
+
+  if (
+    (normalizedModel === 'grok-4.7' ||
+      normalizedModel.startsWith('grok-4.7-')) &&
+    !processedMessages.some((message) => message.role === 'system')
+  ) {
+    // 普通聊天需要直接返回产物；避免 Grok 4.7 只给出准备说明后结束。
+    processedMessages.unshift({
+      role: 'system',
+      content: GROK_4_7_CHAT_INSTRUCTIONS,
+    })
+  }
 
   const payload: ChatCompletionRequest = {
     model: config.model,
@@ -58,7 +73,6 @@ export function buildChatCompletionPayload(
   if (parameterEnabled.max_tokens) {
     payload.max_tokens = config.max_tokens
   } else {
-    const normalizedModel = config.model.trim().toLowerCase()
     if (
       normalizedModel === 'glm-5.3' ||
       normalizedModel.startsWith('glm-5.3-')

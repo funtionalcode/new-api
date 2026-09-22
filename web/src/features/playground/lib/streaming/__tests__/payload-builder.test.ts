@@ -33,6 +33,79 @@ const messages: Message[] = [
 ]
 
 describe('playground chat completion payload', () => {
+  test.each(['grok-4.7', 'grok-4.7-high'])(
+    'gives %s chat context to deliver the requested content without adding a token cap',
+    (model) => {
+      const payload = buildChatCompletionPayload(
+        messages,
+        { ...DEFAULT_CONFIG, model },
+        DEFAULT_PARAMETER_ENABLED
+      )
+
+      expect(payload.max_tokens).toBeUndefined()
+      expect(payload.messages).toEqual([
+        {
+          role: 'system',
+          content: expect.stringContaining(
+            'include the complete requested content'
+          ),
+        },
+        { role: 'user', content: 'continue until complete' },
+      ])
+    }
+  )
+
+  test('preserves an explicit token cap when adding Grok 4.7 chat context', () => {
+    const payload = buildChatCompletionPayload(
+      messages,
+      { ...DEFAULT_CONFIG, model: 'grok-4.7', max_tokens: 4096 },
+      { ...DEFAULT_PARAMETER_ENABLED, max_tokens: true }
+    )
+
+    expect(payload.messages[0].role).toBe('system')
+    expect(payload.max_tokens).toBe(4096)
+  })
+
+  test('preserves a custom system prompt and leaves the original conversation untouched', () => {
+    const conversation: Message[] = [
+      {
+        key: 'system-1',
+        from: 'system',
+        versions: [
+          { id: 'system-v1', content: 'Explain concepts with diagrams.' },
+        ],
+      },
+      ...messages,
+    ]
+    const original = structuredClone(conversation)
+    const payload = buildChatCompletionPayload(
+      conversation,
+      { ...DEFAULT_CONFIG, model: 'grok-4.7' },
+      DEFAULT_PARAMETER_ENABLED
+    )
+
+    expect(payload.messages).toEqual([
+      { role: 'system', content: 'Explain concepts with diagrams.' },
+      { role: 'user', content: 'continue until complete' },
+    ])
+    expect(conversation).toEqual(original)
+  })
+
+  test.each(['gpt-4o', 'grok-4.6', 'grok-4.70'])(
+    'does not add Grok 4.7 chat context to %s',
+    (model) => {
+      const payload = buildChatCompletionPayload(
+        messages,
+        { ...DEFAULT_CONFIG, model },
+        DEFAULT_PARAMETER_ENABLED
+      )
+
+      expect(payload.messages).toEqual([
+        { role: 'user', content: 'continue until complete' },
+      ])
+    }
+  )
+
   test.each([
     'claude-sonnet-5',
     'claude-sonnet-5-high',
