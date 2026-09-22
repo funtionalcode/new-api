@@ -48,6 +48,7 @@ import {
   getMessageContent,
   getPreviousUserMessage,
   getPlaygroundGenerationMode,
+  getPlaygroundImageSize,
   parseRequestErrorDetails,
   getPlaygroundTaskModel,
   pollVideoGeneration,
@@ -146,7 +147,7 @@ export function Playground() {
                 group: config.group,
                 prompt: text,
                 n: 1,
-                size: '1024x1024',
+                size: getPlaygroundImageSize(imageModel),
               },
               abortController.signal
             )

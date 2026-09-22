@@ -1,5 +1,14 @@
 import type { PlaygroundMode } from '../../types'
 
+function isQwenImage21Model(model: string): boolean {
+  const name = model.trim().toLowerCase()
+  return name === 'qwen-image-2.1' || name === 'qwen/qwen-image-2.1'
+}
+
+export function getPlaygroundImageSize(model: string): string {
+  return isQwenImage21Model(model) ? '512x512' : '1024x1024'
+}
+
 function isXAIVideoModel(model: string): boolean {
   return model.startsWith('grok-imagine-video')
 }
@@ -44,7 +53,7 @@ export function getPlaygroundGenerationMode(
     return mode
   }
 
-  if (isXAIImageModel(model)) {
+  if (isXAIImageModel(model) || isQwenImage21Model(model)) {
     return 'image'
   }
 
