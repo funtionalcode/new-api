@@ -39,8 +39,7 @@ func (p ChatCompletionsToResponsesPolicy) IsChannelEnabled(channelID int, channe
 type GlobalSettings struct {
 	PassThroughRequestEnabled bool     `json:"pass_through_request_enabled"`
 	ThinkingModelBlacklist    []string `json:"thinking_model_blacklist"`
-	// EffortTailModelIDs lists real model IDs that sit inside the GPT/o-series
-	// family whitelist but whose names already end in an effort word.
+	// EffortTailModelIDs 保存以思考强度词结尾的完整模型 ID，各提供方统一保留原名。
 	EffortTailModelIDs               []string                         `json:"effort_tail_model_ids"`
 	ChatCompletionsToResponsesPolicy ChatCompletionsToResponsesPolicy `json:"chat_completions_to_responses_policy"`
 }
@@ -54,6 +53,7 @@ var defaultOpenaiSettings = GlobalSettings{
 	},
 	EffortTailModelIDs: []string{
 		"gpt-5.1-codex-max",
+		"gemini-3.8-flash-high",
 		"qwen-image-edit-max",
 		"qwen-max",
 		"stable-diffusion-3-medium",

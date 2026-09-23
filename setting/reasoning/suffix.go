@@ -33,6 +33,10 @@ func ParseOpenAIReasoningEffortFromModelSuffix(modelName string) (string, string
 // matched GPT/o-series, Claude, and Gemini model families. The provider prefix
 // before the final path segment is kept opaque.
 func ParseLegacyModelSuffix(modelName string, allowClaudeThinkingAlias bool, allowGeminiThinkingAlias bool) (string, kitreasoning.Intent, bool, error) {
+	// 完整模型 ID 的保护优先于提供方后缀解析，避免把真实型号截成思考别名。
+	if model_setting.ShouldPreserveEffortTail(modelName) {
+		return modelName, kitreasoning.Intent{}, false, nil
+	}
 	prefix, bare := splitModelNamespace(modelName)
 
 	var (
