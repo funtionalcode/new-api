@@ -4107,6 +4107,7 @@
     "No syncable models": "同期可能なモデルはありません",
     "No system announcements": "システムのお知らせがありません",
     "No system tasks yet.": "システムタスクはまだありません。",
+    "No task context was available. The original reasoning effort was kept.": "有効なタスクのコンテキストがないため、元の推論強度を維持しました。",
     "No task plugins found": "タスクプラグインがありません",
     "No task selected.": "No task selected.",
     "No token found.": "トークンが見つかりません。",

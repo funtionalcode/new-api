@@ -4107,6 +4107,7 @@
     "No syncable models": "Aucun modèle synchronisable",
     "No system announcements": "Aucune annonce système",
     "No system tasks yet.": "Aucune tâche système pour le moment.",
+    "No task context was available. The original reasoning effort was kept.": "Aucun contexte de tâche disponible. L’effort de raisonnement initial a été conservé.",
     "No task plugins found": "Aucun plugin de tâche trouvé",
     "No task selected.": "No task selected.",
     "No token found.": "Aucun jeton trouvé.",

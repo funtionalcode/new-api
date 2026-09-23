@@ -4107,6 +4107,7 @@
     "No syncable models": "Нет моделей для синхронизации",
     "No system announcements": "Нет системных объявлений",
     "No system tasks yet.": "Пока нет системных задач.",
+    "No task context was available. The original reasoning effort was kept.": "Контекст задачи отсутствует. Исходное усилие рассуждения сохранено.",
     "No task plugins found": "Плагины задач не найдены",
     "No task selected.": "No task selected.",
     "No token found.": "Токен не найден.",

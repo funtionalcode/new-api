@@ -4107,6 +4107,7 @@
     "No syncable models": "暫無可同步模型",
     "No system announcements": "暫無系統公告",
     "No system tasks yet.": "暫無系統任務。",
+    "No task context was available. The original reasoning effort was kept.": "缺少有效任務上下文，已保留原推理強度。",
     "No task plugins found": "未找到任务外掛",
     "No task selected.": "未選擇任務。",
     "No token found.": "未找到令牌。",

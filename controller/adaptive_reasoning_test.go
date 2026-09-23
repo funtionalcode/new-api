@@ -417,3 +417,89 @@ func TestAdaptiveReasoningTimeoutCancelsBlockedUpstreamAndRefunds(t *testing.T) 
 		assert.EqualValues(collect, 1000000, user.Quota)
 	}, time.Second, time.Millisecond)
 }
+
+func TestAdaptiveReasoningEmptyContextSkipsEvaluationAndPreservesEffort(t *testing.T) {
+	for _, input := range []string{
+		`[]`, `null`, `"  \n "`,
+		`[{"role":"user","content":"  "}]`,
+		`[{"type":"reasoning","encrypted_content":"private-canary","summary":[]}]`,
+		`[{"type":"custom_tool_call_output","call_id":"image","output":[{"type":"input_image","image_url":"private-image-canary"}]}]`,
+	} {
+		t.Run(input, func(t *testing.T) {
+			f := setupAdaptiveReasoning(t)
+			c, info := f.request(t, input, t.Name())
+			info.Request.(*dto.OpenAIResponsesRequest).Reasoning.Effort = "medium"
+			info.SetReasoningEffort("medium")
+			prepareTypeSafeIntegration(c, info)
+			assert.Zero(t, f.calls.Load())
+			assert.Empty(t, info.AdaptiveReasoningEffort)
+			require.Len(t, info.TypeSafeResults, 1)
+			assert.Equal(t, "skipped", info.TypeSafeResults[0]["status"])
+			assert.Equal(t, "insufficient_context", info.TypeSafeResults[0]["reason"])
+			_, body, closer, apiErr := relay.PrepareResponsesRequest(c, info, info.Request.(*dto.OpenAIResponsesRequest))
+			require.Nil(t, apiErr)
+			wire, err := io.ReadAll(body)
+			require.NoError(t, err)
+			require.NoError(t, closer.Close())
+			assert.Equal(t, "medium", gjson.GetBytes(wire, "reasoning.effort").String())
+			var user model.User
+			require.NoError(t, f.db.First(&user, 901).Error)
+			assert.EqualValues(t, 1000000, user.Quota)
+		})
+	}
+}
+
+func TestAdaptiveReasoningEmptyContextDoesNotConsumeOrReviveOldDecision(t *testing.T) {
+	f := setupAdaptiveReasoning(t)
+	c, info := f.request(t, adaptiveToolInput, t.Name())
+	prepareTypeSafeIntegration(c, info)
+	c, info = f.request(t, `[]`, t.Name())
+	prepareTypeSafeIntegration(c, info)
+	assert.Empty(t, info.AdaptiveReasoningEffort)
+	assert.EqualValues(t, 1, f.calls.Load())
+	c, info = f.request(t, adaptiveToolInput, t.Name())
+	prepareTypeSafeIntegration(c, info)
+	assert.EqualValues(t, 2, f.calls.Load())
+}
+
+func TestAdaptiveReasoningCustomToolsReachEvaluatorAndFailuresReassess(t *testing.T) {
+	f := setupAdaptiveReasoning(t)
+	input := `[{"role":"user","content":"Fix the parser"},{"type":"custom_tool_call","call_id":"patch-1","name":"apply_patch","input":"*** patch ***"},{"type":"custom_tool_call_output","call_id":"patch-1","output":[{"type":"input_text","text":"patch applied"},{"type":"input_image","image_url":"private-image-canary"}]}]`
+	c, info := f.request(t, input, t.Name())
+	prepareTypeSafeIntegration(c, info)
+	require.EqualValues(t, 1, f.calls.Load())
+	sent, err := common.Marshal(<-f.states)
+	require.NoError(t, err)
+	assert.Equal(t, "apply_patch", gjson.GetBytes(sent, "state.recent_tools.0.name").String())
+	assert.Equal(t, "*** patch ***", gjson.GetBytes(sent, "state.recent_tools.0.arguments").String())
+	assert.Equal(t, "patch applied", gjson.GetBytes(sent, "state.recent_tools.0.output").String())
+	assert.NotContains(t, string(sent), "private-image-canary")
+	c, info = f.request(t, strings.ReplaceAll(input, "patch applied", "error: patch failed"), t.Name())
+	prepareTypeSafeIntegration(c, info)
+	assert.EqualValues(t, 2, f.calls.Load())
+}
+
+func TestAdaptiveReasoningPartialContextCannotReuseOrStoreMultipleGenerations(t *testing.T) {
+	f := setupAdaptiveReasoning(t)
+	c, info := f.request(t, adaptiveToolInput, t.Name())
+	prepareTypeSafeIntegration(c, info)
+	<-f.states
+	for range 2 {
+		c, info = f.request(t, `[{"type":"custom_tool_call_output","call_id":"patch-1","output":"error: context did not match"}]`, t.Name())
+		prepareTypeSafeIntegration(c, info)
+		require.Equal(t, "low", info.AdaptiveReasoningEffort)
+		assert.Equal(t, 1, info.AdaptiveReasoningResult["generations"])
+		assert.Equal(t, 0, info.AdaptiveReasoningResult["remaining"])
+		assert.Equal(t, "evaluation", info.AdaptiveReasoningResult["source"])
+		select {
+		case sent := <-f.states:
+			encoded, err := common.Marshal(sent)
+			require.NoError(t, err)
+			assert.True(t, gjson.GetBytes(encoded, "state.partial_context").Bool())
+			assert.JSONEq(t, `{"1":"Keep this decision for 1 generations including the upcoming generation"}`, gjson.GetBytes(encoded, "questions.generations.criteria").Raw)
+		default:
+			t.Fatal("partial context must trigger a fresh assessment")
+		}
+	}
+	assert.EqualValues(t, 3, f.calls.Load())
+}

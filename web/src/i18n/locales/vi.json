@@ -4107,6 +4107,7 @@
     "No syncable models": "Không có mô hình có thể đồng bộ",
     "No system announcements": "Không có thông báo hệ thống",
     "No system tasks yet.": "Chưa có tác vụ hệ thống nào.",
+    "No task context was available. The original reasoning effort was kept.": "Không có ngữ cảnh tác vụ hợp lệ. Đã giữ mức suy luận ban đầu.",
     "No task plugins found": "Không tìm thấy plugin tác vụ",
     "No task selected.": "No task selected.",
     "No token found.": "Không tìm thấy mã thông báo.",

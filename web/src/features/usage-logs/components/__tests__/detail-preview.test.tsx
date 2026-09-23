@@ -216,6 +216,37 @@ test('Jev permission failures explain why the original effort was kept', async (
   ).not.toBeInTheDocument()
 })
 
+test('empty Jev context shows a skipped assessment without evaluation details', async () => {
+  fireEvent.click(
+    renderPreview(
+      {
+        typesafe: [
+          {
+            stage: 'adaptive_reasoning',
+            model: 'jev-latest',
+            status: 'skipped',
+            reason: 'insufficient_context',
+            requested_effort: 'medium',
+            applied: false,
+          },
+        ],
+      },
+      false
+    )
+  )
+  const dialog = await screen.findByRole('dialog')
+  expect(within(dialog).getByText('Skipped')).toBeVisible()
+  expect(within(dialog).getByText('Original effort kept')).toBeVisible()
+  expect(
+    within(dialog).getByText(
+      'No task context was available. The original reasoning effort was kept.'
+    )
+  ).toBeVisible()
+  expect(
+    within(dialog).queryByText('View evaluation details')
+  ).not.toBeInTheDocument()
+})
+
 test.each([
   {
     name: 'fixed expression zero price',

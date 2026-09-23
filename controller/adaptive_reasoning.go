@@ -34,6 +34,23 @@ type adaptiveTaskContext struct {
 	truncated             bool
 }
 
+func (state adaptiveTaskContext) hasTaskEvidence() bool {
+	if strings.TrimSpace(state.Request) != "" {
+		return true
+	}
+	for _, progress := range state.Progress {
+		if strings.TrimSpace(progress) != "" {
+			return true
+		}
+	}
+	for _, tool := range state.Tools {
+		if strings.TrimSpace(tool.Name+tool.Arguments+tool.Output) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 var adaptiveToolFailure = regexp.MustCompile(`(?im)(?:^|\n)\s*(?:error:|failed:|FAIL\b)|(?:exit(?:ed)?(?: with)? (?:code|status)\s*[:=]?\s*[1-9][0-9]*)`)
 
 func prepareAdaptiveReasoning(c *gin.Context, info *relaycommon.RelayInfo) {
@@ -74,6 +91,20 @@ func prepareAdaptiveReasoning(c *gin.Context, info *relaycommon.RelayInfo) {
 		result["reason"] = reason
 		return
 	}
+	body, err := common.Marshal(info.Request)
+	if err != nil {
+		result["reason"] = "invalid_request"
+		return
+	}
+	snapshot := adaptiveRequestContext(body, config.MaxChars)
+	key := adaptiveConversationKey(c, info, config, body)
+	if !snapshot.hasTaskEvidence() {
+		if key != "" {
+			service.ClearAdaptiveReasoningDecision(c.Request.Context(), key)
+		}
+		result["reason"] = "insufficient_context"
+		return
+	}
 	preparedKey := fmt.Sprintf("adaptive_reasoning_prepared:%d", info.ChannelId)
 	if previous, exists := c.Get(preparedKey); exists {
 		if decision, ok := previous.(service.AdaptiveReasoningDecision); ok {
@@ -83,16 +114,9 @@ func prepareAdaptiveReasoning(c *gin.Context, info *relaycommon.RelayInfo) {
 			return
 		}
 	}
-	body, err := common.Marshal(info.Request)
-	if err != nil {
-		result["reason"] = "invalid_request"
-		return
-	}
-	snapshot := adaptiveRequestContext(body, config.MaxChars)
-	key := adaptiveConversationKey(c, info, config, body)
 	var decision service.AdaptiveReasoningDecision
 	var reused bool
-	if key != "" && !snapshot.newUser {
+	if key != "" && !snapshot.newUser && !snapshot.Partial {
 		decision, reused = service.TakeAdaptiveReasoningDecision(c.Request.Context(), key, snapshot.userHash, snapshot.failureHash)
 	}
 	if reused && !slices.Contains(config.Efforts, decision.Effort) {
@@ -109,7 +133,7 @@ func prepareAdaptiveReasoning(c *gin.Context, info *relaycommon.RelayInfo) {
 		}
 		windows := make(map[string]string)
 		for _, count := range []int{1, 2, 5, 10} {
-			if count <= config.MaxReuseGenerations {
+			if count <= config.MaxReuseGenerations && (!snapshot.Partial || count == 1) {
 				windows[strconv.Itoa(count)] = fmt.Sprintf("Keep this decision for %d generations including the upcoming generation", count)
 			}
 		}
@@ -133,7 +157,7 @@ func prepareAdaptiveReasoning(c *gin.Context, info *relaycommon.RelayInfo) {
 			result["status"], result["reason"] = "error", "invalid_decision"
 			return
 		}
-		if key == "" {
+		if key == "" || snapshot.Partial {
 			count = 1
 		}
 		decision = service.AdaptiveReasoningDecision{Effort: effort, Generations: count, Remaining: count - 1, UserHash: snapshot.userHash, FailureHash: snapshot.failureHash, RequestID: fmt.Sprint(result["request_id"])}
@@ -141,7 +165,7 @@ func prepareAdaptiveReasoning(c *gin.Context, info *relaycommon.RelayInfo) {
 		if len(encoded) <= 8192 {
 			decision.Answers, _ = result["answers"].(map[string]any)
 		}
-		if key != "" {
+		if key != "" && !snapshot.Partial {
 			service.StoreAdaptiveReasoningDecision(c.Request.Context(), key, decision)
 		}
 	}
@@ -190,7 +214,8 @@ func adaptiveRequestContext(body []byte, maxChars int) adaptiveTaskContext {
 		items = gjson.GetBytes(body, "input")
 	}
 	if items.Type == gjson.String {
-		state.Request, state.truncated = adaptiveTextLimit(items.Str, maxChars)
+		state.Request, state.truncated = adaptiveTextLimit(strings.TrimSpace(items.Str), maxChars)
+		state.Partial = state.Request == ""
 		state.newUser, state.userHash = true, common.Sha1([]byte(items.Str))
 		return state
 	}
@@ -207,17 +232,7 @@ func adaptiveRequestContext(body []byte, maxChars int) adaptiveTaskContext {
 			}
 			continue
 		}
-		content := item.Get("content")
-		text := content.Str
-		if content.IsArray() {
-			var parts []string
-			for _, part := range content.Array() {
-				if slices.Contains([]string{"text", "input_text", "output_text"}, part.Get("type").Str) {
-					parts = append(parts, part.Get("text").Str)
-				}
-			}
-			text = strings.Join(parts, "\n")
-		}
+		text := adaptiveContentText(item.Get("content"))
 		if role == "user" {
 			userCount++
 			state.Request = text
@@ -231,25 +246,29 @@ func adaptiveRequestContext(body []byte, maxChars int) adaptiveTaskContext {
 			state.newUser = false
 		}
 		calls := item.Get("tool_calls").Array()
-		if kind == "function_call" {
+		if kind == "function_call" || kind == "custom_tool_call" {
 			calls = append(calls, item)
 		}
 		for _, call := range calls {
 			id, name, args := call.Get("id").Str, call.Get("function.name").Str, call.Get("function.arguments").Str
 			if call.Get("type").Str == "function_call" {
 				id, name, args = call.Get("call_id").Str, call.Get("name").Str, call.Get("arguments").Str
+			} else if call.Get("type").Str == "custom_tool_call" {
+				id, name, args = call.Get("call_id").Str, call.Get("name").Str, call.Get("input").Str
+			} else if call.Get("type").Str == "custom" {
+				name, args = call.Get("custom.name").Str, call.Get("custom.input").Str
 			}
 			toolIndices[id] = len(tools)
 			tools = append(tools, adaptiveToolContext{Name: name, Arguments: args})
 			state.newUser = false
 		}
-		if role == "tool" || kind == "function_call_output" {
+		if role == "tool" || kind == "function_call_output" || kind == "custom_tool_call_output" {
 			id, output := item.Get("tool_call_id").Str, text
-			if kind == "function_call_output" {
+			if kind == "function_call_output" || kind == "custom_tool_call_output" {
 				id = item.Get("call_id").Str
 				out := item.Get("output")
-				output = out.Str
-				if out.Type != gjson.String {
+				output = adaptiveContentText(out)
+				if out.IsObject() {
 					output = out.Raw
 				}
 			}
@@ -275,7 +294,6 @@ func adaptiveRequestContext(body []byte, maxChars int) adaptiveTaskContext {
 		state.Progress = state.Progress[len(state.Progress)-3:]
 		state.truncated = true
 	}
-	state.Partial = state.Request == ""
 	remaining := maxChars
 	state.Request = adaptiveContextPart(state.Request, min(remaining, maxChars/3), &remaining, &state.truncated)
 	for i := range state.Progress {
@@ -287,7 +305,24 @@ func adaptiveRequestContext(body []byte, maxChars int) adaptiveTaskContext {
 		tools[i].Output = adaptiveContextPart(tools[i].Output, min(remaining, 2000), &remaining, &state.truncated)
 	}
 	state.Tools = tools
+	state.Partial = strings.TrimSpace(state.Request) == ""
 	return state
+}
+
+// 消息和工具结果只提取公开文本，不把图片或其他非文本内容传给评估模型。
+func adaptiveContentText(content gjson.Result) string {
+	if content.Type == gjson.String {
+		return strings.TrimSpace(content.Str)
+	}
+	var parts []string
+	if content.IsArray() {
+		for _, part := range content.Array() {
+			if slices.Contains([]string{"text", "input_text", "output_text"}, part.Get("type").Str) {
+				parts = append(parts, part.Get("text").Str)
+			}
+		}
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n"))
 }
 
 func adaptiveContextPart(text string, limit int, remaining *int, truncated *bool) string {

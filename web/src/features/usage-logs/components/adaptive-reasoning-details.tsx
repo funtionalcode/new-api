@@ -53,6 +53,10 @@ export function AdaptiveReasoningDetails(props: {
     )
   } else if (reason === 'timeout_or_cancelled') {
     reason = t('Evaluation timed out or was cancelled.')
+  } else if (reason === 'insufficient_context') {
+    reason = t(
+      'No task context was available. The original reasoning effort was kept.'
+    )
   }
   let status = t('Error')
   if (decision.status === 'success') status = t('Success')
