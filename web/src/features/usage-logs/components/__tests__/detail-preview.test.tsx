@@ -144,6 +144,78 @@ test('keeps log details open when the parent refreshes with unchanged data', asy
   expect(screen.getByRole('dialog')).toBeVisible()
 })
 
+test.each([false, true])(
+  'Jev decisions are visible in request details for admin=%s',
+  async (isAdmin) => {
+    const preview = renderPreview(
+      {
+        typesafe: [
+          {
+            stage: 'adaptive_reasoning',
+            model: 'jev-latest',
+            status: 'success',
+            effort: 'low',
+            requested_effort: 'high',
+            generations: 2,
+            remaining: 0,
+            source: 'cache',
+            applied: true,
+            answers: {
+              effort: { type: 'choice', choice: 'low', confidence: 0.95 },
+            },
+          },
+        ],
+      },
+      isAdmin
+    )
+    fireEvent.click(preview)
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('Jev reasoning evaluation')).toBeVisible()
+    expect(within(dialog).getByText('jev-latest')).toBeVisible()
+    expect(within(dialog).getByText('Applied')).toBeVisible()
+    expect(within(dialog).getByText('Cached')).toBeVisible()
+    expect(within(dialog).getByText('low', { exact: true })).toBeVisible()
+    const details = within(dialog)
+      .getByText('View evaluation details')
+      .closest('details')
+    if (!details) throw new Error('Evaluation answers must be expandable')
+    expect(details).not.toHaveAttribute('open')
+    fireEvent.click(within(dialog).getByText('View evaluation details'))
+    expect(details).toHaveAttribute('open')
+    expect(within(details).getByText(/"confidence": 0.95/)).toBeVisible()
+  }
+)
+
+test('Jev permission failures explain why the original effort was kept', async () => {
+  fireEvent.click(
+    renderPreview(
+      {
+        typesafe: [
+          {
+            stage: 'adaptive_reasoning',
+            model: 'jev-latest',
+            status: 'skipped',
+            reason: 'channel_unavailable_or_forbidden',
+            requested_effort: 'high',
+            applied: false,
+          },
+        ],
+      },
+      false
+    )
+  )
+  const dialog = await screen.findByRole('dialog')
+  expect(within(dialog).getByText('Original effort kept')).toBeVisible()
+  expect(
+    within(dialog).getByText(
+      'The evaluation channel is unavailable or you do not have access. No evaluation was run.'
+    )
+  ).toBeVisible()
+  expect(
+    within(dialog).queryByText('View evaluation details')
+  ).not.toBeInTheDocument()
+})
+
 test.each([
   {
     name: 'fixed expression zero price',

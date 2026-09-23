@@ -62,6 +62,13 @@ func SanitizeTypeSafeResults(raw any) []map[string]any {
 			}
 			summary["answers"] = copied
 		}
+		if item["stage"] == "adaptive_reasoning" {
+			for _, key := range []string{"effort", "requested_effort", "generations", "remaining", "source", "applied"} {
+				if value, exists := item[key]; exists {
+					summary[key] = value
+				}
+			}
+		}
 		if len(summary) == 0 {
 			continue
 		}

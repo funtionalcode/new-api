@@ -1227,6 +1227,22 @@ func (channel *Channel) ValidateSettings() error {
 	if err := channelParams.ValidateHTTPTransport(); err != nil {
 		return err
 	}
+	if err := channelParams.AdaptiveReasoning.Validate(); err != nil {
+		return err
+	}
+	if cfg := channelParams.AdaptiveReasoning; cfg != nil && cfg.Enabled {
+		switch channel.Type {
+		case constant.ChannelTypeOpenAI, constant.ChannelTypeCodex, constant.ChannelTypeCodexChat, constant.ChannelTypeNewAPI, constant.ChannelTypeSub2API, constant.ChannelTypeXai:
+		default:
+			return fmt.Errorf("adaptive reasoning requires an OpenAI-compatible channel")
+		}
+		if channelParams.PassThroughBodyEnabled {
+			return fmt.Errorf("adaptive reasoning cannot be combined with request body passthrough")
+		}
+		if cfg.ChannelID == channel.Id {
+			return fmt.Errorf("adaptive reasoning must use a separate TypeSafe channel")
+		}
+	}
 	channelOtherSettings := &dto.ChannelOtherSettings{}
 	if channel.OtherSettings != "" {
 		err := common.UnmarshalJsonStr(channel.OtherSettings, channelOtherSettings)

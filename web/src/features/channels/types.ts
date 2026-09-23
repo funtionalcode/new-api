@@ -98,6 +98,7 @@ export interface ChannelSettings {
   proxy?: string
   pass_through_body_enabled?: boolean
   cursor_agent_serial_execution?: boolean
+  adaptive_reasoning?: import('./lib/adaptive-reasoning').AdaptiveReasoningConfig
   responses_websocket_enabled?: boolean
   system_prompt?: string
   system_prompt_override?: boolean

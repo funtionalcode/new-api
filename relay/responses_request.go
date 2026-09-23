@@ -79,6 +79,11 @@ func PrepareResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, req *d
 		}
 	}
 
+	jsonData, err = relaycommon.ApplyAdaptiveReasoning(jsonData, info)
+	if err != nil {
+		return nil, nil, nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+	}
+
 	logger.LogDebug(c, "requestBody: %s", jsonData)
 	body, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
 	if err != nil {

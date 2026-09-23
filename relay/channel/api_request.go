@@ -496,6 +496,10 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
 	ApplyUpstreamBodyMetadata(req, requestBody)
+	if info.RelayMode == constant.RelayModeTypeSafe {
+		// 评估请求必须遵循调用方设置的超时，避免阻塞主模型请求。
+		req = req.WithContext(c.Request.Context())
+	}
 	headers := req.Header
 	err = a.SetupRequestHeader(c, &headers, info)
 	if err != nil {

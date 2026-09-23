@@ -236,6 +236,7 @@ import {
 } from '../model-mapping-editor'
 import { ModelRedirectPanel } from '../model-redirect-panel'
 import { ResponsesWebSocketSetting } from '../responses-websocket-setting'
+import { AdaptiveReasoningSettings } from '../adaptive-reasoning-settings'
 import { UpstreamModelSelection } from '../upstream-model-selection'
 import {
   ChannelConfiguration,
@@ -305,6 +306,7 @@ const SENSITIVE_FORM_FIELDS = [
   'http2_connection_shards',
   'pass_through_body_enabled',
   'responses_websocket_enabled',
+  'adaptive_reasoning',
   'system_prompt',
   'system_prompt_override',
   'allow_service_tier',
@@ -4767,6 +4769,10 @@ export function ChannelMutateDrawer({
                 disabled={sensitiveLocked}
                 className='space-y-4 disabled:opacity-60'
               >
+                <AdaptiveReasoningSettings
+                  channelType={currentType}
+                  disabled={sensitiveLocked || isSubmitting}
+                />
                 <ResponsesWebSocketSetting
                   channelType={currentType}
                   disabled={sensitiveLocked || isSubmitting}

@@ -58,6 +58,11 @@ func RequestPolicy(c *gin.Context) *RequestPolicyState {
 			return value.(*RequestPolicyState)
 		}
 	}
+	return ResetRequestPolicy(c)
+}
+
+// ResetRequestPolicy 为独立子请求建立路由状态，避免共享主请求的成功标记。
+func ResetRequestPolicy(c *gin.Context) *RequestPolicyState {
 	state := &RequestPolicyState{StartedAt: time.Now()}
 	if c != nil {
 		c.Set(requestPolicyContextKey, state)

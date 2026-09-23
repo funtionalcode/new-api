@@ -104,6 +104,7 @@ import { USAGE_BILLING_PATH, type LogOtherData } from '../../types'
 import { ResponseModelDetails } from '../model-badge'
 import { PluginAuthorLink } from '../plugin-author-link'
 import { TypeSafeIODetails } from '../typesafe-io-details'
+import { AdaptiveReasoningDetails } from '../adaptive-reasoning-details'
 import { DetailRow, DetailSection } from './log-detail-layout'
 
 // Maps a channel-update changed-field token (as recorded by the backend audit)
@@ -1014,6 +1015,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
           </DetailSection>
         )}
 
+        <AdaptiveReasoningDetails results={typesafeResults} />
         {(typesafeStages.before || typesafeStages.after) && (
           <div className='space-y-2'>
             <h4 className='text-sm font-medium'>{t('TypeSafe evaluations')}</h4>

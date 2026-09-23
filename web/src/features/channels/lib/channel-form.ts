@@ -33,6 +33,12 @@ import {
 } from '../constants'
 import type { Channel, UpdateChannelRequest } from '../types'
 import {
+  adaptiveReasoningSchema,
+  ADAPTIVE_REASONING_DEFAULTS,
+  readAdaptiveReasoning,
+  supportsAdaptiveReasoning,
+} from './adaptive-reasoning'
+import {
   CHANNEL_TYPE_ADVANCED_CUSTOM,
   advancedCustomConfigUsesRelativeUpstreamPath,
   hasValidAdvancedCustomModelListRoute,
@@ -273,6 +279,7 @@ export const channelFormSchema = z
     pass_through_body_enabled: z.boolean().optional(),
     cursor_agent_serial_execution: z.boolean().optional(),
     responses_websocket_enabled: z.boolean().optional(),
+    adaptive_reasoning: adaptiveReasoningSchema.optional(),
     system_prompt: z.string().optional(),
     system_prompt_override: z.boolean().optional(),
     // Type-specific settings (stored in settings JSON)
@@ -404,6 +411,18 @@ export const channelFormSchema = z
       )
     }
 
+    if (
+      data.adaptive_reasoning?.enabled &&
+      supportsAdaptiveReasoning(data.type) &&
+      data.pass_through_body_enabled
+    ) {
+      addRequiredIssue(
+        ctx,
+        'adaptive_reasoning',
+        'Disable request body passthrough to use adaptive reasoning'
+      )
+    }
+
     const protocol = normalizeHttpProtocol(data.http_protocol)
     const shards = data.http2_connection_shards ?? 1
     if (shards < 1 || shards > MAX_HTTP2_CONNECTION_SHARDS) {
@@ -466,6 +485,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   pass_through_body_enabled: false,
   cursor_agent_serial_execution: false,
   responses_websocket_enabled: false,
+  adaptive_reasoning: { ...ADAPTIVE_REASONING_DEFAULTS },
   system_prompt: '',
   system_prompt_override: false,
   // Type-specific settings
@@ -511,6 +531,7 @@ export function transformChannelToFormDefaults(
     pass_through_body_enabled: false,
     cursor_agent_serial_execution: false,
     responses_websocket_enabled: false,
+    adaptive_reasoning: { ...ADAPTIVE_REASONING_DEFAULTS },
     system_prompt: '',
     system_prompt_override: false,
   }
@@ -523,6 +544,7 @@ export function transformChannelToFormDefaults(
         parsed.http2_connection_shards
       )
       extraSettings = {
+        adaptive_reasoning: readAdaptiveReasoning(parsed.adaptive_reasoning),
         task_plugin_key: parsed.task_plugin_key || '',
         task_extend_plugin_keys: readTaskExtendPluginKeys(channel.type, parsed),
         force_format: parsed.force_format || false,
@@ -662,6 +684,12 @@ export function buildSettingJSON(formData: ChannelFormValues): string {
       formData.type === CHANNEL_TYPE_NEW_API &&
       formData.task_extend_plugin_keys?.length
         ? formData.task_extend_plugin_keys
+        : undefined,
+    adaptive_reasoning:
+      supportsAdaptiveReasoning(formData.type) &&
+      (formData.adaptive_reasoning?.enabled ||
+        formData.adaptive_reasoning?.channel_id)
+        ? formData.adaptive_reasoning
         : undefined,
     force_format: formData.force_format || false,
     thinking_to_content: formData.thinking_to_content || false,

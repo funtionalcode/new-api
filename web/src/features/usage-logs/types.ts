@@ -138,6 +138,12 @@ export interface TypeSafeEvaluationResult {
   parent_request_id?: string
   answers?: Record<string, unknown>
   usage?: Record<string, unknown>
+  effort?: string
+  requested_effort?: string
+  generations?: number
+  remaining?: number
+  source?: 'evaluation' | 'cache' | 'request_retry'
+  applied?: boolean
 }
 
 export interface LogOtherData {

@@ -61,6 +61,7 @@ const CONFIGURATION_BLOCKS = {
       'thinking_to_content',
       'pass_through_body_enabled',
       'responses_websocket_enabled',
+      'adaptive_reasoning',
       'ollama_openai_chat',
       'system_prompt',
       'system_prompt_override',
@@ -150,6 +151,7 @@ export function getChannelConfigurationState(
       hasConfiguredJson(values.param_override) ||
       hasConfiguredJson(values.header_override),
     requestProcessing: Boolean(
+      values.adaptive_reasoning?.enabled ||
       (values.type === 1 && values.force_format) ||
       values.thinking_to_content ||
       (values.type !== CHANNEL_TYPE_ADVANCED_CUSTOM &&

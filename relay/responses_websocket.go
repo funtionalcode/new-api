@@ -218,6 +218,7 @@ func (s *responsesWSSession) runRequest(state *responsesWSCallState, message []b
 	request.ContentLength = int64(len(body))
 	request.Header.Set("Content-Type", "application/json")
 	apiErr = s.runner(request, requestID, func(c *gin.Context) *types.NewAPIError {
+		c.Set("adaptive_reasoning_ws_session", s.requestID)
 		if parseErr != nil {
 			return newResponsesWSInvalidRequestError(parseErr)
 		}

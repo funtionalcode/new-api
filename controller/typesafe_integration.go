@@ -1,7 +1,9 @@
 package controller
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -35,6 +37,7 @@ func (w *typeSafeResponseWriter) WriteString(text string) (int, error) { return 
 func prepareTypeSafeIntegration(c *gin.Context, info *relaycommon.RelayInfo) {
 	info.TypeSafeAfter, info.TypeSafeObserve = nil, nil
 	info.InitChannelMeta(c)
+	prepareAdaptiveReasoning(c, info)
 	raw, exists := info.ParamOverride["_typesafe"]
 	if !exists || info.RelayFormat == types.RelayFormatTypeSafe {
 		return
@@ -90,42 +93,61 @@ func prepareTypeSafeIntegration(c *gin.Context, info *relaycommon.RelayInfo) {
 	}
 }
 
-func evaluateTypeSafeStage(c *gin.Context, parent *relaycommon.RelayInfo, config dto.TypeSafeIntegration, stage string, questions map[string]dto.TypeSafeQuestion, state map[string]any, truncated bool) {
-	result := map[string]any{"stage": stage, "channel_id": config.ChannelID, "model": config.Model, "status": "error", "truncated": truncated}
-	parent.TypeSafeResults = append(parent.TypeSafeResults, result)
+func typeSafeEvaluationChannel(c *gin.Context, parent *relaycommon.RelayInfo, config dto.TypeSafeIntegration) (*model.Channel, string) {
 	if parent.UserSetting.ModelLimitsEnabled && !model.IsModelAllowedByUserLimit(config.Model, model.BuildUserModelLimitMap(model.NormalizeUserModelLimits(parent.UserSetting.ModelLimits))) {
-		result["reason"] = "model_not_allowed"
-		return
+		return nil, "model_not_allowed"
 	}
 	if common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled) {
 		value, _ := common.GetContextKey(c, constant.ContextKeyTokenModelLimit)
 		limits, _ := value.(map[string]bool)
 		if !model.IsModelAllowedByUserLimit(config.Model, limits) {
-			result["reason"] = "model_not_allowed"
-			return
+			return nil, "model_not_allowed"
 		}
 	}
 	target, err := model.GetChannelById(config.ChannelID, true)
 	if err != nil || target == nil || target.Type != constant.ChannelTypeTypeSafe || target.Status != common.ChannelStatusEnabled || !target.IsOpenToUser(parent.UserId) {
-		result["reason"] = "channel_unavailable_or_forbidden"
-		return
+		return nil, "channel_unavailable_or_forbidden"
 	}
 	if !common.StringsContains(target.GetModels(), config.Model) || !common.StringsContains(strings.Split(target.Group, ","), parent.UsingGroup) {
-		result["reason"] = "model_or_group_not_allowed"
-		return
+		return nil, "model_or_group_not_allowed"
 	}
+	return target, ""
+}
+
+func evaluateTypeSafeStage(c *gin.Context, parent *relaycommon.RelayInfo, config dto.TypeSafeIntegration, stage string, questions map[string]dto.TypeSafeQuestion, state map[string]any, truncated bool) map[string]any {
+	result := map[string]any{"stage": stage, "channel_id": config.ChannelID, "model": config.Model, "status": "error", "truncated": truncated}
+	parent.TypeSafeResults = append(parent.TypeSafeResults, result)
+	target, reason := typeSafeEvaluationChannel(c, parent, config)
+	if reason != "" {
+		result["reason"] = reason
+		return result
+	}
+	var err error
 	request := &dto.TypeSafeRequest{Model: config.Model, Questions: questions}
 	request.State, err = common.Marshal(state)
 	if err != nil || helper.ValidateTypeSafeRequest(request) != nil {
 		result["reason"] = "invalid_questions"
-		return
+		return result
 	}
 	ctx, cancel := context.WithTimeout(c.Request.Context(), time.Duration(config.TimeoutMS)*time.Millisecond)
 	defer cancel()
 	recorder := httptest.NewRecorder()
 	child, _ := gin.CreateTestContext(recorder)
 	child.Keys = c.Copy().Keys
+	delete(child.Keys, common.KeyBodyStorage)
+	delete(child.Keys, common.KeyRequestBody)
+	delete(child.Keys, string(constant.ContextKeyChannelConstraints))
+	service.ResetRequestPolicy(child)
 	child.Request = c.Request.Clone(ctx)
+	requestBody, err := common.Marshal(request)
+	if err != nil {
+		result["reason"] = "request_setup_failed"
+		return result
+	}
+	child.Request.Body = io.NopCloser(bytes.NewReader(requestBody))
+	child.Request.ContentLength = int64(len(requestBody))
+	child.Request.Header.Set("Content-Type", "application/json")
+	defer common.CleanupBodyStorage(child)
 	url := *child.Request.URL
 	url.Path, url.RawPath, url.RawQuery = "/v1/systemone", "", ""
 	child.Request.URL = &url
@@ -136,12 +158,12 @@ func evaluateTypeSafeStage(c *gin.Context, parent *relaycommon.RelayInfo, config
 	child.Set("use_channel", []string{})
 	if apiErr := middleware.SetupContextForSelectedChannel(child, target, config.Model); apiErr != nil {
 		result["reason"] = "channel_setup_failed"
-		return
+		return result
 	}
 	childInfo, err := relaycommon.GenRelayInfo(child, types.RelayFormatTypeSafe, request, nil)
 	if err != nil {
 		result["reason"] = "request_setup_failed"
-		return
+		return result
 	}
 	childInfo.InitChannelMeta(child)
 	childInfo.TypeSafeResults = []map[string]any{{"stage": stage, "parent_request_id": parent.RequestId, "parent_channel_id": parent.ChannelId}}
@@ -149,19 +171,19 @@ func evaluateTypeSafeStage(c *gin.Context, parent *relaycommon.RelayInfo, config
 	tokens, err := service.EstimateRequestToken(child, meta, childInfo)
 	if err != nil {
 		result["reason"] = "token_estimate_failed"
-		return
+		return result
 	}
 	childInfo.SetEstimatePromptTokens(tokens)
 	price, err := helper.ModelPriceHelper(child, childInfo, tokens, meta)
 	if err != nil {
 		result["reason"] = "pricing_unavailable"
-		return
+		return result
 	}
 	if !price.FreeModel {
 		childInfo.ForcePreConsume = true
 		if apiErr := service.PreConsumeBilling(child, price.QuotaToPreConsume, childInfo); apiErr != nil {
 			result["reason"] = "insufficient_quota"
-			return
+			return result
 		}
 	}
 	if apiErr := relay.TypeSafeHelper(child, childInfo); apiErr != nil {
@@ -172,7 +194,7 @@ func evaluateTypeSafeStage(c *gin.Context, parent *relaycommon.RelayInfo, config
 		if ctx.Err() != nil {
 			result["reason"] = "timeout_or_cancelled"
 		}
-		return
+		return result
 	}
 	var response struct {
 		Answers map[string]any `json:"answers"`
@@ -180,7 +202,8 @@ func evaluateTypeSafeStage(c *gin.Context, parent *relaycommon.RelayInfo, config
 	}
 	if common.Unmarshal(recorder.Body.Bytes(), &response) != nil {
 		result["reason"] = "invalid_response"
-		return
+		return result
 	}
 	result["status"], result["request_id"], result["answers"], result["usage"] = "success", childID, response.Answers, response.Usage
+	return result
 }
