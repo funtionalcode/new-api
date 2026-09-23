@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Edit, Loader2, Plus, RefreshCw, Trash2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -127,7 +127,21 @@ type ProviderConfig = {
   curlPlaceholderKey: string
 }
 
+const TypeSafeUsageCells = lazy(() =>
+  import('./components/typesafe-usage-cells').then((module) => ({
+    default: module.TypeSafeUsageCells,
+  }))
+)
+
 const providerConfigs: Record<QuotaProvider, ProviderConfig> = {
+  typesafe: {
+    provider: 'typesafe',
+    titleKey: 'TypeSafe Usage',
+    descriptionKey:
+      'Track TypeSafe console usage from saved curl requests. Statistics may be delayed.',
+    curlPlaceholderKey:
+      'Paste the curl request for https://console.typesafe.ai/api/usage from browser developer tools',
+  },
   glm: {
     provider: 'glm',
     titleKey: 'GLM Quota',
@@ -876,6 +890,19 @@ export function VolcengineUsageCells(props: {
 }
 
 function QuotaUsageCells({ binding }: { binding: QuotaBinding }) {
+  if ('last_buckets' in binding) {
+    return (
+      <Suspense
+        fallback={
+          <TableCell>
+            <Loader2 className='size-4 animate-spin' />
+          </TableCell>
+        }
+      >
+        <TypeSafeUsageCells binding={binding} />
+      </Suspense>
+    )
+  }
   if (isGLMBinding(binding)) {
     return <GLMUsageCells binding={binding} />
   }
@@ -896,6 +923,10 @@ function QuotaUsageCells({ binding }: { binding: QuotaBinding }) {
 
 function QuotaUsageHeaderCells({ provider }: { provider: QuotaProvider }) {
   const { t } = useTranslation()
+
+  if (provider === 'typesafe') {
+    return <TableHead>{t('Usage')}</TableHead>
+  }
 
   if (provider === 'glm') {
     return (
@@ -942,6 +973,7 @@ function QuotaUsageHeaderCells({ provider }: { provider: QuotaProvider }) {
 }
 
 function quotaTableColumnCount(provider: QuotaProvider): number {
+  if (provider === 'typesafe') return 6
   if (provider === 'glm') return 7
   if (provider === 'volcengine') return 6
   if (provider === 'deepseek') return 10

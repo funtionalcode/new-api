@@ -96,7 +96,7 @@ export function UsageLogModelCell(props: {
     cursorAgentLifecycle === 'create' ? AddCircleIcon : Delete02Icon
 
   return (
-    <div className='flex w-fit max-w-full items-center gap-1'>
+    <div className='flex w-fit max-w-full min-w-0 flex-wrap items-center gap-1'>
       <ModelBadge
         modelName={modelInfo.name}
         actualModel={modelInfo.actualModel}

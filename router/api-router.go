@@ -388,6 +388,15 @@ func SetApiRouter(router *gin.Engine) {
 			}
 		}
 
+		typeSafeUsageRoute := apiRouter.Group("/typesafe-usage", middleware.AdminAuth())
+		{
+			typeSafeUsageRoute.GET("/bindings", controller.GetTypeSafeUsageBindings)
+			typeSafeUsageRoute.POST("/bindings", controller.SaveTypeSafeUsageBinding)
+			typeSafeUsageRoute.PUT("/bindings/:id", controller.SaveTypeSafeUsageBinding)
+			typeSafeUsageRoute.DELETE("/bindings/:id", controller.DeleteTypeSafeUsageBinding)
+			typeSafeUsageRoute.POST("/bindings/:id/refresh-usage", controller.RefreshTypeSafeUsageBinding)
+		}
+
 		deepSeekQuotaRoute := apiRouter.Group("/deepseek-quota")
 		{
 			deepSeekQuotaRoute.GET("/bindings", middleware.UserAuth(), controller.GetDeepSeekQuotaBindings)

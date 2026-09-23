@@ -26,7 +26,41 @@ import {
 } from '@/features/channels/lib/model-categories'
 import { getLobeIconNames } from '@/lib/lobe-icon'
 
+import { usageLogSchema } from '../../data/schema'
 import { ModelBadge } from '../model-badge'
+import { UsageLogModelCell } from '../usage-log-model-cell'
+
+it('响应模型提示与多个标记同时出现时，允许在模型列内换行', () => {
+  const log = usageLogSchema.parse({
+    id: 1,
+    user_id: 1,
+    created_at: 1,
+    type: 2,
+    content: '',
+    model_name: 'gemini-3.8-flash-high',
+    prompt_tokens: 1980,
+    other: JSON.stringify({
+      reasoning_effort: 'high',
+      response_model: {
+        requested_model: 'gemini-3.8-flash-high',
+        upstream_model: 'gemini-3.8-flash-high',
+        returned_model: 'gemini-3.8-flash',
+      },
+    }),
+  })
+  const { container } = render(<UsageLogModelCell log={log} />)
+
+  expect(container.firstElementChild).toHaveClass(
+    'flex-wrap',
+    'max-w-full',
+    'min-w-0'
+  )
+  expect(screen.getByText('Response model: gemini-3.8-flash')).toBeVisible()
+  expect(screen.getByRole('img', { name: /Context Size/ })).toBeVisible()
+  expect(
+    screen.getByRole('img', { name: 'Reasoning Effort: high' })
+  ).toBeVisible()
+})
 
 const providers = [
   {

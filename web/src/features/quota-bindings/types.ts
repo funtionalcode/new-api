@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 export type QuotaProvider =
+  | 'typesafe'
   | 'glm'
   | 'deepseek'
   | 'kimi'
@@ -149,11 +150,26 @@ export type CursorQuotaBinding = QuotaBindingBase & {
 }
 
 export type QuotaBinding =
+  | TypeSafeUsageBinding
   | GLMQuotaBinding
   | DeepSeekQuotaBinding
   | KimiQuotaBinding
   | VolcengineQuotaBinding
   | CursorQuotaBinding
+
+export type TypeSafeUsageBucket = {
+  day: string
+  apiKeyId: string | null
+  apiKeyName: string | null
+  userId: string | null
+  requests: number
+  inputTokens: number
+  outputTokens: number
+}
+
+export type TypeSafeUsageBinding = QuotaBindingBase & {
+  last_buckets: string
+}
 
 export type QuotaBindingFormData = {
   id?: number

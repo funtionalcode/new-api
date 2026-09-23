@@ -28,6 +28,7 @@ import type {
 } from './types'
 
 const providerBasePath: Record<QuotaProvider, string> = {
+  typesafe: '/api/typesafe-usage',
   glm: '/api/glm-quota',
   deepseek: '/api/deepseek-quota',
   kimi: '/api/kimi-quota',

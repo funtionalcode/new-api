@@ -323,6 +323,7 @@ func generateDefaultSidebarConfigForRole(userRole int) string {
 		"authFiles":       true,
 		"glmQuota":        true,
 		"deepseekQuota":   true,
+		"typesafeUsage":   true,
 		"kimiQuota":       true,
 		"volcengineQuota": true,
 		"codexResets":     true,

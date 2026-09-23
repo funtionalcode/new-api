@@ -118,6 +118,12 @@ export function useSidebarData(): SidebarData {
             icon: ShieldCheck,
           },
           {
+            title: t('TypeSafe Usage'),
+            url: '/typesafe-usage',
+            icon: Gauge,
+            requiredRole: ROLE.ADMIN,
+          },
+          {
             title: t('Task Logs'),
             url: '/usage-logs/task',
             activeUrls: ['/usage-logs/drawing'],

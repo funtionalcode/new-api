@@ -371,6 +371,7 @@ func migrateDB() error {
 		&CliproxyAuthFileBinding{},
 		&GLMQuotaBinding{},
 		&DeepSeekQuotaBinding{},
+		&TypeSafeUsageBinding{},
 		&KimiQuotaBinding{},
 		&VolcengineQuotaBinding{},
 		&CursorQuotaBinding{},

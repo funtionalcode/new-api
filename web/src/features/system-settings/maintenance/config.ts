@@ -76,6 +76,7 @@ export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
     authFiles: true,
     glmQuota: true,
     deepseekQuota: true,
+    typesafeUsage: true,
     kimiQuota: true,
     volcengineQuota: true,
     cursorQuota: true,

@@ -140,6 +140,12 @@ export function SidebarModulesSection({
         title: t('DeepSeek Quota'),
         description: t('Track DeepSeek account quota usage.'),
       },
+      typesafeUsage: {
+        title: t('TypeSafe Usage'),
+        description: t(
+          'Track TypeSafe console usage from saved curl requests. Statistics may be delayed.'
+        ),
+      },
       kimiQuota: {
         title: t('Kimi Quota'),
         description: t('Track Kimi account quota usage.'),
