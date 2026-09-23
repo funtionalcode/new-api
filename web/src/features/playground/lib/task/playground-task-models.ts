@@ -31,7 +31,10 @@ export function isAudioTranscriptionModel(model: string): boolean {
 }
 
 export function getPlaygroundTaskModel(
-  mode: Exclude<PlaygroundMode, 'chat' | 'speech' | 'transcription'>,
+  mode: Exclude<
+    PlaygroundMode,
+    'chat' | 'speech' | 'transcription' | 'structured'
+  >,
   model: string
 ): string {
   if (mode === 'image' && isXAIVideoModel(model)) {
@@ -51,6 +54,10 @@ export function getPlaygroundGenerationMode(
 ): PlaygroundMode {
   if (mode !== 'chat') {
     return mode
+  }
+
+  if (/^(?:[^/]+\/)*jev(?:-|$)/i.test(model.trim())) {
+    return 'structured'
   }
 
   if (isXAIImageModel(model) || isQwenImage21Model(model)) {

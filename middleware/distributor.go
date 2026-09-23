@@ -906,8 +906,8 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		}
 		c.Set("relay_mode", relayMode)
 	}
-	if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") {
-		// playground chat completions
+	if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") || c.Request.URL.Path == "/pg/systemone" {
+		// 游乐场聊天和结构化调用沿用用户选择的分组。
 		req, err := getModelFromRequest(c)
 		if err != nil {
 			return nil, false, err

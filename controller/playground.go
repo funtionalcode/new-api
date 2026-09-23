@@ -13,6 +13,14 @@ import (
 )
 
 func Playground(c *gin.Context) {
+	relayPlayground(c, types.RelayFormatOpenAI)
+}
+
+func PlaygroundTypeSafe(c *gin.Context) {
+	relayPlayground(c, types.RelayFormatTypeSafe)
+}
+
+func relayPlayground(c *gin.Context, format types.RelayFormat) {
 	var newAPIError *types.NewAPIError
 
 	defer func() {
@@ -29,7 +37,7 @@ func Playground(c *gin.Context) {
 		return
 	}
 
-	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatOpenAI, nil, nil)
+	relayInfo, err := relaycommon.GenRelayInfo(c, format, nil, nil)
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 		return
@@ -52,5 +60,5 @@ func Playground(c *gin.Context) {
 	}
 	_ = middleware.SetupContextForToken(c, tempToken)
 
-	Relay(c, types.RelayFormatOpenAI)
+	Relay(c, format)
 }

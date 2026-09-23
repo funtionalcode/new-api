@@ -112,6 +112,9 @@ func (channel *Channel) SupportsRequestPath(requestPath string, requestModel str
 }
 
 func normalizeChannelRequestPath(requestPath string) string {
+	if requestPath == "/pg/systemone" {
+		return "/v1/systemone"
+	}
 	if strings.HasPrefix(requestPath, "/pg/chat/completions") {
 		return "/v1/chat/completions"
 	}

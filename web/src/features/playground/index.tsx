@@ -31,6 +31,8 @@ import {
 } from './api'
 import { PlaygroundChat } from './components/chat/playground-chat'
 import { PlaygroundInput } from './components/input/playground-input'
+import { PlaygroundModeTabs } from './components/input/playground-mode-tabs'
+import { JevPlayground } from './components/structured/jev-playground'
 import {
   useChatHandler,
   usePlaygroundConversation,
@@ -105,7 +107,7 @@ export function Playground() {
   const sendTaskMessages = useCallback(
     async (
       taskMessages: Message[],
-      taskMode: Exclude<PlaygroundMode, 'chat'>
+      taskMode: Exclude<PlaygroundMode, 'chat' | 'structured'>
     ) => {
       const promptMessage = getPreviousUserMessage(
         taskMessages,
@@ -256,6 +258,8 @@ export function Playground() {
         config.model
       )
 
+      if (effectiveMode === 'structured') return
+
       if (effectiveMode === 'chat') {
         sendChat(nextMessages)
         return
@@ -315,6 +319,41 @@ export function Playground() {
 
   const isBusy = isGenerating || isTaskGenerating
 
+  const handleModeChange = (nextMode: PlaygroundMode) => {
+    setMode(nextMode)
+    if (nextMode !== 'structured' && nextMode !== 'chat') return
+    const selectedMode = getPlaygroundGenerationMode('chat', config.model)
+    if (selectedMode === nextMode) return
+    if (nextMode === 'chat' && selectedMode !== 'structured') return
+    const matchingModel = models.find(
+      (model) => getPlaygroundGenerationMode('chat', model.value) === nextMode
+    )
+    if (matchingModel) updateConfig('model', matchingModel.value)
+  }
+
+  if (effectiveMode === 'structured') {
+    return (
+      <div className='min-h-0 flex-1 overflow-y-auto'>
+        <div className='mx-auto flex w-full max-w-4xl flex-col gap-4 px-2 py-4 md:px-4'>
+          <PlaygroundModeTabs
+            mode={effectiveMode}
+            onModeChange={handleModeChange}
+          />
+          <JevPlayground
+            key={userId}
+            model={config.model}
+            group={config.group}
+            models={models}
+            groups={groups}
+            isModelLoading={isLoadingModels}
+            onModelChange={(value) => updateConfig('model', value)}
+            onGroupChange={(value) => updateConfig('group', value)}
+          />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className='relative flex size-full min-h-0 flex-col overflow-hidden'>
       {/* Full-width scroll container: scrolling works even over side whitespace */}
@@ -349,7 +388,7 @@ export function Playground() {
           onGroupChange={(value) => updateConfig('group', value)}
           onConfigChange={updateConfig}
           onClearMessages={handleClearMessages}
-          onModeChange={setMode}
+          onModeChange={handleModeChange}
           onModelChange={(value) => updateConfig('model', value)}
           onParameterEnabledChange={updateParameterEnabled}
           onStop={

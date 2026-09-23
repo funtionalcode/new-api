@@ -16,13 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import {
-  ImageIcon,
-  MessageSquareIcon,
-  MicIcon,
-  VideoIcon,
-  Volume2Icon,
-} from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -36,7 +29,6 @@ import {
   usePromptInputAttachments,
   type PromptInputMessage,
 } from '@/components/ai-elements/prompt-input'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import {
   getPromptInputAttachments,
@@ -54,6 +46,7 @@ import type {
 } from '../../types'
 import { PlaygroundInputControls } from './playground-input-controls'
 import { PlaygroundInputTools } from './playground-input-tools'
+import { PlaygroundModeTabs } from './playground-mode-tabs'
 
 interface PlaygroundInputProps {
   config: PlaygroundConfig
@@ -168,34 +161,11 @@ export function PlaygroundInput({
 
   return (
     <div className='grid shrink-0 gap-4 px-1 md:pb-4'>
-      <Tabs
-        value={mode}
-        onValueChange={(value) => onModeChange(value as PlaygroundMode)}
-        className='px-1'
-      >
-        <TabsList>
-          <TabsTrigger value='chat'>
-            <MessageSquareIcon />
-            {t('Chat')}
-          </TabsTrigger>
-          <TabsTrigger value='image'>
-            <ImageIcon />
-            {t('Image')}
-          </TabsTrigger>
-          <TabsTrigger value='video'>
-            <VideoIcon />
-            {t('Video')}
-          </TabsTrigger>
-          <TabsTrigger value='speech'>
-            <Volume2Icon />
-            {t('TTS')}
-          </TabsTrigger>
-          <TabsTrigger value='transcription'>
-            <MicIcon />
-            {t('ASR')}
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <PlaygroundModeTabs
+        mode={mode}
+        onModeChange={onModeChange}
+        disabled={disabled}
+      />
       <PromptInput
         accept={mode === 'transcription' ? audioAccept : undefined}
         className='relative'

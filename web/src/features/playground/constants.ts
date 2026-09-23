@@ -39,6 +39,7 @@ export const API_ENDPOINTS = {
   VIDEO_GENERATIONS: '/pg/videos',
   AUDIO_SPEECH: '/pg/audio/speech',
   AUDIO_TRANSCRIPTIONS: '/pg/audio/transcriptions',
+  STRUCTURED: '/pg/systemone',
   USER_MODELS: '/api/user/models',
   USER_GROUPS: '/api/user/self/groups',
 } as const

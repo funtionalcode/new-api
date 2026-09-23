@@ -29,6 +29,7 @@ export type PlaygroundMode =
   | 'speech'
   | 'video'
   | 'transcription'
+  | 'structured'
 
 export interface PlaygroundAttachment {
   url?: string

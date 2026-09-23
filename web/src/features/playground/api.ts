@@ -20,6 +20,7 @@ import { api } from '@/lib/api'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { API_ENDPOINTS, CURSOR_AGENT_HEADERS } from './constants'
+import type { JevRequest } from './lib/structured/jev'
 import type {
   AudioTranscriptionRequest,
   AudioTranscriptionResponse,
@@ -34,6 +35,17 @@ import type {
   VideoGenerationRequest,
   VideoGenerationResponse,
 } from './types'
+
+export async function sendJevEvaluation(
+  payload: JevRequest,
+  signal?: AbortSignal
+): Promise<unknown> {
+  const res = await api.post(API_ENDPOINTS.STRUCTURED, payload, {
+    signal,
+    skipErrorHandler: true,
+  } as Record<string, unknown>)
+  return res.data
+}
 
 async function attachmentToBlobFile(
   request: AudioTranscriptionRequest
