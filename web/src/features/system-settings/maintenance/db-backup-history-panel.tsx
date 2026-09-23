@@ -84,8 +84,7 @@ const STATUS_VARIANT: Record<SystemTaskStatus, 'secondary' | 'destructive'> = {
 const STATUS_CLASS_NAME: Record<SystemTaskStatus, string> = {
   pending:
     'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
-  running:
-    'bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300',
+  running: 'bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300',
   succeeded:
     'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
   failed: '',
@@ -141,7 +140,8 @@ function taskHasDetail(task: DBBackupTask): boolean {
   if (task.error) return true
   if (task.result == null) return false
   if (typeof task.result === 'string') return task.result.trim() !== ''
-  if (typeof task.result === 'object') return Object.keys(task.result).length > 0
+  if (typeof task.result === 'object')
+    return Object.keys(task.result).length > 0
   return true
 }
 
@@ -183,21 +183,29 @@ function DBBackupDetailDialog({ task, open, onOpenChange }: DetailDialogProps) {
           <div className='space-y-4'>
             <div className='grid gap-3 sm:grid-cols-2'>
               <div className='space-y-1'>
-                <div className='text-muted-foreground text-xs'>{t('Status')}</div>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Status')}
+                </div>
                 <div className='text-sm font-medium'>{t(task.status)}</div>
               </div>
               <div className='space-y-1'>
-                <div className='text-muted-foreground text-xs'>{t('Trigger source')}</div>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Trigger source')}
+                </div>
                 <div className='text-sm'>{triggerSourceLabel(task, t)}</div>
               </div>
               <div className='space-y-1'>
-                <div className='text-muted-foreground text-xs'>{t('Executor')}</div>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Executor')}
+                </div>
                 <div className='font-mono text-xs break-all'>
                   {task.locked_by || '-'}
                 </div>
               </div>
               <div className='space-y-1'>
-                <div className='text-muted-foreground text-xs'>{t('Updated')}</div>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Updated')}
+                </div>
                 <div className='text-sm'>
                   {formatTimestampToDate(task.updated_at)}
                   <span className='text-muted-foreground ml-2 text-xs'>
@@ -213,7 +221,9 @@ function DBBackupDetailDialog({ task, open, onOpenChange }: DetailDialogProps) {
               </div>
               {backupResult?.host ? (
                 <div className='space-y-1'>
-                  <div className='text-muted-foreground text-xs'>{t('Host')}</div>
+                  <div className='text-muted-foreground text-xs'>
+                    {t('Host')}
+                  </div>
                   <div className='font-mono text-xs break-all'>
                     {backupResult.host}
                   </div>
@@ -233,7 +243,9 @@ function DBBackupDetailDialog({ task, open, onOpenChange }: DetailDialogProps) {
 
             {task.error ? (
               <div className='space-y-1'>
-                <div className='text-muted-foreground text-xs'>{t('Error')}</div>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Error')}
+                </div>
                 <pre className='bg-destructive/5 text-destructive max-h-40 overflow-auto rounded-md border p-3 text-xs whitespace-pre-wrap'>
                   {task.error}
                 </pre>
@@ -276,9 +288,15 @@ function DBBackupDetailDialog({ task, open, onOpenChange }: DetailDialogProps) {
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead className='text-xs'>{t('Type')}</TableHead>
-                            <TableHead className='text-xs'>{t('File')}</TableHead>
-                            <TableHead className='text-xs'>{t('Size')}</TableHead>
+                            <TableHead className='text-xs'>
+                              {t('Type')}
+                            </TableHead>
+                            <TableHead className='text-xs'>
+                              {t('File')}
+                            </TableHead>
+                            <TableHead className='text-xs'>
+                              {t('Size')}
+                            </TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -345,7 +363,7 @@ export function DBBackupHistoryPanel() {
   const historyQuery = useQuery({
     queryKey: DB_BACKUP_HISTORY_QUERY_KEY,
     queryFn: async () => {
-      const res = await listSystemTasks(HISTORY_LIMIT, 'db_backup')
+      const res = await listSystemTasks(HISTORY_LIMIT, { type: 'db_backup' })
       if (!res.success || !Array.isArray(res.data)) {
         throw new Error(res.message || t('Failed to load backup records.'))
       }
@@ -536,7 +554,10 @@ export function DBBackupHistoryPanel() {
                     <TableCell className='px-4 py-3 align-middle'>
                       <Badge
                         variant={STATUS_VARIANT[task.status]}
-                        className={cn('gap-1.5', STATUS_CLASS_NAME[task.status])}
+                        className={cn(
+                          'gap-1.5',
+                          STATUS_CLASS_NAME[task.status]
+                        )}
                       >
                         <span
                           className={cn(
@@ -603,7 +624,10 @@ export function DBBackupHistoryPanel() {
         }}
       />
 
-      <AlertDialog open={showTriggerConfirm} onOpenChange={setShowTriggerConfirm}>
+      <AlertDialog
+        open={showTriggerConfirm}
+        onOpenChange={setShowTriggerConfirm}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('Confirm database backup')}</AlertDialogTitle>

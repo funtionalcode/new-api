@@ -66,7 +66,7 @@ func TestParseResponseReturnsOpenAIVideoWithPublicTaskID(t *testing.T) {
 }
 
 func TestParseTaskResultMapsDoneResponse(t *testing.T) {
-	taskInfo, err := (&TaskAdaptor{}).ParseTaskResult([]byte(`{
+	taskInfo, err := (&TaskAdaptor{}).ParseTaskResult(nil, nil, []byte(`{
 		"status":"done",
 		"progress":100,
 		"video":{"url":"https://example.com/video.mp4"},

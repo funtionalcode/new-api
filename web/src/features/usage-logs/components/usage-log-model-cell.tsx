@@ -61,7 +61,11 @@ const REASONING_EFFORT_ICONS = {
   max: BrainCircuitIcon,
 } as const
 
-export function UsageLogModelCell(props: { log: UsageLog }) {
+export function UsageLogModelCell(props: {
+  log: UsageLog
+  wrapText?: boolean
+  onInspect?: () => void
+}) {
   const { t } = useTranslation()
   const other = parseLogOther(props.log.other)
   const modelInfo = formatModelName(props.log)
@@ -96,6 +100,9 @@ export function UsageLogModelCell(props: { log: UsageLog }) {
       <ModelBadge
         modelName={modelInfo.name}
         actualModel={modelInfo.actualModel}
+        responseModel={modelInfo.responseModel}
+        wrapText={props.wrapText}
+        onInspect={props.onInspect}
       />
       {contextSizeLabel ? (
         <TooltipProvider delay={0}>

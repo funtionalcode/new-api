@@ -21,6 +21,7 @@ import {
   BarChart3,
   Box,
   ChartNoAxesColumn,
+  ClipboardList,
   CreditCard,
   FileText,
   Files,
@@ -107,6 +108,11 @@ export function useSidebarData(): SidebarData {
             icon: FileText,
           },
           {
+            title: t('Audit Logs'),
+            url: '/usage-logs/audit',
+            icon: ClipboardList,
+          },
+          {
             title: t('TypeSafe evaluations'),
             url: '/typesafe-evaluations',
             icon: ShieldCheck,
@@ -168,6 +174,11 @@ export function useSidebarData(): SidebarData {
             title: t('Profile'),
             url: '/profile',
             icon: User,
+          },
+          {
+            title: t('Security & Access'),
+            url: '/security',
+            icon: ShieldCheck,
           },
         ],
       },

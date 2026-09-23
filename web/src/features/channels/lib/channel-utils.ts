@@ -59,6 +59,8 @@ export function getChannelTypeIcon(type: number): string {
     61: 'Sub2API', // Sub2API
     62: 'NewAPI', // New API
     63: 'Cursor', // Cursor Cloud Agents
+    67: 'Vllm',
+    68: 'SGLang',
     3: 'Azure', // Azure
 
     // Anthropic
@@ -107,7 +109,7 @@ export function getChannelTypeIcon(type: number): string {
     52: 'Vidu', // Vidu
     36: 'Suno', // SunoAPI
     55: 'OpenAI', // Sora
-    54: 'Doubao', // DoubaoVideo
+    54: 'Doubao', // Doubao
     56: 'Replicate', // Replicate
 
     // Tools & Platforms

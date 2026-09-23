@@ -73,13 +73,14 @@ func recordMiddlewareErrorLog(c *gin.Context, statusCode int, message string, er
 	if channelId == 0 {
 		channelId = common.GetContextKeyInt(c, constant.ContextKeyChannelId)
 	}
-	other := map[string]interface{}{
+	other := model.NewLogOther()
+	other.MergePublic(map[string]any{
 		"error_type":  "new_api_error",
 		"error_code":  errorCode,
 		"status_code": statusCode,
-	}
+	})
 	if c.Request != nil && c.Request.URL != nil {
-		other["request_path"] = c.Request.URL.Path
+		other.SetPublic("request_path", c.Request.URL.Path)
 	}
 	startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
 	useTimeSeconds := 0

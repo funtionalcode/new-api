@@ -1,12 +1,15 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { ModelStatus } from '@/features/model-status'
-import { getFreshModuleAccess } from '@/lib/nav-modules'
+import { getModuleAccessForGuard } from '@/lib/nav-modules'
 import { useAuthStore } from '@/stores/auth-store'
 
 export const Route = createFileRoute('/model-status/')({
-  beforeLoad: async ({ location }) => {
-    const access = await getFreshModuleAccess('modelStatus')
+  beforeLoad: async ({ location, context }) => {
+    const access = await getModuleAccessForGuard(
+      context.queryClient,
+      'modelStatus'
+    )
     if (!access.enabled) {
       throw redirect({ to: '/' })
     }

@@ -71,6 +71,7 @@
   "Describe the image to generate": "Describe the image to generate",
   "Describe the video to generate": "Describe the video to generate",
   "Distribution": "Distribution",
+  "Doubao": "Doubao",
   "Edit Binding": "Edit Binding",
   "Empty script keeps the current host file. Saving overwrites /usr/local/bin/backup-new-api-db.sh on next agent poll.": "Empty script keeps the current host file. Saving overwrites /usr/local/bin/backup-new-api-db.sh on next agent poll.",
   "Enable scheduled backup": "Enable scheduled backup",
@@ -139,6 +140,7 @@
   "Remove this reset from local history? A later sync may re-import it if the upstream source still lists the announcement.": "Remove this reset from local history? A later sync may re-import it if the upstream source still lists the announcement.",
   "Remove this reset from local history? It will stay removed even after later syncs from the upstream source.": "Remove this reset from local history? It will stay removed even after later syncs from the upstream source.",
   "Reset calendar": "Reset calendar",
+  "Responses WebSocket": "Responses WebSocket",
   "Retention count for weekly backups (1-52).": "Retention count for weekly backups (1-52).",
   "Sample value": "Sample value",
   "Save backup script": "Save backup script",
@@ -148,6 +150,7 @@
   "Search by username": "Search by username",
   "Search User": "Search User",
   "Selected User": "Selected User",
+  "SGLang": "SGLang",
   "Shortest": "Shortest",
   "Showing the default template. Saving will materialize it on the host agent.": "Showing the default template. Saving will materialize it on the host agent.",
   "Standard 5-field cron (minute hour day month weekday), local server time. Example: 0 3 * * 0 = every Sunday 03:00.": "Standard 5-field cron (minute hour day month weekday), local server time. Example: 0 3 * * 0 = every Sunday 03:00.",
@@ -186,5 +189,6 @@
   "Video generation timed out": "Video generation timed out",
   "Weekly backups to keep": "Weekly backups to keep",
   "When enabled, new-api enqueues a host backup on the cron schedule. The host agent still executes the dump.": "When enabled, new-api enqueues a host backup on the cron schedule. The host agent still executes the dump.",
-  "When enabled, the host agent materializes the saved script to a fixed path.": "When enabled, the host agent materializes the saved script to a fixed path."
+  "When enabled, the host agent materializes the saved script to a fixed path.": "When enabled, the host agent materializes the saved script to a fixed path.",
+  "Zhipu GLM": "Zhipu GLM"
 }

@@ -45,7 +45,13 @@ function renderDetails() {
 
 test('shows loading until permission check finishes, then supports retry after denial', async () => {
   const user = userEvent.setup()
-  const pending = Promise.withResolvers<TypeSafeEvaluationDetail>()
+  let rejectPending!: (reason: Error) => void
+  const pending = {
+    promise: new Promise<TypeSafeEvaluationDetail>((_resolve, reject) => {
+      rejectPending = reject
+    }),
+    reject: (reason: Error) => rejectPending(reason),
+  }
   vi.mocked(getTypeSafeEvaluationDetail).mockReturnValueOnce(pending.promise)
   renderDetails()
   expect(screen.getByRole('status')).toHaveTextContent('Loading')

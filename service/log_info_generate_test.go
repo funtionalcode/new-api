@@ -31,8 +31,8 @@ func TestGenerateTextOtherInfoMarksWebsocketTransport(t *testing.T) {
 
 	other := GenerateTextOtherInfo(ctx, relayInfo, 1, 1, 1, 0, 0, 0, -1)
 
-	require.Equal(t, true, other["ws"])
-	require.Equal(t, "websocket", other["transport"])
+	require.Equal(t, true, other.Snapshot()["ws"])
+	require.Equal(t, "websocket", other.Snapshot()["transport"])
 }
 
 func TestGenerateTextOtherInfoIncludesCursorAgentLifecycle(t *testing.T) {
@@ -52,7 +52,7 @@ func TestGenerateTextOtherInfoIncludesCursorAgentLifecycle(t *testing.T) {
 
 			other := GenerateTextOtherInfo(ctx, relayInfo, 1, 1, 1, 0, 0, 0, -1)
 
-			require.Equal(t, lifecycle, other["cursor_agent_lifecycle"])
+			require.Equal(t, lifecycle, other.Snapshot()["cursor_agent_lifecycle"])
 		})
 	}
 }
@@ -86,14 +86,14 @@ func TestGenerateTextOtherInfoIncludesSanitizedTypeSafe(t *testing.T) {
 
 	other := GenerateTextOtherInfo(ctx, relayInfo, 1, 1, 1, 0, 0, 0, -1)
 
-	summary, ok := other["typesafe"].([]map[string]any)
+	summary, ok := other.Snapshot()["typesafe"].([]map[string]any)
 	require.True(t, ok)
 	require.Len(t, summary, 1)
 	assert.Equal(t, "before", summary[0]["stage"])
 	assert.NotContains(t, summary[0], "channel_id")
 	assert.Equal(t, map[string]any{"check": map[string]any{"type": "noul", "noul": 0.9}}, summary[0]["answers"])
 
-	admin, ok := other["admin_info"].(map[string]interface{})
+	admin, ok := other.Snapshot()["admin_info"].(map[string]interface{})
 	require.True(t, ok)
 	assert.Contains(t, admin, "typesafe_exchange")
 	assert.Equal(t, relayInfo.TypeSafeResults, admin["typesafe"])

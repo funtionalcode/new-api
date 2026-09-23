@@ -14,7 +14,7 @@ import (
 
 func TestRecordLoginAuditUsesConfiguredRealClientIP(t *testing.T) {
 	db := openTokenControllerTestDB(t)
-	require.NoError(t, db.AutoMigrate(&model.Log{}))
+	require.NoError(t, db.AutoMigrate(&model.AuditLog{}))
 
 	originalTrustedProxyCIDRs := common.TrustedProxyCIDRs
 	common.TrustedProxyCIDRs = "172.16.0.0/12"
@@ -25,7 +25,7 @@ func TestRecordLoginAuditUsesConfiguredRealClientIP(t *testing.T) {
 	router := gin.New()
 	require.NoError(t, router.SetTrustedProxies([]string{"127.0.0.1"}))
 
-	user := &model.User{Id: 1001, Username: "login-user"}
+	user := &model.User{Id: 1001, Username: "login-user", Role: common.RoleCommonUser}
 	router.POST("/api/user/login", func(c *gin.Context) {
 		recordLoginAudit(user, c)
 		c.Status(http.StatusNoContent)
@@ -42,8 +42,8 @@ func TestRecordLoginAuditUsesConfiguredRealClientIP(t *testing.T) {
 
 	require.Equal(t, http.StatusNoContent, recorder.Code)
 
-	var log model.Log
-	require.NoError(t, db.Where("type = ?", model.LogTypeLogin).First(&log).Error)
+	var log model.AuditLog
+	require.NoError(t, db.Where("category = ?", model.AuditCategoryLogin).First(&log).Error)
 	assert.Equal(t, "198.51.100.10", log.Ip)
 	assert.Equal(t, "login-user", log.Username)
 }

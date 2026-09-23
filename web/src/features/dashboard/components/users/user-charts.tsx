@@ -19,13 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import { VChart } from '@visactor/react-vchart'
 import { Users } from 'lucide-react'
-import {
-  useEffect,
-  useMemo,
-  useState,
-  useRef,
-  useCallback,
-} from 'react'
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { IconBadge } from '@/components/ui/icon-badge'
@@ -50,6 +44,7 @@ import type {
   UserChartMetric,
   UserChartsFilters,
 } from '@/features/dashboard/types'
+import { requireServerSuccess } from '@/lib/server-error-message'
 import type { TimeGranularity } from '@/lib/time'
 import { VCHART_OPTION } from '@/lib/vchart'
 
@@ -195,7 +190,8 @@ export function UserCharts(props: UserChartsProps) {
 
   const { data: userData, isLoading } = useQuery({
     queryKey: ['dashboard', 'user-quota', timeRange],
-    queryFn: () => getUserQuotaDataByUsers(timeRange),
+    queryFn: async () =>
+      requireServerSuccess(await getUserQuotaDataByUsers(timeRange)),
     select: (res) => (res.success ? res.data : []),
     staleTime: 60_000,
   })

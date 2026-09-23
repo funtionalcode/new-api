@@ -11,6 +11,7 @@ var filterEvalOrder = []dto.ChannelFilterKind{
 	dto.FilterRequestPath,
 	dto.FilterTaskPluginIdentity,
 	dto.FilterUserAccess,
+	dto.FilterResponsesWebSocket,
 }
 
 // ChannelSatisfiesFilters reports whether ch passes every filter.
@@ -95,10 +96,31 @@ func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilte
 		}
 		return ch.SupportsRequestPath(filter.RequestPath, modelName)
 	case dto.FilterTaskPluginIdentity:
-		if ch.Type == constant.ChannelTypeTaskPlugin {
-			return filter.TaskPluginKey != "" && ch.GetSetting().TaskPluginKey == filter.TaskPluginKey
+		if filter.TaskPluginKey == "" {
+			return ch.Type != constant.ChannelTypeTaskPlugin
 		}
-		return filter.TaskPluginKey == "" || slices.Contains(filter.TaskPluginChannelTypes, ch.Type)
+		if ch.Type == constant.ChannelTypeTaskPlugin || ch.Type == constant.ChannelTypeNewAPI {
+			// A New API channel serves every plugin it is extended with; the
+			// pinned plugin or any shared-model candidate may execute there.
+			setting := ch.GetSetting()
+			return setting.BindsTaskPlugin(filter.TaskPluginKey) || slices.ContainsFunc(filter.TaskPluginKeys, setting.BindsTaskPlugin)
+		}
+		return slices.Contains(filter.TaskPluginChannelTypes, ch.Type)
+	case dto.FilterResponsesWebSocket:
+		if !ch.GetSetting().ResponsesWebSocketEnabled {
+			return false
+		}
+		switch ch.Type {
+		case constant.ChannelTypeOpenAI, constant.ChannelTypeCodex, constant.ChannelTypeCodexChat, constant.ChannelTypeXai, constant.ChannelTypeCursor, constant.ChannelTypeSub2API, constant.ChannelTypeNewAPI:
+			return true
+		case constant.ChannelTypeAdvancedCustom:
+			// The session forwards native Responses events without protocol
+			// conversion, so only a converter-free /v1/responses route qualifies.
+			route, ok := ch.GetOtherSettings().AdvancedCustom.MatchPathForModel("/v1/responses", modelName)
+			return ok && route.IsNative()
+		default:
+			return false
+		}
 	case dto.FilterUserAccess:
 		return filter.UserId <= 0 || ch.IsOpenToUser(filter.UserId)
 	default:

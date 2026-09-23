@@ -28,6 +28,7 @@ export type AdminPermissionRequirement = {
 }
 
 export const ADMIN_PERMISSION_RESOURCES = {
+  AUDIT: 'audit',
   CHANNEL: 'channel',
   TASK_PLUGIN: 'task_plugin',
 } as const
