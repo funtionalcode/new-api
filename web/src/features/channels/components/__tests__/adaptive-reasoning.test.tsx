@@ -183,11 +183,11 @@ describe('adaptive reasoning channel configuration', () => {
   })
 
   test('unsupported channel types hide adaptive controls and omit their settings', () => {
-    renderSettings({ type: 14 })
+    renderSettings({ type: 24 })
     expect(screen.queryByRole('switch')).not.toBeInTheDocument()
     const value = buildSettingJSON({
       ...CHANNEL_FORM_DEFAULT_VALUES,
-      type: 14,
+      type: 24,
       adaptive_reasoning: {
         ...ADAPTIVE_REASONING_DEFAULTS,
         enabled: true,
@@ -195,6 +195,30 @@ describe('adaptive reasoning channel configuration', () => {
       },
     })
     expect(JSON.parse(value).adaptive_reasoning).toBeUndefined()
+  })
+
+  test('Claude channels expose adaptive controls and save max effort', async () => {
+    const user = userEvent.setup()
+    const save = vi.fn()
+    renderSettings({
+      type: 14,
+      config: {
+        ...ADAPTIVE_REASONING_DEFAULTS,
+        enabled: true,
+        channel_id: 21,
+        efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+      },
+      onSave: save,
+    })
+    expect(
+      screen.getByRole('switch', { name: 'Enable adaptive reasoning' })
+    ).toBeChecked()
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(JSON.parse(save.mock.calls[0][0]).adaptive_reasoning).toMatchObject({
+      enabled: true,
+      channel_id: 21,
+      efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+    })
   })
 
   test('saved configuration survives loading and serialization', () => {

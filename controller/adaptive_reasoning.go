@@ -10,10 +10,12 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
+	hostreasoning "github.com/QuantumNous/new-api/setting/reasoning"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 )
@@ -68,16 +70,16 @@ func prepareAdaptiveReasoning(c *gin.Context, info *relaycommon.RelayInfo) {
 	config := cfg.WithDefaults()
 	result["model"] = config.Model
 	result["requested_effort"] = info.ReasoningEffort
-	if info.Request == nil || info.RelayFormat != types.RelayFormatOpenAI && info.RelayFormat != types.RelayFormatOpenAIResponses {
+	if info.Request == nil || info.RelayFormat != types.RelayFormatOpenAI && info.RelayFormat != types.RelayFormatOpenAIResponses && info.RelayFormat != types.RelayFormatClaude {
 		result["reason"] = "unsupported_request_format"
 		return
 	}
-	if c.Request.URL.Path != "/v1/responses" && c.Request.URL.Path != "/v1/chat/completions" && !strings.HasPrefix(c.Request.URL.Path, "/pg/") {
+	if c.Request.URL.Path != "/v1/responses" && c.Request.URL.Path != "/v1/chat/completions" && c.Request.URL.Path != "/v1/messages" && !strings.HasPrefix(c.Request.URL.Path, "/pg/") {
 		result["reason"] = "unsupported_endpoint"
 		return
 	}
 	switch info.ChannelType {
-	case constant.ChannelTypeOpenAI, constant.ChannelTypeCodex, constant.ChannelTypeCodexChat, constant.ChannelTypeNewAPI, constant.ChannelTypeSub2API, constant.ChannelTypeXai:
+	case constant.ChannelTypeOpenAI, constant.ChannelTypeAnthropic, constant.ChannelTypeCodex, constant.ChannelTypeCodexChat, constant.ChannelTypeNewAPI, constant.ChannelTypeSub2API, constant.ChannelTypeXai:
 	default:
 		result["reason"] = "unsupported_channel"
 		return
@@ -85,6 +87,19 @@ func prepareAdaptiveReasoning(c *gin.Context, info *relaycommon.RelayInfo) {
 	if info.ChannelSetting.PassThroughBodyEnabled || model_setting.GetGlobalSettings().PassThroughRequestEnabled {
 		result["reason"] = "request_body_passthrough"
 		return
+	}
+	if err := helper.ModelMappedHelper(c, info, nil); err != nil {
+		result["reason"] = "invalid_request"
+		return
+	}
+	modelName := hostreasoning.BaseModelName(info.UpstreamModelName)
+	claudeModel := info.ChannelType == constant.ChannelTypeAnthropic || strings.HasPrefix(strings.ToLower(modelName), "claude-")
+	if claudeModel {
+		config.Efforts = relaycommon.AdaptiveClaudeEfforts(modelName, config.Efforts)
+		if len(config.Efforts) == 0 {
+			result["reason"] = "unsupported_reasoning_model"
+			return
+		}
 	}
 	evaluation := dto.TypeSafeIntegration{ChannelID: config.ChannelID, Model: config.Model, TimeoutMS: config.TimeoutMS, MaxChars: config.MaxChars}
 	if _, reason := typeSafeEvaluationChannel(c, info, evaluation); reason != "" {
@@ -95,6 +110,13 @@ func prepareAdaptiveReasoning(c *gin.Context, info *relaycommon.RelayInfo) {
 	if err != nil {
 		result["reason"] = "invalid_request"
 		return
+	}
+	if claudeModel {
+		choice := gjson.GetBytes(body, "tool_choice")
+		if choice.Str == "required" || slices.Contains([]string{"any", "tool", "function", "custom"}, choice.Get("type").Str) {
+			result["reason"] = "forced_tool_choice"
+			return
+		}
 	}
 	snapshot := adaptiveRequestContext(body, config.MaxChars)
 	key := adaptiveConversationKey(c, info, config, body)
@@ -181,7 +203,7 @@ func prepareAdaptiveReasoning(c *gin.Context, info *relaycommon.RelayInfo) {
 
 func adaptiveConversationKey(c *gin.Context, info *relaycommon.RelayInfo, cfg dto.AdaptiveReasoningConfig, body []byte) string {
 	session := ""
-	for _, header := range []string{"X-New-Api-Conversation-Id", "Session-Id", "Session_id", "Thread-Id", "Thread_id"} {
+	for _, header := range []string{"X-New-Api-Conversation-Id", "Session-Id", "Session_id", "Thread-Id", "Thread_id", "X-Claude-Remote-Session-ID"} {
 		if session = strings.TrimSpace(c.GetHeader(header)); session != "" {
 			break
 		}
@@ -198,8 +220,20 @@ func adaptiveConversationKey(c *gin.Context, info *relaycommon.RelayInfo, cfg dt
 	if session == "" {
 		session = c.GetString("adaptive_reasoning_ws_session")
 	}
+	if session == "" && info.RelayFormat == types.RelayFormatClaude {
+		userID := gjson.GetBytes(body, "metadata.user_id").Str
+		session = strings.TrimSpace(gjson.Get(userID, "session_id").Str)
+		if index := strings.LastIndex(userID, "_session_"); session == "" && index >= 0 {
+			session = strings.TrimSpace(userID[index+len("_session_"):])
+		}
+	}
 	if session == "" {
 		return ""
+	}
+	if info.RelayFormat == types.RelayFormatClaude {
+		if agent := strings.TrimSpace(c.GetHeader("X-Claude-Code-Agent-ID")); agent != "" {
+			session += ":agent:" + agent
+		}
 	}
 	mapping, _ := common.GetContextKey(c, constant.ContextKeyChannelModelMapping)
 	identity, _ := common.Marshal([]any{info.UserId, info.TokenId, info.ChannelId, info.UsingGroup, info.OriginModelName, session, cfg, mapping, info.ParamOverride})
@@ -232,8 +266,19 @@ func adaptiveRequestContext(body []byte, maxChars int) adaptiveTaskContext {
 			}
 			continue
 		}
-		text := adaptiveContentText(item.Get("content"))
-		if role == "user" {
+		content := item.Get("content")
+		text := adaptiveContentText(content)
+		var nativeCalls, results []gjson.Result
+		for _, block := range content.Array() {
+			switch block.Get("type").Str {
+			case "tool_use":
+				nativeCalls = append(nativeCalls, block)
+			case "tool_result":
+				results = append(results, block)
+			}
+		}
+		// Claude 将工具结果放在 user 消息中，不能把它当成新的用户任务。
+		if role == "user" && (len(results) == 0 || text != "") {
 			userCount++
 			state.Request = text
 			state.userHash = common.Sha1([]byte(strconv.Itoa(userCount) + ":" + text))
@@ -246,6 +291,7 @@ func adaptiveRequestContext(body []byte, maxChars int) adaptiveTaskContext {
 			state.newUser = false
 		}
 		calls := item.Get("tool_calls").Array()
+		calls = append(calls, nativeCalls...)
 		if kind == "function_call" || kind == "custom_tool_call" {
 			calls = append(calls, item)
 		}
@@ -257,16 +303,24 @@ func adaptiveRequestContext(body []byte, maxChars int) adaptiveTaskContext {
 				id, name, args = call.Get("call_id").Str, call.Get("name").Str, call.Get("input").Str
 			} else if call.Get("type").Str == "custom" {
 				name, args = call.Get("custom.name").Str, call.Get("custom.input").Str
+			} else if call.Get("type").Str == "tool_use" {
+				name, args = call.Get("name").Str, call.Get("input").Raw
 			}
 			toolIndices[id] = len(tools)
 			tools = append(tools, adaptiveToolContext{Name: name, Arguments: args})
 			state.newUser = false
 		}
 		if role == "tool" || kind == "function_call_output" || kind == "custom_tool_call_output" {
-			id, output := item.Get("tool_call_id").Str, text
-			if kind == "function_call_output" || kind == "custom_tool_call_output" {
-				id = item.Get("call_id").Str
-				out := item.Get("output")
+			results = append(results, item)
+		}
+		for _, toolResult := range results {
+			id, output := toolResult.Get("tool_call_id").Str, adaptiveContentText(toolResult.Get("content"))
+			resultType := toolResult.Get("type").Str
+			if resultType == "tool_result" {
+				id = toolResult.Get("tool_use_id").Str
+			} else if resultType == "function_call_output" || resultType == "custom_tool_call_output" {
+				id = toolResult.Get("call_id").Str
+				out := toolResult.Get("output")
 				output = adaptiveContentText(out)
 				if out.IsObject() {
 					output = out.Raw
@@ -281,9 +335,12 @@ func adaptiveRequestContext(body []byte, maxChars int) adaptiveTaskContext {
 			tools[index].Output = output
 			state.newUser = false
 			errorValue := gjson.Get(output, "error")
-			if item.Get("is_error").Bool() || gjson.Get(output, "is_error").Bool() || gjson.Get(output, "exit_code").Int() != 0 || (errorValue.Exists() && errorValue.Type != gjson.Null && errorValue.String() != "") || adaptiveToolFailure.MatchString(output) {
+			if toolResult.Get("is_error").Bool() || gjson.Get(output, "is_error").Bool() || gjson.Get(output, "exit_code").Int() != 0 || (errorValue.Exists() && errorValue.Type != gjson.Null && errorValue.String() != "") || adaptiveToolFailure.MatchString(output) {
 				state.failureHash = common.Sha1([]byte(id + ":" + output))
 			}
+		}
+		if role == "user" && text != "" {
+			state.newUser = true
 		}
 	}
 	if len(tools) > 6 {

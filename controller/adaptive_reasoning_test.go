@@ -20,6 +20,7 @@ import (
 	"github.com/QuantumNous/new-api/relay"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/alicebob/miniredis/v2"
@@ -246,7 +247,7 @@ func TestAdaptiveReasoningSettingsRejectUnsupportedAndConflictingConfiguration(t
 		{"unsupported effort", func(_ *model.Channel, cfg *dto.AdaptiveReasoningConfig) { cfg.Efforts = []string{"xhight"} }},
 		{"unbounded timeout", func(_ *model.Channel, cfg *dto.AdaptiveReasoningConfig) { cfg.TimeoutMS = 30001 }},
 		{"invalid window", func(_ *model.Channel, cfg *dto.AdaptiveReasoningConfig) { cfg.MaxReuseGenerations = 3 }},
-		{"unsupported channel", func(ch *model.Channel, _ *dto.AdaptiveReasoningConfig) { ch.Type = constant.ChannelTypeAnthropic }},
+		{"unsupported channel", func(ch *model.Channel, _ *dto.AdaptiveReasoningConfig) { ch.Type = constant.ChannelTypeGemini }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			channel := &model.Channel{Id: 1, Type: constant.ChannelTypeOpenAI}
@@ -502,4 +503,180 @@ func TestAdaptiveReasoningPartialContextCannotReuseOrStoreMultipleGenerations(t 
 		}
 	}
 	assert.EqualValues(t, 3, f.calls.Load())
+}
+
+const adaptiveClaudeMessages = `[{"role":"user","content":[{"type":"text","text":"Fix parser","cache_control":{"type":"ephemeral"}}]},{"role":"assistant","content":[{"type":"thinking","thinking":"private-canary","signature":"signed-canary"},{"type":"text","text":"Checking tests"},{"type":"tool_use","id":"test-1","name":"Bash","input":{"command":"go test ./..."}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"test-1","content":[{"type":"text","text":"all tests pass"},{"type":"image","source":{"data":"image-canary"}}]}]}]`
+
+func (f *adaptiveReasoningFixture) claudeRequest(t *testing.T, modelName, messages string) (*gin.Context, *relaycommon.RelayInfo) {
+	t.Helper()
+	c, _ := f.request(t, `[]`, t.Name())
+	request := &dto.ClaudeRequest{Model: modelName, MaxTokens: common.GetPointer(uint(4096)), OutputConfig: []byte(`{"effort":"medium"}`)}
+	session, err := common.Marshal(map[string]string{"session_id": t.Name()})
+	require.NoError(t, err)
+	request.Metadata, err = common.Marshal(map[string]string{"user_id": string(session)})
+	require.NoError(t, err)
+	require.NoError(t, common.UnmarshalJsonStr(messages, &request.Messages))
+	encoded, err := common.Marshal(request)
+	require.NoError(t, err)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(encoded))
+	require.Nil(t, middleware.SetupContextForSelectedChannel(c, f.parent, modelName))
+	return c, relaycommon.GenRelayInfoClaude(c, request)
+}
+
+func TestAdaptiveReasoningClaudeNativeToolsReuseAndFailures(t *testing.T) {
+	f := setupAdaptiveReasoning(t)
+	f.parent.Type = constant.ChannelTypeAnthropic
+	require.NoError(t, f.parent.ValidateSettings())
+	for i, messages := range []string{adaptiveClaudeMessages, adaptiveClaudeMessages, strings.ReplaceAll(adaptiveClaudeMessages, "all tests pass", "error: tests failed")} {
+		c, info := f.claudeRequest(t, "claude-opus-5-5", messages)
+		prepareTypeSafeIntegration(c, info)
+		require.Equal(t, "low", info.AdaptiveReasoningEffort, "%+v", info.TypeSafeResults)
+		if i == 1 {
+			assert.Equal(t, "cache", info.AdaptiveReasoningResult["source"])
+			continue
+		}
+		encoded, err := common.Marshal(<-f.states)
+		require.NoError(t, err)
+		assert.Equal(t, "Fix parser", gjson.GetBytes(encoded, "state.request").String())
+		assert.Equal(t, "Bash", gjson.GetBytes(encoded, "state.recent_tools.0.name").String())
+		assert.Contains(t, gjson.GetBytes(encoded, "state.recent_tools.0.arguments").String(), "go test")
+		assert.False(t, gjson.GetBytes(encoded, "state.partial_context").Bool())
+		assert.NotContains(t, string(encoded), "private-canary")
+		assert.NotContains(t, string(encoded), "signed-canary")
+		assert.NotContains(t, string(encoded), "image-canary")
+	}
+	assert.EqualValues(t, 2, f.calls.Load())
+}
+
+func TestAdaptiveReasoningClaudeModelCapabilitiesAndMappings(t *testing.T) {
+	for _, modelName := range []string{"claude-opus-4-6", "claude-haiku-4-5-20251001"} {
+		t.Run(modelName, func(t *testing.T) {
+			f := setupAdaptiveReasoning(t)
+			f.parent.Type = constant.ChannelTypeAnthropic
+			settings := f.parent.GetSetting()
+			settings.AdaptiveReasoning.Efforts = []string{"low", "xhigh", "max"}
+			f.parent.SetSetting(settings)
+			mapping, err := common.Marshal(map[string]string{"friendly-alias": modelName})
+			require.NoError(t, err)
+			f.parent.ModelMapping = common.GetPointer(string(mapping))
+			c, info := f.claudeRequest(t, "friendly-alias", adaptiveClaudeMessages)
+			prepareTypeSafeIntegration(c, info)
+			if strings.Contains(modelName, "haiku") {
+				assert.Zero(t, f.calls.Load())
+				assert.Empty(t, info.AdaptiveReasoningEffort)
+				assert.Equal(t, "unsupported_reasoning_model", info.TypeSafeResults[0]["reason"])
+				return
+			}
+			require.Equal(t, "low", info.AdaptiveReasoningEffort, "%+v", info.TypeSafeResults)
+			encoded, err := common.Marshal(<-f.states)
+			require.NoError(t, err)
+			choices := gjson.GetBytes(encoded, "questions.effort.criteria").Map()
+			assert.Contains(t, choices, "max")
+			assert.NotContains(t, choices, "xhigh")
+		})
+	}
+}
+
+func TestAdaptiveReasoningClaudeWritesNativeEffortForEveryInboundFormat(t *testing.T) {
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+	for _, tc := range []struct {
+		format types.RelayFormat
+		stream bool
+	}{{types.RelayFormatClaude, false}, {types.RelayFormatClaude, true}, {types.RelayFormatOpenAI, false}, {types.RelayFormatOpenAIResponses, false}} {
+		t.Run(fmt.Sprintf("%s_stream_%t", tc.format, tc.stream), func(t *testing.T) {
+			format := tc.format
+			f := setupAdaptiveReasoning(t)
+			f.parent.Type = constant.ChannelTypeAnthropic
+			settings := f.parent.GetSetting()
+			settings.AdaptiveReasoning.Efforts = []string{"low", "max"}
+			f.parent.SetSetting(settings)
+			f.response.Store(`{"model":"jev-latest","answers":{"effort":{"choice":"max"},"generations":{"choice":"2"}},"usage":{"input_tokens":1,"output_tokens":0}}`)
+			seen := make(chan []byte, 1)
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "/v1/messages", r.URL.Path)
+				body, err := io.ReadAll(r.Body)
+				assert.NoError(t, err)
+				seen <- body
+				if tc.stream {
+					w.Header().Set("Content-Type", "text/event-stream")
+					_, _ = io.WriteString(w, "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg-test\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-opus-5-5\",\"content\":[],\"usage\":{\"input_tokens\":10,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"OK\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":2}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{"id":"msg-test","type":"message","role":"assistant","model":"claude-opus-5-5","content":[{"type":"text","text":"OK"}],"stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":2}}`)
+			}))
+			t.Cleanup(upstream.Close)
+			f.parent.BaseURL = &upstream.URL
+			c, info := f.claudeRequest(t, "claude-opus-5-5", adaptiveClaudeMessages)
+			info.Request.(*dto.ClaudeRequest).Stream = common.GetPointer(tc.stream)
+			info.IsStream = tc.stream
+			if format != types.RelayFormatClaude {
+				var request dto.Request
+				if format == types.RelayFormatOpenAI {
+					request = &dto.GeneralOpenAIRequest{Model: "claude-opus-5-5", Messages: []dto.Message{{Role: "user", Content: "Fix parser"}}}
+					c.Request.URL.Path = "/v1/chat/completions"
+				} else {
+					request = &dto.OpenAIResponsesRequest{Model: "claude-opus-5-5", Input: []byte(`"Fix parser"`)}
+					c.Request.URL.Path = "/v1/responses"
+				}
+				var err error
+				info, err = relaycommon.GenRelayInfo(c, format, request, nil)
+				require.NoError(t, err)
+			}
+			prepareTypeSafeIntegration(c, info)
+			require.Equal(t, "max", info.AdaptiveReasoningEffort, "%+v", info.TypeSafeResults)
+			if format == types.RelayFormatOpenAIResponses {
+				_, body, closer, apiErr := relay.PrepareResponsesRequest(c, info, info.Request.(*dto.OpenAIResponsesRequest))
+				require.Nil(t, apiErr)
+				data, err := io.ReadAll(body)
+				require.NoError(t, err)
+				require.NoError(t, closer.Close())
+				seen <- data
+			} else if format == types.RelayFormatClaude {
+				require.Nil(t, relay.ClaudeHelper(c, info))
+			} else {
+				require.Nil(t, relay.TextHelper(c, info))
+			}
+			data := <-seen
+			assert.Equal(t, "max", gjson.GetBytes(data, "output_config.effort").String())
+			assert.Equal(t, "adaptive", gjson.GetBytes(data, "thinking.type").String())
+			assert.False(t, gjson.GetBytes(data, "reasoning_effort").Exists())
+			assert.False(t, gjson.GetBytes(data, "thinking.budget_tokens").Exists())
+			assert.Equal(t, true, info.AdaptiveReasoningResult["applied"])
+			if format == types.RelayFormatClaude {
+				assert.JSONEq(t, adaptiveClaudeMessages, gjson.GetBytes(data, "messages").Raw)
+			}
+		})
+	}
+}
+
+func TestAdaptiveReasoningClaudeForcedToolsKeepOriginalRequest(t *testing.T) {
+	f := setupAdaptiveReasoning(t)
+	f.parent.Type = constant.ChannelTypeAnthropic
+	c, info := f.claudeRequest(t, "claude-sonnet-4-6", adaptiveClaudeMessages)
+	request := info.Request.(*dto.ClaudeRequest)
+	request.ToolChoice = map[string]any{"type": "tool", "name": "Bash"}
+	prepareTypeSafeIntegration(c, info)
+	assert.Zero(t, f.calls.Load())
+	assert.Empty(t, info.AdaptiveReasoningEffort)
+	assert.Equal(t, "forced_tool_choice", info.TypeSafeResults[0]["reason"])
+	assert.Equal(t, "medium", request.GetEfforts())
+}
+
+func TestAdaptiveReasoningClaudeOverridePreservesOutputOptionsAndTokenLimit(t *testing.T) {
+	info := &relaycommon.RelayInfo{RelayFormat: types.RelayFormatClaude, AdaptiveReasoningEffort: "max"}
+	body := []byte(`{"model":"claude-opus-5-5","messages":[{"role":"user","content":"task","cache_control":{"type":"ephemeral"}}],"max_tokens":4096,"thinking":{"type":"enabled","budget_tokens":1024,"display":"summarized"},"output_config":{"effort":"medium","format":{"type":"json_schema","schema":{"type":"object"}}},"temperature":0.3,"top_p":0.5,"top_k":20}`)
+	updated, err := relaycommon.ApplyAdaptiveReasoning(body, info)
+	require.NoError(t, err)
+	assert.Equal(t, "max", gjson.GetBytes(updated, "output_config.effort").String())
+	assert.Equal(t, "adaptive", gjson.GetBytes(updated, "thinking.type").String())
+	assert.Equal(t, "summarized", gjson.GetBytes(updated, "thinking.display").String())
+	assert.EqualValues(t, 4096, gjson.GetBytes(updated, "max_tokens").Int())
+	assert.Equal(t, gjson.GetBytes(body, "output_config.format").Raw, gjson.GetBytes(updated, "output_config.format").Raw)
+	assert.Equal(t, gjson.GetBytes(body, "messages").Raw, gjson.GetBytes(updated, "messages").Raw)
+	for _, field := range []string{"thinking.budget_tokens", "temperature", "top_p", "top_k"} {
+		assert.False(t, gjson.GetBytes(updated, field).Exists(), field)
+	}
 }

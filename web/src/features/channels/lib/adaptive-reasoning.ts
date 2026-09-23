@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
 
-const channelTypes = new Set([1, 48, 57, 58, 61, 62])
+const channelTypes = new Set([1, 14, 48, 57, 58, 61, 62])
 export function supportsAdaptiveReasoning(channelType: number): boolean {
   return channelTypes.has(channelType)
 }

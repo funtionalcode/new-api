@@ -1232,9 +1232,9 @@ func (channel *Channel) ValidateSettings() error {
 	}
 	if cfg := channelParams.AdaptiveReasoning; cfg != nil && cfg.Enabled {
 		switch channel.Type {
-		case constant.ChannelTypeOpenAI, constant.ChannelTypeCodex, constant.ChannelTypeCodexChat, constant.ChannelTypeNewAPI, constant.ChannelTypeSub2API, constant.ChannelTypeXai:
+		case constant.ChannelTypeOpenAI, constant.ChannelTypeAnthropic, constant.ChannelTypeCodex, constant.ChannelTypeCodexChat, constant.ChannelTypeNewAPI, constant.ChannelTypeSub2API, constant.ChannelTypeXai:
 		default:
-			return fmt.Errorf("adaptive reasoning requires an OpenAI-compatible channel")
+			return fmt.Errorf("adaptive reasoning requires an OpenAI-compatible or Claude channel")
 		}
 		if channelParams.PassThroughBodyEnabled {
 			return fmt.Errorf("adaptive reasoning cannot be combined with request body passthrough")

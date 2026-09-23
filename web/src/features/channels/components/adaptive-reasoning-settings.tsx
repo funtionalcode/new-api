@@ -112,7 +112,7 @@ export function AdaptiveReasoningSettings(props: {
               <FormLabel>{t('Enable adaptive reasoning')}</FormLabel>
               <FormDescription>
                 {t(
-                  'Jev selects reasoning effort before each generation. Supports Chat Completions and Responses, including WebSocket.'
+                  'Jev selects reasoning effort before each generation. Supports Claude Messages, Chat Completions and Responses, including WebSocket.'
                 )}
               </FormDescription>
             </div>
@@ -134,6 +134,13 @@ export function AdaptiveReasoningSettings(props: {
           </FormItem>
         )}
       />
+      {config.enabled && props.channelType === 14 && (
+        <p className='text-muted-foreground text-xs'>
+          {t(
+            'Claude uses native effort levels supported by the selected model. Unsupported models keep their original settings.'
+          )}
+        </p>
+      )}
       {config.enabled && (
         <fieldset
           disabled={props.disabled}

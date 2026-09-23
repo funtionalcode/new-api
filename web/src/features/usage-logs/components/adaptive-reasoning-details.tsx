@@ -57,6 +57,14 @@ export function AdaptiveReasoningDetails(props: {
     reason = t(
       'No task context was available. The original reasoning effort was kept.'
     )
+  } else if (reason === 'unsupported_reasoning_model') {
+    reason = t(
+      'The model does not support the configured reasoning effort levels.'
+    )
+  } else if (reason === 'forced_tool_choice') {
+    reason = t(
+      'Adaptive reasoning was skipped to preserve forced tool selection.'
+    )
   }
   let status = t('Error')
   if (decision.status === 'success') status = t('Success')
