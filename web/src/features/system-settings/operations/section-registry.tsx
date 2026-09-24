@@ -99,6 +99,7 @@ const OPERATIONS_SECTIONS = [
     build: (settings: OperationsSettings) => (
       <LogSettingsSection
         defaultEnabled={Boolean(settings.LogConsumeEnabled)}
+        defaultShowJevLogs={settings['general_setting.show_jev_logs'] ?? true}
       />
     ),
   },

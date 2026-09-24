@@ -10,6 +10,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -448,6 +449,22 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 }
 
+// 日志可见性只影响列表和分页，不影响日志记录、统计或评估详情。
+func applyJevLogVisibility(tx *gorm.DB) *gorm.DB {
+	common.OptionMapRWMutex.RLock()
+	showJevLogs := operation_setting.GetGeneralSetting().ShowJevLogs
+	common.OptionMapRWMutex.RUnlock()
+	if showJevLogs {
+		return tx
+	}
+	return tx.Where(`NOT (
+		LOWER(COALESCE(logs.model_name, '')) = ? OR
+		LOWER(COALESCE(logs.model_name, '')) LIKE ? OR
+		LOWER(COALESCE(logs.model_name, '')) LIKE ? OR
+		LOWER(COALESCE(logs.model_name, '')) LIKE ?
+	)`, "jev", "jev-%", "%/jev", "%/jev-%")
+}
+
 func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, channelName string, group string, ip string, requestId string, upstreamRequestId string, visibleChannelIDs []int) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
@@ -455,6 +472,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	} else {
 		tx = LOG_DB.Where("logs.type = ?", logType)
 	}
+	tx = applyJevLogVisibility(tx)
 	matchedChannelIds, channelFilterActive, err := resolveLogChannelFilter(channel, channelName)
 	if err != nil {
 		return nil, 0, err
@@ -579,6 +597,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 		tx = LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
 	}
 
+	tx = applyJevLogVisibility(tx)
 	if tx, err = applyLogSearchFilter(tx, "logs.model_name", modelName); err != nil {
 		return nil, 0, err
 	}

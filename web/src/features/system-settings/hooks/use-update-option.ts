@@ -58,6 +58,10 @@ export function useUpdateOption() {
         // Always refresh system-options
         queryClient.invalidateQueries({ queryKey: ['system-options'] })
 
+        if (variables.key === 'general_setting.show_jev_logs') {
+          queryClient.invalidateQueries({ queryKey: ['logs'] })
+        }
+
         // If updating frontend-display-related config, also refresh status
         if (STATUS_RELATED_KEYS.has(variables.key)) {
           queryClient.invalidateQueries({ queryKey: ['status'] })

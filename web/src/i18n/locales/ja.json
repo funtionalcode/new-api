@@ -5796,6 +5796,8 @@
     "Show full accounts": "アカウントをすべて表示",
     "Show in model catalog": "モデルカタログに表示",
     "Show in model square": "モデル広場に表示",
+    "Show Jev model logs": "Jev モデルのログを表示",
+    "Show Jev requests in log lists for all users. Hiding them keeps log records, billing, usage statistics, and evaluation details unchanged.": "すべてのユーザーのログ一覧に Jev リクエストを表示します。非表示にしても、ログの記録、課金、使用量統計、評価の詳細は維持されます。",
     "Show only bound providers": "バインド済みのプロバイダーのみ表示",
     "Show or hide flow columns": "フロー列の表示・非表示",
     "Show preview": "プレビューを表示",

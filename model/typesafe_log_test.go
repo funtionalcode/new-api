@@ -4,10 +4,84 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/glebarez/sqlite"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
+
+func TestJevLogVisibilityFiltersBeforePaginationAndPreservesRecords(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	previousDB, previousLogDB := DB, LOG_DB
+	previousSetting := operation_setting.GetGeneralSetting().ShowJevLogs
+	previousOptions := common.OptionMap
+	DB, LOG_DB = db, db
+	common.OptionMap = make(map[string]string)
+	t.Cleanup(func() {
+		DB, LOG_DB = previousDB, previousLogDB
+		common.OptionMap = previousOptions
+		operation_setting.GetGeneralSetting().ShowJevLogs = previousSetting
+		_ = sqlDB.Close()
+	})
+	require.NoError(t, db.AutoMigrate(&Log{}, &User{}, &Channel{}, &Option{}))
+	models := []string{"gpt-5", "jev", "jev-latest", "TypeSafe/JEV-1.13.0", "vendor/team/jev", "other-jev-model", "jevish", ""}
+	for _, name := range models {
+		require.NoError(t, db.Create(&Log{UserId: 7, ModelName: name, ChannelId: 21, Type: LogTypeConsume, Other: "{}"}).Error)
+	}
+	require.NoError(t, db.Create(&Log{UserId: 8, ModelName: "other-user", ChannelId: 21, Type: LogTypeConsume, Other: "{}"}).Error)
+	require.NoError(t, db.Create(&Log{UserId: 7, ModelName: "hidden-channel", ChannelId: 22, Type: LogTypeConsume, Other: "{}"}).Error)
+
+	for _, scope := range []string{"all", "self"} {
+		t.Run(scope, func(t *testing.T) {
+			query := func(offset, limit int, modelName string) ([]*Log, int64, error) {
+				if scope == "self" {
+					return GetUserLogs(7, LogTypeUnknown, 0, 0, modelName, "", offset, limit, "", "", "", "", []int{21})
+				}
+				return GetAllLogs(LogTypeUnknown, 0, 0, modelName, "", "", offset, limit, 0, "", "", "", "", "", []int{21})
+			}
+			var expectedTotal int64 = 4
+			if scope == "all" {
+				expectedTotal++
+			}
+			require.NoError(t, UpdateOption("general_setting.show_jev_logs", "false"))
+			var saved Option
+			require.NoError(t, db.First(&saved, "key = ?", "general_setting.show_jev_logs").Error)
+			assert.Equal(t, "false", saved.Value)
+			var actual []string
+			for offset := 0; offset < int(expectedTotal); offset++ {
+				logs, total, err := query(offset, 1, "")
+				require.NoError(t, err)
+				assert.Equal(t, expectedTotal, total)
+				require.Len(t, logs, 1)
+				actual = append(actual, logs[0].ModelName)
+			}
+			expected := []string{"gpt-5", "other-jev-model", "jevish", ""}
+			if scope == "all" {
+				expected = append(expected, "other-user")
+			}
+			assert.ElementsMatch(t, expected, actual)
+			logs, total, err := query(0, 20, "jev-latest")
+			require.NoError(t, err)
+			assert.Empty(t, logs)
+			assert.Zero(t, total)
+
+			require.NoError(t, UpdateOption("general_setting.show_jev_logs", "true"))
+			logs, total, err = query(0, 20, "")
+			require.NoError(t, err)
+			assert.Equal(t, expectedTotal+4, total)
+			assert.Len(t, logs, int(total))
+		})
+	}
+	var storedCount int64
+	require.NoError(t, db.Model(&Log{}).Count(&storedCount).Error)
+	assert.Equal(t, int64(10), storedCount)
+}
 
 func TestSanitizeTypeSafeResultsOmitsChildAndAdminFields(t *testing.T) {
 	results := []map[string]any{

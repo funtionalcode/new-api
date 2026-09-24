@@ -5796,6 +5796,8 @@
     "Show full accounts": "Показать аккаунты полностью",
     "Show in model catalog": "Показывать в каталоге",
     "Show in model square": "Показать в каталоге моделей",
+    "Show Jev model logs": "Показывать журналы моделей Jev",
+    "Show Jev requests in log lists for all users. Hiding them keeps log records, billing, usage statistics, and evaluation details unchanged.": "Показывать запросы Jev в журналах всех пользователей. Скрытие не влияет на записи журналов, оплату, статистику использования и сведения об оценках.",
     "Show only bound providers": "Показать только привязанных провайдеров",
     "Show or hide flow columns": "Показать или скрыть столбцы потока",
     "Show preview": "Показать предпросмотр",

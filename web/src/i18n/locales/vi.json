@@ -5796,6 +5796,8 @@
     "Show full accounts": "Hiển thị đầy đủ tài khoản",
     "Show in model catalog": "Hiển thị trong danh mục mô hình",
     "Show in model square": "Hiển thị trong kho mô hình",
+    "Show Jev model logs": "Hiển thị nhật ký mô hình Jev",
+    "Show Jev requests in log lists for all users. Hiding them keeps log records, billing, usage statistics, and evaluation details unchanged.": "Hiển thị yêu cầu Jev trong danh sách nhật ký của mọi người dùng. Việc ẩn không thay đổi bản ghi nhật ký, tính phí, thống kê sử dụng và chi tiết đánh giá.",
     "Show only bound providers": "Chỉ hiển thị nhà cung cấp đã liên kết",
     "Show or hide flow columns": "Hiện hoặc ẩn các cột luồng",
     "Show preview": "Hiển thị bản xem trước",

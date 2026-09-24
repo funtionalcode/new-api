@@ -5796,6 +5796,8 @@
     "Show full accounts": "Show full accounts",
     "Show in model catalog": "在模型目錄顯示",
     "Show in model square": "在模型廣場顯示",
+    "Show Jev model logs": "顯示 Jev 模型日誌",
+    "Show Jev requests in log lists for all users. Hiding them keeps log records, billing, usage statistics, and evaluation details unchanged.": "在所有使用者的日誌列表中顯示 Jev 請求。隱藏後仍保留日誌記錄、計費、用量統計與評估詳情。",
     "Show only bound providers": "僅顯示已連結的供應商",
     "Show or hide flow columns": "顯示或隱藏分流列",
     "Show preview": "顯示預覽",

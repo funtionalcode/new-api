@@ -5796,6 +5796,8 @@
     "Show full accounts": "Show full accounts",
     "Show in model catalog": "Show in model catalog",
     "Show in model square": "Show in model square",
+    "Show Jev model logs": "Show Jev model logs",
+    "Show Jev requests in log lists for all users. Hiding them keeps log records, billing, usage statistics, and evaluation details unchanged.": "Show Jev requests in log lists for all users. Hiding them keeps log records, billing, usage statistics, and evaluation details unchanged.",
     "Show only bound providers": "Show only bound providers",
     "Show or hide flow columns": "Show or hide flow columns",
     "Show preview": "Show preview",

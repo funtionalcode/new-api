@@ -85,12 +85,14 @@ import type { LogCleanupTask } from '../types'
 
 const logSettingsSchema = z.object({
   LogConsumeEnabled: z.boolean(),
+  showJevLogs: z.boolean(),
 })
 
 type LogSettingsFormValues = z.infer<typeof logSettingsSchema>
 
 type LogSettingsSectionProps = {
   defaultEnabled: boolean
+  defaultShowJevLogs?: boolean
 }
 
 type ServerLogInfo = {
@@ -146,6 +148,7 @@ function isActiveLogCleanupTask(task: LogCleanupTask | null) {
 
 export function LogSettingsSection({
   defaultEnabled,
+  defaultShowJevLogs = true,
 }: LogSettingsSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
@@ -153,6 +156,7 @@ export function LogSettingsSection({
     resolver: zodResolver(logSettingsSchema),
     defaultValues: {
       LogConsumeEnabled: defaultEnabled,
+      showJevLogs: defaultShowJevLogs,
     },
   })
 
@@ -180,8 +184,11 @@ export function LogSettingsSection({
   }, [])
 
   useEffect(() => {
-    form.reset({ LogConsumeEnabled: defaultEnabled })
-  }, [defaultEnabled, form])
+    form.reset({
+      LogConsumeEnabled: defaultEnabled,
+      showJevLogs: defaultShowJevLogs,
+    })
+  }, [defaultEnabled, defaultShowJevLogs, form])
 
   useEffect(() => {
     fetchServerLogInfo()
@@ -263,11 +270,22 @@ export function LogSettingsSection({
   }, [logCleanupActive, logCleanupTaskId, t])
 
   const onSubmit = async (values: LogSettingsFormValues) => {
-    if (values.LogConsumeEnabled === defaultEnabled) return
-    await updateOption.mutateAsync({
-      key: 'LogConsumeEnabled',
-      value: values.LogConsumeEnabled,
-    })
+    try {
+      if (values.LogConsumeEnabled !== defaultEnabled) {
+        await updateOption.mutateAsync({
+          key: 'LogConsumeEnabled',
+          value: values.LogConsumeEnabled,
+        })
+      }
+      if (values.showJevLogs !== defaultShowJevLogs) {
+        await updateOption.mutateAsync({
+          key: 'general_setting.show_jev_logs',
+          value: values.showJevLogs,
+        })
+      }
+    } catch {
+      // 保存失败由 useUpdateOption 提示，保留表单内容以便重试。
+    }
   }
 
   const handleRequestCleanLogs = () => {
@@ -359,6 +377,30 @@ export function LogSettingsSection({
                   <FormDescription>
                     {t(
                       'Track per-request consumption to power usage analytics. Keeping this on increases database writes.'
+                    )}
+                  </FormDescription>
+                </SettingsSwitchContent>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+                <FormMessage />
+              </SettingsSwitchItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='showJevLogs'
+            render={({ field }) => (
+              <SettingsSwitchItem>
+                <SettingsSwitchContent>
+                  <FormLabel>{t('Show Jev model logs')}</FormLabel>
+                  <FormDescription>
+                    {t(
+                      'Show Jev requests in log lists for all users. Hiding them keeps log records, billing, usage statistics, and evaluation details unchanged.'
                     )}
                   </FormDescription>
                 </SettingsSwitchContent>

@@ -5796,6 +5796,8 @@
     "Show full accounts": "显示完整账号",
     "Show in model catalog": "在模型目录展示",
     "Show in model square": "在模型广场显示",
+    "Show Jev model logs": "显示 Jev 模型日志",
+    "Show Jev requests in log lists for all users. Hiding them keeps log records, billing, usage statistics, and evaluation details unchanged.": "在所有用户的日志列表中显示 Jev 请求。隐藏后仍保留日志记录、计费、用量统计和评估详情。",
     "Show only bound providers": "仅显示已绑定的提供商",
     "Show or hide flow columns": "显示或隐藏分流列",
     "Show preview": "显示预览",

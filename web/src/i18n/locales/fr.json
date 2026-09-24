@@ -5796,6 +5796,8 @@
     "Show full accounts": "Afficher les comptes complets",
     "Show in model catalog": "Afficher dans le catalogue",
     "Show in model square": "Afficher dans la galerie",
+    "Show Jev model logs": "Afficher les journaux Jev",
+    "Show Jev requests in log lists for all users. Hiding them keeps log records, billing, usage statistics, and evaluation details unchanged.": "Afficher les requêtes Jev dans les journaux de tous les utilisateurs. Les masquer ne modifie ni les enregistrements, ni la facturation, ni les statistiques, ni les détails des évaluations.",
     "Show only bound providers": "Afficher uniquement les fournisseurs liés",
     "Show or hide flow columns": "Afficher ou masquer les colonnes du flux",
     "Show preview": "Afficher l'apercu",
