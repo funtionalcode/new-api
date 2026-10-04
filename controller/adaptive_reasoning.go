@@ -70,16 +70,17 @@ func prepareAdaptiveReasoning(c *gin.Context, info *relaycommon.RelayInfo) {
 	config := cfg.WithDefaults()
 	result["model"] = config.Model
 	result["requested_effort"] = info.ReasoningEffort
-	if info.Request == nil || info.RelayFormat != types.RelayFormatOpenAI && info.RelayFormat != types.RelayFormatOpenAIResponses && info.RelayFormat != types.RelayFormatClaude {
+	if info.Request == nil || info.RelayFormat != types.RelayFormatOpenAI && info.RelayFormat != types.RelayFormatOpenAIResponses && info.RelayFormat != types.RelayFormatClaude && info.RelayFormat != types.RelayFormatGemini {
 		result["reason"] = "unsupported_request_format"
 		return
 	}
-	if c.Request.URL.Path != "/v1/responses" && c.Request.URL.Path != "/v1/chat/completions" && c.Request.URL.Path != "/v1/messages" && !strings.HasPrefix(c.Request.URL.Path, "/pg/") {
+	geminiGeneration := info.RelayFormat == types.RelayFormatGemini && (strings.HasSuffix(c.Request.URL.Path, ":generateContent") || strings.HasSuffix(c.Request.URL.Path, ":streamGenerateContent"))
+	if c.Request.URL.Path != "/v1/responses" && c.Request.URL.Path != "/v1/chat/completions" && c.Request.URL.Path != "/v1/messages" && !strings.HasPrefix(c.Request.URL.Path, "/pg/") && !geminiGeneration {
 		result["reason"] = "unsupported_endpoint"
 		return
 	}
 	switch info.ChannelType {
-	case constant.ChannelTypeOpenAI, constant.ChannelTypeAnthropic, constant.ChannelTypeCodex, constant.ChannelTypeCodexChat, constant.ChannelTypeNewAPI, constant.ChannelTypeSub2API, constant.ChannelTypeXai:
+	case constant.ChannelTypeOpenAI, constant.ChannelTypeAnthropic, constant.ChannelTypeCodex, constant.ChannelTypeCodexChat, constant.ChannelTypeNewAPI, constant.ChannelTypeSub2API, constant.ChannelTypeXai, constant.ChannelTypeGemini:
 	default:
 		result["reason"] = "unsupported_channel"
 		return
@@ -94,6 +95,10 @@ func prepareAdaptiveReasoning(c *gin.Context, info *relaycommon.RelayInfo) {
 	}
 	modelName := hostreasoning.BaseModelName(info.UpstreamModelName)
 	claudeModel := info.ChannelType == constant.ChannelTypeAnthropic || strings.HasPrefix(strings.ToLower(modelName), "claude-")
+	if (info.ChannelType == constant.ChannelTypeGemini || info.RelayFormat == types.RelayFormatGemini) && !claudeModel {
+		result["reason"] = "unsupported_reasoning_model"
+		return
+	}
 	if claudeModel {
 		config.Efforts = relaycommon.AdaptiveClaudeEfforts(modelName, config.Efforts)
 		if len(config.Efforts) == 0 {
@@ -113,7 +118,7 @@ func prepareAdaptiveReasoning(c *gin.Context, info *relaycommon.RelayInfo) {
 	}
 	if claudeModel {
 		choice := gjson.GetBytes(body, "tool_choice")
-		if choice.Str == "required" || slices.Contains([]string{"any", "tool", "function", "custom"}, choice.Get("type").Str) {
+		if choice.Str == "required" || slices.Contains([]string{"any", "tool", "function", "custom"}, choice.Get("type").Str) || strings.EqualFold(gjson.GetBytes(body, "toolConfig.functionCallingConfig.mode").Str, "ANY") {
 			result["reason"] = "forced_tool_choice"
 			return
 		}
@@ -247,6 +252,9 @@ func adaptiveRequestContext(body []byte, maxChars int) adaptiveTaskContext {
 	if !items.IsArray() {
 		items = gjson.GetBytes(body, "input")
 	}
+	if !items.Exists() {
+		items = gjson.GetBytes(body, "contents")
+	}
 	if items.Type == gjson.String {
 		state.Request, state.truncated = adaptiveTextLimit(strings.TrimSpace(items.Str), maxChars)
 		state.Partial = state.Request == ""
@@ -258,6 +266,9 @@ func adaptiveRequestContext(body []byte, maxChars int) adaptiveTaskContext {
 	userCount := 0
 	for _, item := range items.Array() {
 		kind, role := item.Get("type").Str, item.Get("role").Str
+		if role == "model" {
+			role = "assistant"
+		}
 		if kind == "reasoning" {
 			for _, summary := range item.Get("summary").Array() {
 				if text := summary.Get("text").Str; text != "" {
@@ -267,6 +278,35 @@ func adaptiveRequestContext(body []byte, maxChars int) adaptiveTaskContext {
 			continue
 		}
 		content := item.Get("content")
+		if !content.Exists() && item.Get("parts").IsArray() {
+			// Gemini 只提取公开文本与工具交互；思考文本、签名和图片不进入评估。
+			blocks := make([]map[string]any, 0)
+			for _, part := range item.Get("parts").Array() {
+				if part.Get("thought").Bool() {
+					continue
+				}
+				if text := part.Get("text"); text.Type == gjson.String {
+					blocks = append(blocks, map[string]any{"type": "text", "text": text.Str})
+				}
+				for _, entry := range []struct{ path, kind string }{{"functionCall", "tool_use"}, {"functionResponse", "tool_result"}} {
+					value := part.Get(entry.path)
+					if !value.IsObject() {
+						continue
+					}
+					id := value.Get("id").Str
+					if id == "" {
+						id = value.Get("name").Str
+					}
+					if entry.kind == "tool_use" {
+						blocks = append(blocks, map[string]any{"type": entry.kind, "id": id, "name": value.Get("name").Str, "input": value.Get("args").Value()})
+					} else {
+						blocks = append(blocks, map[string]any{"type": entry.kind, "tool_use_id": id, "content": value.Get("response").Raw})
+					}
+				}
+			}
+			encoded, _ := common.Marshal(blocks)
+			content = gjson.ParseBytes(encoded)
+		}
 		text := adaptiveContentText(content)
 		var nativeCalls, results []gjson.Result
 		for _, block := range content.Array() {

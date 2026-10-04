@@ -247,7 +247,7 @@ func TestAdaptiveReasoningSettingsRejectUnsupportedAndConflictingConfiguration(t
 		{"unsupported effort", func(_ *model.Channel, cfg *dto.AdaptiveReasoningConfig) { cfg.Efforts = []string{"xhight"} }},
 		{"unbounded timeout", func(_ *model.Channel, cfg *dto.AdaptiveReasoningConfig) { cfg.TimeoutMS = 30001 }},
 		{"invalid window", func(_ *model.Channel, cfg *dto.AdaptiveReasoningConfig) { cfg.MaxReuseGenerations = 3 }},
-		{"unsupported channel", func(ch *model.Channel, _ *dto.AdaptiveReasoningConfig) { ch.Type = constant.ChannelTypeGemini }},
+		{"unsupported channel", func(ch *model.Channel, _ *dto.AdaptiveReasoningConfig) { ch.Type = constant.ChannelTypeTypeSafe }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			channel := &model.Channel{Id: 1, Type: constant.ChannelTypeOpenAI}
@@ -679,4 +679,103 @@ func TestAdaptiveReasoningClaudeOverridePreservesOutputOptionsAndTokenLimit(t *t
 	for _, field := range []string{"thinking.budget_tokens", "temperature", "top_p", "top_k"} {
 		assert.False(t, gjson.GetBytes(updated, field).Exists(), field)
 	}
+}
+
+func TestAdaptiveReasoningGeminiChannelClaudeWireAndModelScope(t *testing.T) {
+	for _, format := range []types.RelayFormat{types.RelayFormatClaude, types.RelayFormatOpenAI, types.RelayFormatGemini} {
+		t.Run(string(format), func(t *testing.T) {
+			f := setupAdaptiveReasoning(t)
+			f.parent.Type = constant.ChannelTypeGemini
+			require.NoError(t, f.parent.ValidateSettings())
+			seen := make(chan []byte, 1)
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "/v1beta/models/claude-opus-5-5:generateContent", r.URL.Path)
+				body, err := io.ReadAll(r.Body)
+				assert.NoError(t, err)
+				seen <- body
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{"candidates":[{"content":{"role":"model","parts":[{"text":"OK"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":2,"totalTokenCount":12}}`)
+			}))
+			t.Cleanup(upstream.Close)
+			f.parent.BaseURL = &upstream.URL
+			c, info := f.claudeRequest(t, "claude-opus-5-5", `[{"role":"user","content":"Fix parser"}]`)
+			if format != types.RelayFormatClaude {
+				var request dto.Request
+				if format == types.RelayFormatOpenAI {
+					request = &dto.GeneralOpenAIRequest{Model: "claude-opus-5-5", Messages: []dto.Message{{Role: "user", Content: "Fix parser"}}}
+					c.Request.URL.Path = "/v1/chat/completions"
+				} else {
+					request = &dto.GeminiChatRequest{Contents: []dto.GeminiChatContent{{Role: "user", Parts: []dto.GeminiPart{{Text: "Fix parser"}}}}}
+					c.Request.URL.Path = "/v1beta/models/claude-opus-5-5:generateContent"
+				}
+				var err error
+				info, err = relaycommon.GenRelayInfo(c, format, request, nil)
+				require.NoError(t, err)
+			}
+			prepareTypeSafeIntegration(c, info)
+			require.Equal(t, "low", info.AdaptiveReasoningEffort, "%+v", info.TypeSafeResults)
+			switch format {
+			case types.RelayFormatClaude:
+				require.Nil(t, relay.ClaudeHelper(c, info))
+			case types.RelayFormatOpenAI:
+				require.Nil(t, relay.TextHelper(c, info))
+			case types.RelayFormatGemini:
+				require.Nil(t, relay.GeminiHelper(c, info))
+			}
+			wire := <-seen
+			assert.Equal(t, "low", gjson.GetBytes(wire, "generationConfig.thinkingConfig.thinkingLevel").Str)
+			assert.False(t, gjson.GetBytes(wire, "reasoning_effort").Exists())
+			assert.False(t, gjson.GetBytes(wire, "generationConfig.thinkingConfig.thinkingBudget").Exists())
+			assert.Equal(t, "Fix parser", gjson.GetBytes(wire, "contents.0.parts.0.text").Str)
+			assert.Equal(t, true, info.AdaptiveReasoningResult["applied"])
+		})
+	}
+	for _, modelName := range []string{"gemini-3.8-flash-high", "claude-haiku-4-5-20251001"} {
+		t.Run(modelName, func(t *testing.T) {
+			f := setupAdaptiveReasoning(t)
+			f.parent.Type = constant.ChannelTypeGemini
+			c, info := f.claudeRequest(t, modelName, adaptiveClaudeMessages)
+			prepareTypeSafeIntegration(c, info)
+			assert.Empty(t, info.AdaptiveReasoningEffort)
+			assert.Zero(t, f.calls.Load())
+			assert.Equal(t, "unsupported_reasoning_model", info.TypeSafeResults[0]["reason"])
+		})
+	}
+}
+
+func TestAdaptiveReasoningGeminiContextAndOverride(t *testing.T) {
+	body := []byte(`{"contents":[{"role":"user","parts":[{"text":"Fix parser"},{"inlineData":{"data":"image-canary"}}]},{"role":"model","parts":[{"text":"private-canary","thought":true,"thoughtSignature":"signature-canary"},{"text":"Checking tests"},{"functionCall":{"name":"test","args":{"command":"go test"}}}]},{"role":"user","parts":[{"functionResponse":{"name":"test","response":{"error":"tests failed"}}}]}],"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"thinkingBudget":1024,"includeThoughts":false}}}`)
+	state := adaptiveRequestContext(body, 12000)
+	assert.Equal(t, "Fix parser", state.Request)
+	assert.Equal(t, []string{"Checking tests"}, state.Progress)
+	require.Len(t, state.Tools, 1)
+	assert.Equal(t, "test", state.Tools[0].Name)
+	assert.NotEmpty(t, state.failureHash)
+	assert.False(t, state.newUser)
+	encoded, err := common.Marshal(state)
+	require.NoError(t, err)
+	for _, secret := range []string{"private-canary", "signature-canary", "image-canary"} {
+		assert.NotContains(t, string(encoded), secret)
+	}
+	info := &relaycommon.RelayInfo{RelayFormat: types.RelayFormatGemini, AdaptiveReasoningEffort: "max", ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "claude-opus-5-5"}}
+	updated, err := relaycommon.ApplyAdaptiveReasoning(body, info)
+	require.NoError(t, err)
+	assert.Equal(t, "max", gjson.GetBytes(updated, "generationConfig.thinkingConfig.thinkingLevel").Str)
+	assert.Equal(t, gjson.GetBytes(body, "contents").Raw, gjson.GetBytes(updated, "contents").Raw)
+	assert.EqualValues(t, 4096, gjson.GetBytes(updated, "generationConfig.maxOutputTokens").Int())
+	assert.Equal(t, gjson.False, gjson.GetBytes(updated, "generationConfig.thinkingConfig.includeThoughts").Type)
+	assert.False(t, gjson.GetBytes(updated, "generationConfig.thinkingConfig.thinkingBudget").Exists())
+
+	f := setupAdaptiveReasoning(t)
+	f.parent.Type = constant.ChannelTypeGemini
+	c, _ := f.claudeRequest(t, "claude-opus-5-5", `[]`)
+	request := &dto.GeminiChatRequest{}
+	require.NoError(t, common.Unmarshal(body, request))
+	request.ToolConfig = &dto.ToolConfig{FunctionCallingConfig: &dto.FunctionCallingConfig{Mode: "ANY"}}
+	c.Request.URL.Path = "/v1beta/models/claude-opus-5-5:generateContent"
+	info = relaycommon.GenRelayInfoGemini(c, request)
+	prepareTypeSafeIntegration(c, info)
+	assert.Zero(t, f.calls.Load())
+	assert.Empty(t, info.AdaptiveReasoningEffort)
+	assert.Equal(t, "forced_tool_choice", info.TypeSafeResults[0]["reason"])
 }

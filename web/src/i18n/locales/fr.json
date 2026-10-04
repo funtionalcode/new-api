@@ -2879,6 +2879,7 @@
     "Gemini": "Gemini",
     "Gemini and OpenAI audio prices differ for this model. Use separate billing model names to convert them.": "Les tarifs audio Gemini et OpenAI diffèrent pour ce modèle. Utilisez des noms de facturation distincts pour les convertir.",
     "Gemini Batch Embed Contents": "Gemini Batch Embed Contents",
+    "Gemini channels evaluate only Claude models. Jev effort is forwarded through thinkingLevel; other models keep their original settings.": "Les canaux Gemini évaluent uniquement les modèles Claude. Le niveau choisi par Jev est transmis via thinkingLevel ; les autres modèles conservent leurs paramètres.",
     "Gemini Embed Content": "Gemini Embed Content",
     "Gemini Generate Content": "Gemini Generate Content",
     "Gemini Generate Content to OpenAI Chat": "Gemini Generate Content vers OpenAI Chat",

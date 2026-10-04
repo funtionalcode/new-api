@@ -134,13 +134,21 @@ export function AdaptiveReasoningSettings(props: {
           </FormItem>
         )}
       />
-      {config.enabled && props.channelType === 14 && (
+      {config.enabled && props.channelType === 24 && (
         <p className='text-muted-foreground text-xs'>
           {t(
-            'Claude uses native effort levels supported by the selected model. Unsupported models keep their original settings.'
+            'Gemini channels evaluate only Claude models. Jev effort is forwarded through thinkingLevel; other models keep their original settings.'
           )}
         </p>
       )}
+      {config.enabled &&
+        (props.channelType === 14 || props.channelType === 24) && (
+          <p className='text-muted-foreground text-xs'>
+            {t(
+              'Claude uses native effort levels supported by the selected model. Unsupported models keep their original settings.'
+            )}
+          </p>
+        )}
       {config.enabled && (
         <fieldset
           disabled={props.disabled}

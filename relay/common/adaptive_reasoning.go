@@ -2,6 +2,7 @@ package common
 
 import (
 	"slices"
+	"strings"
 
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	kitreasoning "github.com/QuantumNous/new-api/relaykit/relayconvert/reasoning"
@@ -69,6 +70,23 @@ func ApplyAdaptiveReasoning(data []byte, info *RelayInfo) ([]byte, error) {
 			}
 		}
 		for _, key := range remove {
+			data, err = sjson.DeleteBytes(data, key)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	if format == types.RelayFormatGemini {
+		modelName := hostreasoning.BaseModelName(info.UpstreamModelName)
+		if !strings.HasPrefix(strings.ToLower(modelName), "claude-") || len(AdaptiveClaudeEfforts(modelName, []string{info.AdaptiveReasoningEffort})) == 0 {
+			if info.AdaptiveReasoningResult != nil {
+				info.AdaptiveReasoningResult["status"], info.AdaptiveReasoningResult["reason"] = "skipped", "unsupported_reasoning_model"
+			}
+			return data, nil
+		}
+		path = "generationConfig.thinkingConfig.thinkingLevel"
+		for _, key := range []string{"generationConfig.thinkingConfig.thinkingBudget", "generationConfig.thinkingConfig.thinking_budget", "generationConfig.thinkingConfig.thinking_level"} {
+			var err error
 			data, err = sjson.DeleteBytes(data, key)
 			if err != nil {
 				return nil, err
