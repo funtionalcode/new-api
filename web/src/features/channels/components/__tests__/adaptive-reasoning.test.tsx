@@ -52,6 +52,7 @@ function SettingsForm(props: {
     defaultValues: {
       ...CHANNEL_FORM_DEFAULT_VALUES,
       type: props.type ?? 62,
+      models: 'claude-opus-5-5,claude-sonnet-5-5,gemini-3.8-flash-high',
       adaptive_reasoning: props.config ?? { ...ADAPTIVE_REASONING_DEFAULTS },
     },
   })
@@ -234,6 +235,7 @@ describe('adaptive reasoning channel configuration', () => {
       max_reuse_generations: 5,
       timeout_ms: 2500,
       max_chars: 6000,
+      models: ['claude-opus-5-5', 'claude-sonnet-5-5'],
     }
     const channel = channelSchema.parse({
       key: '',
@@ -252,6 +254,25 @@ describe('adaptive reasoning channel configuration', () => {
     expect(
       JSON.parse(buildSettingJSON(form as ChannelFormValues)).adaptive_reasoning
     ).toEqual(config)
+  })
+
+  test('selects specific request models for Jev and persists their names', async () => {
+    const user = userEvent.setup()
+    const save = vi.fn()
+    renderSettings({
+      type: 24,
+      config: { ...ADAPTIVE_REASONING_DEFAULTS, enabled: true, channel_id: 21 },
+      onSave: save,
+    })
+    await user.click(
+      screen.getByRole('combobox', { name: 'All supported models' })
+    )
+    await user.click(screen.getByRole('option', { name: 'claude-opus-5-5' }))
+    await user.keyboard('{Escape}')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(JSON.parse(save.mock.calls[0][0]).adaptive_reasoning.models).toEqual(
+      ['claude-opus-5-5']
+    )
   })
 
   test('enabled configuration requires a channel and allowed effort and routes nested errors to advanced settings', () => {

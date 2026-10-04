@@ -730,7 +730,7 @@ func TestAdaptiveReasoningGeminiChannelClaudeWireAndModelScope(t *testing.T) {
 			assert.Equal(t, true, info.AdaptiveReasoningResult["applied"])
 		})
 	}
-	for _, modelName := range []string{"gemini-3.8-flash-high", "claude-haiku-4-5-20251001"} {
+	for _, modelName := range []string{"gemini-2.0-flash", "claude-haiku-4-5-20251001"} {
 		t.Run(modelName, func(t *testing.T) {
 			f := setupAdaptiveReasoning(t)
 			f.parent.Type = constant.ChannelTypeGemini
@@ -741,6 +741,58 @@ func TestAdaptiveReasoningGeminiChannelClaudeWireAndModelScope(t *testing.T) {
 			assert.Equal(t, "unsupported_reasoning_model", info.TypeSafeResults[0]["reason"])
 		})
 	}
+}
+
+func TestAdaptiveReasoningModelScopeUsesOriginalName(t *testing.T) {
+	for _, tc := range []struct {
+		name, requestModel, mappedModel string
+		models                          []string
+		wantEvaluation                  bool
+	}{
+		{"selected Claude alias", "claude-opus-5-5", "claude-opus-5-5-high", []string{"claude-opus-5-5"}, true},
+		{"excluded Gemini", "gemini-3.8-flash-high", "", []string{"claude-opus-5-5"}, false},
+		{"excluded Claude", "claude-sonnet-5-5", "", []string{"claude-opus-5-5"}, false},
+		{"mapped name is not request name", "friendly", "claude-opus-5-5-high", []string{"claude-opus-5-5-high"}, false},
+		{"selected Gemini", "gemini-3.8-flash-high", "", []string{"gemini-3.8-flash-high"}, true},
+		{"empty retains all supported", "gemini-3.8-flash-high", "", nil, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := setupAdaptiveReasoning(t)
+			f.parent.Type = constant.ChannelTypeGemini
+			settings := f.parent.GetSetting()
+			settings.AdaptiveReasoning.Models = tc.models
+			f.parent.SetSetting(settings)
+			if tc.mappedModel != "" {
+				mapping, err := common.Marshal(map[string]string{tc.requestModel: tc.mappedModel})
+				require.NoError(t, err)
+				f.parent.ModelMapping = common.GetPointer(string(mapping))
+			}
+			c, info := f.claudeRequest(t, tc.requestModel, `[{"role":"user","content":"Fix parser"}]`)
+			prepareTypeSafeIntegration(c, info)
+			if !tc.wantEvaluation {
+				assert.Zero(t, f.calls.Load())
+				assert.Empty(t, info.AdaptiveReasoningEffort)
+				assert.Empty(t, info.TypeSafeResults)
+				return
+			}
+			require.Equal(t, "low", info.AdaptiveReasoningEffort, "%+v", info.TypeSafeResults)
+			assert.EqualValues(t, 1, f.calls.Load())
+			info.FinalRequestRelayFormat = types.RelayFormatGemini
+			wire, err := relaycommon.ApplyAdaptiveReasoning([]byte(`{"contents":[]}`), info)
+			require.NoError(t, err)
+			assert.Equal(t, "low", gjson.GetBytes(wire, "generationConfig.thinkingConfig.thinkingLevel").Str)
+		})
+	}
+	for _, models := range [][]string{{""}, {" model"}, {"model", "model"}} {
+		cfg := &dto.AdaptiveReasoningConfig{Enabled: true, ChannelID: 21, Models: models}
+		assert.Error(t, cfg.Validate())
+	}
+	info := &relaycommon.RelayInfo{RelayFormat: types.RelayFormatGemini, AdaptiveReasoningEffort: "low", ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "gemini-2.5-flash"}}
+	wire, err := relaycommon.ApplyAdaptiveReasoning([]byte(`{"generationConfig":{"thinkingConfig":{"thinkingLevel":"high","includeThoughts":false}}}`), info)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1024, gjson.GetBytes(wire, "generationConfig.thinkingConfig.thinkingBudget").Int())
+	assert.False(t, gjson.GetBytes(wire, "generationConfig.thinkingConfig.thinkingLevel").Exists())
+	assert.Equal(t, gjson.False, gjson.GetBytes(wire, "generationConfig.thinkingConfig.includeThoughts").Type)
 }
 
 func TestAdaptiveReasoningGeminiContextAndOverride(t *testing.T) {

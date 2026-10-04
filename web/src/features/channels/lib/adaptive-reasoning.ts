@@ -28,6 +28,7 @@ export const adaptiveReasoningSchema = z
     enabled: z.boolean(),
     channel_id: z.number().int().min(0),
     model: z.string().trim().max(200),
+    models: z.array(z.string().trim().min(1).max(200)).max(256).optional(),
     efforts: z.array(
       z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
     ),
@@ -60,6 +61,7 @@ export const ADAPTIVE_REASONING_DEFAULTS: AdaptiveReasoningConfig = {
   enabled: false,
   channel_id: 0,
   model: 'jev-latest',
+  models: [],
   efforts: ['low', 'medium', 'high', 'xhigh'],
   max_reuse_generations: 10,
   timeout_ms: 1500,

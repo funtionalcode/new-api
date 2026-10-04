@@ -71,6 +71,17 @@ export function AdaptiveReasoningSettings(props: {
     useWatch({ control: form.control, name: 'adaptive_reasoning' }) ??
     ADAPTIVE_REASONING_DEFAULTS
   const supported = supportsAdaptiveReasoning(props.channelType)
+  const channelModels =
+    useWatch({ control: form.control, name: 'models' }) ?? ''
+  const modelOptions = [
+    ...new Set([
+      ...channelModels
+        .split(',')
+        .map((model) => model.trim())
+        .filter(Boolean),
+      ...(config.models ?? []),
+    ]),
+  ].map((value) => ({ value, label: value }))
   const channels = useQuery({
     queryKey: ['channels', 'adaptive-reasoning-typesafe'],
     queryFn: async () =>
@@ -134,13 +145,6 @@ export function AdaptiveReasoningSettings(props: {
           </FormItem>
         )}
       />
-      {config.enabled && props.channelType === 24 && (
-        <p className='text-muted-foreground text-xs'>
-          {t(
-            'Gemini channels evaluate only Claude models. Jev effort is forwarded through thinkingLevel; other models keep their original settings.'
-          )}
-        </p>
-      )}
       {config.enabled &&
         (props.channelType === 14 || props.channelType === 24) && (
           <p className='text-muted-foreground text-xs'>
@@ -154,6 +158,30 @@ export function AdaptiveReasoningSettings(props: {
           disabled={props.disabled}
           className='grid gap-4 sm:grid-cols-2'
         >
+          <FormField
+            control={form.control}
+            name='adaptive_reasoning.models'
+            render={({ field }) => (
+              <FormItem className='sm:col-span-2'>
+                <FormLabel>{t('Models using Jev')}</FormLabel>
+                <FormControl>
+                  <MultiSelect
+                    options={modelOptions}
+                    selected={field.value ?? []}
+                    onChange={field.onChange}
+                    disabled={props.disabled}
+                    placeholder={t('All supported models')}
+                  />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'Only selected request models use Jev, matched before model mapping. Leave empty for all supported models.'
+                  )}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
           <FormField
             control={form.control}
             name='adaptive_reasoning.channel_id'

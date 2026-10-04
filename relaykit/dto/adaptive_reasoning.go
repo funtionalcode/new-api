@@ -11,6 +11,7 @@ type AdaptiveReasoningConfig struct {
 	Enabled             bool     `json:"enabled"`
 	ChannelID           int      `json:"channel_id"`
 	Model               string   `json:"model,omitempty"`
+	Models              []string `json:"models,omitempty"`
 	Efforts             []string `json:"efforts,omitempty"`
 	MaxReuseGenerations int      `json:"max_reuse_generations,omitempty"`
 	TimeoutMS           int      `json:"timeout_ms,omitempty"`
@@ -45,6 +46,16 @@ func (c *AdaptiveReasoningConfig) Validate() error {
 	}
 	if len(c.Model) > 200 || c.Model != strings.TrimSpace(c.Model) {
 		return fmt.Errorf("invalid adaptive_reasoning.model")
+	}
+	if len(c.Models) > 256 {
+		return fmt.Errorf("adaptive_reasoning.models must contain at most 256 models")
+	}
+	models := make(map[string]bool, len(c.Models))
+	for _, model := range c.Models {
+		if model == "" || len(model) > 200 || model != strings.TrimSpace(model) || models[model] {
+			return fmt.Errorf("invalid or duplicate adaptive_reasoning model: %s", model)
+		}
+		models[model] = true
 	}
 	if !slices.Contains([]int{0, 1, 2, 5, 10}, c.MaxReuseGenerations) {
 		return fmt.Errorf("adaptive_reasoning.max_reuse_generations must be 1, 2, 5 or 10")

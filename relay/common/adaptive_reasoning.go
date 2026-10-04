@@ -27,12 +27,25 @@ func AdaptiveClaudeEfforts(model string, configured []string) []string {
 	return allowed
 }
 
+// AdaptiveGeminiEfforts 仅向评估模型提供目标模型能准确表达的档位。
+func AdaptiveGeminiEfforts(model string, configured []string) []string {
+	var allowed []string
+	for _, effort := range configured {
+		render, err := kitreasoning.RenderGemini(model, kitreasoning.Intent{Mode: kitreasoning.ModeAdaptive, Effort: kitreasoning.Effort(effort)}, nil, 0)
+		if err == nil && render.Config != nil && (render.Config.ThinkingLevel != "" || render.Config.ThinkingBudget != nil) && string(render.EffectiveEffort) == effort {
+			allowed = append(allowed, effort)
+		}
+	}
+	return allowed
+}
+
 // ApplyAdaptiveReasoning 在固定参数覆盖后按最终协议应用推理配置，保留消息和缓存标记。
 func ApplyAdaptiveReasoning(data []byte, info *RelayInfo) ([]byte, error) {
 	if info == nil || info.AdaptiveReasoningEffort == "" {
 		return data, nil
 	}
 	path := "reasoning_effort"
+	var value any = info.AdaptiveReasoningEffort
 	format := info.GetFinalRequestRelayFormat()
 	if format == types.RelayFormatOpenAIResponses || format == "" && info.RelayMode == relayconstant.RelayModeResponses {
 		path = "reasoning.effort"
@@ -78,7 +91,12 @@ func ApplyAdaptiveReasoning(data []byte, info *RelayInfo) ([]byte, error) {
 	}
 	if format == types.RelayFormatGemini {
 		modelName := hostreasoning.BaseModelName(info.UpstreamModelName)
-		if !strings.HasPrefix(strings.ToLower(modelName), "claude-") || len(AdaptiveClaudeEfforts(modelName, []string{info.AdaptiveReasoningEffort})) == 0 {
+		allowed := AdaptiveGeminiEfforts(modelName, []string{info.AdaptiveReasoningEffort})
+		claudeModel := strings.HasPrefix(strings.ToLower(modelName), "claude-")
+		if claudeModel {
+			allowed = AdaptiveClaudeEfforts(modelName, []string{info.AdaptiveReasoningEffort})
+		}
+		if len(allowed) == 0 {
 			if info.AdaptiveReasoningResult != nil {
 				info.AdaptiveReasoningResult["status"], info.AdaptiveReasoningResult["reason"] = "skipped", "unsupported_reasoning_model"
 			}
@@ -92,8 +110,21 @@ func ApplyAdaptiveReasoning(data []byte, info *RelayInfo) ([]byte, error) {
 				return nil, err
 			}
 		}
+		if !claudeModel {
+			render, err := kitreasoning.RenderGemini(modelName, kitreasoning.Intent{Mode: kitreasoning.ModeAdaptive, Effort: kitreasoning.Effort(info.AdaptiveReasoningEffort)}, nil, 0)
+			if err != nil {
+				return nil, err
+			}
+			if render.Config.ThinkingBudget != nil {
+				data, err = sjson.DeleteBytes(data, path)
+				if err != nil {
+					return nil, err
+				}
+				path, value = "generationConfig.thinkingConfig.thinkingBudget", *render.Config.ThinkingBudget
+			}
+		}
 	}
-	updated, err := sjson.SetBytes(data, path, info.AdaptiveReasoningEffort)
+	updated, err := sjson.SetBytes(data, path, value)
 	if err != nil {
 		return nil, err
 	}

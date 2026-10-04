@@ -61,6 +61,10 @@ func prepareAdaptiveReasoning(c *gin.Context, info *relaycommon.RelayInfo) {
 	if cfg == nil || !cfg.Enabled {
 		return
 	}
+	// 范围匹配使用映射前的请求模型；未选中的模型不创建评估记录或消耗评估额度。
+	if len(cfg.Models) > 0 && !slices.Contains(cfg.Models, info.OriginModelName) {
+		return
+	}
 	result := map[string]any{"stage": "adaptive_reasoning", "channel_id": cfg.ChannelID, "status": "skipped", "applied": false}
 	info.TypeSafeResults = append(info.TypeSafeResults, result)
 	if err := cfg.Validate(); err != nil {
@@ -95,12 +99,12 @@ func prepareAdaptiveReasoning(c *gin.Context, info *relaycommon.RelayInfo) {
 	}
 	modelName := hostreasoning.BaseModelName(info.UpstreamModelName)
 	claudeModel := info.ChannelType == constant.ChannelTypeAnthropic || strings.HasPrefix(strings.ToLower(modelName), "claude-")
-	if (info.ChannelType == constant.ChannelTypeGemini || info.RelayFormat == types.RelayFormatGemini) && !claudeModel {
-		result["reason"] = "unsupported_reasoning_model"
-		return
-	}
 	if claudeModel {
 		config.Efforts = relaycommon.AdaptiveClaudeEfforts(modelName, config.Efforts)
+	} else if info.ChannelType == constant.ChannelTypeGemini || info.RelayFormat == types.RelayFormatGemini {
+		config.Efforts = relaycommon.AdaptiveGeminiEfforts(modelName, config.Efforts)
+	}
+	if claudeModel || info.ChannelType == constant.ChannelTypeGemini || info.RelayFormat == types.RelayFormatGemini {
 		if len(config.Efforts) == 0 {
 			result["reason"] = "unsupported_reasoning_model"
 			return
