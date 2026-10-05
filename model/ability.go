@@ -299,7 +299,7 @@ func filterAbilitiesByConstraints(abilities []Ability, modelName string, filters
 
 func filtersRequireChannelData(filters []dto.ChannelFilter) bool {
 	for _, filter := range filters {
-		if filter.Kind == dto.FilterTaskPluginIdentity && filter.TaskPluginKey != "" ||
+		if filter.Kind == dto.FilterExcludeChannel || filter.Kind == dto.FilterTaskPluginIdentity && filter.TaskPluginKey != "" ||
 			filter.Kind == dto.FilterUserAccess && filter.UserId > 0 {
 			return true
 		}

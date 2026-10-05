@@ -173,7 +173,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
 			logger.LogError(c, channelErr.Error())
-			newAPIError = channelErr
+			// 候选渠道全部限流时保留原始 429，避免用无可用渠道错误掩盖限流原因。
+			if newAPIError == nil || newAPIError.StatusCode != http.StatusTooManyRequests {
+				newAPIError = channelErr
+			}
 			break
 		}
 		service.AppendUsedChannel(c, channel.Id)
@@ -231,6 +234,13 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 		if decision.Action != "retry" {
 			break
+		}
+		if newAPIError.StatusCode == http.StatusTooManyRequests {
+			constraints := service.GetChannelConstraints(c)
+			if _, pinned, _ := constraints.ResolvedPin(); !pinned {
+				constraints.AddFilter(taskdto.ChannelFilter{Kind: taskdto.FilterExcludeChannel, ChannelId: channel.Id})
+				service.ClearCurrentChannelAffinityCache(c)
+			}
 		}
 	}
 

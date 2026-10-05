@@ -11,11 +11,13 @@ import (
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/QuantumNous/new-api/dto"
@@ -25,6 +27,89 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestRateLimitedSessionSwitchesChannelAndRebinds(t *testing.T) {
+	require.NoError(t, i18n.Init())
+	modelManagementDB(t, "sqlite", "")
+	for _, cached := range []bool{false, true} {
+		for _, failover := range []bool{false, true} {
+			t.Run(fmt.Sprintf("cache=%t/failover=%t", cached, failover), func(t *testing.T) {
+				f := setupAdaptiveReasoning(t)
+				require.NoError(t, f.db.AutoMigrate(&model.Ability{}))
+				oldRetry := common.RetryTimes
+				common.RetryTimes = 2
+				t.Cleanup(func() { common.RetryTimes = oldRetry })
+				var limitedCalls, healthyCalls atomic.Int32
+				limited := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					limitedCalls.Add(1)
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusTooManyRequests)
+					_, _ = io.WriteString(w, `{"error":{"message":"rate limited","type":"rate_limit_error"}}`)
+				}))
+				t.Cleanup(limited.Close)
+				healthy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					healthyCalls.Add(1)
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = io.WriteString(w, `{"id":"resp-ok","object":"response","model":"gpt-6-astra","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`)
+				}))
+				t.Cleanup(healthy.Close)
+				f.parent.BaseURL = &limited.URL
+				settings := f.parent.GetSetting()
+				settings.AdaptiveReasoning = nil
+				f.parent.SetSetting(settings)
+				require.NoError(t, f.db.Save(f.parent).Error)
+				require.NoError(t, f.parent.AddAbilities(f.db))
+				backup := &model.Channel{Id: 905, Name: "backup", Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled, Models: "gpt-6-astra", Group: "default", Key: "test", BaseURL: &healthy.URL}
+				if failover {
+					require.NoError(t, f.db.Create(backup).Error)
+					require.NoError(t, backup.AddAbilities(f.db))
+				}
+				common.MemoryCacheEnabled = cached
+				model.InitChannelCache()
+				affinity := operation_setting.GetChannelAffinitySetting()
+				oldAffinity := *affinity
+				t.Cleanup(func() { *affinity = oldAffinity })
+				snapshot, err := model.BuildRequestPolicy(map[string]string{"channel_affinity_setting.enabled": "true", "channel_affinity_setting.switch_on_success": "true", "channel_affinity_setting.rules": `[{"name":"test-429","model_regex":[".*"],"key_sources":[{"type":"request_header","key":"X-New-Api-Conversation-Id"}],"session_mode":"prefer"}]`})
+				require.NoError(t, err)
+				*affinity = snapshot.Affinity
+				seed, _ := f.request(t, `"hello"`, t.Name())
+				_, _ = service.GetPreferredChannelByAffinity(seed, "gpt-6-astra", "default")
+				service.RecordChannelAffinity(seed, f.parent.Id)
+				t.Cleanup(func() { service.ClearCurrentChannelAffinityCache(seed) })
+				router := gin.New()
+				router.POST("/v1/responses", func(c *gin.Context) {
+					for key, value := range seed.Keys {
+						c.Set(key, value)
+					}
+				}, middleware.Distribute(), func(c *gin.Context) { Relay(c, types.RelayFormatOpenAIResponses) })
+				recorder := httptest.NewRecorder()
+				request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-6-astra","input":"hello"}`))
+				request.Header.Set("Content-Type", "application/json")
+				request.Header.Set("X-New-Api-Conversation-Id", t.Name())
+				router.ServeHTTP(recorder, request)
+				assert.EqualValues(t, 1, limitedCalls.Load(), recorder.Body.String())
+				bound, exists := service.GetPreferredChannelByAffinity(seed, "gpt-6-astra", "default")
+				if failover {
+					assert.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+					assert.EqualValues(t, 1, healthyCalls.Load())
+					assert.True(t, exists)
+					assert.Equal(t, backup.Id, bound)
+				} else {
+					assert.Equal(t, http.StatusTooManyRequests, recorder.Code, recorder.Body.String())
+					assert.Zero(t, healthyCalls.Load())
+					assert.False(t, exists)
+				}
+			})
+		}
+	}
+	c := newPinRetryContext()
+	c.Writer.WriteHeader(http.StatusOK)
+	_, err := c.Writer.Write([]byte("data: partial\n\n"))
+	require.NoError(t, err)
+	decision := service.DecideRelayRetry(c, types.NewOpenAIError(errors.New("rate limited"), types.ErrorCodeBadResponseStatusCode, http.StatusTooManyRequests), 2)
+	assert.Equal(t, "stop", decision.Action)
+	assert.Equal(t, "response_started", decision.Reason)
+}
 
 func TestShouldRetryHonorsPinRetryMode(t *testing.T) {
 	openaiErr := types.NewOpenAIError(errors.New("upstream"), types.ErrorCodeBadResponseStatusCode, http.StatusInternalServerError)
