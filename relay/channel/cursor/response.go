@@ -651,6 +651,12 @@ func parseCursorExternalToolCalls(text string, allowedTools map[string]cursorExt
 			input := call.Input
 			if input == nil {
 				input = call.Arguments
+				// 上游兼容转换将自由文本工具封装为带 input 参数的函数。
+				if arguments, ok := input.(map[string]any); ok {
+					if rawInput, ok := arguments["input"].(string); ok {
+						input = rawInput
+					}
+				}
 			}
 			var inputText string
 			switch value := input.(type) {

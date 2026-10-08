@@ -19,6 +19,10 @@ import (
 )
 
 func TestGeminiForwardingPreservesRealEffortTailModelIDs(t *testing.T) {
+	geminiSettings := model_setting.GetGeminiSettings()
+	originalAdapterEnabled := geminiSettings.ThinkingAdapterEnabled
+	geminiSettings.ThinkingAdapterEnabled = true
+	t.Cleanup(func() { geminiSettings.ThinkingAdapterEnabled = originalAdapterEnabled })
 	settings := model_setting.GetGlobalSettings()
 	original := *settings
 	t.Cleanup(func() { *settings = original })

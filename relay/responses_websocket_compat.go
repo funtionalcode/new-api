@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/tokenkit"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -612,10 +613,11 @@ func collectResponsesWebsocketUsage(c *gin.Context, info *relaycommon.RelayInfo,
 			imageCounter.Observe(streamResponse.Item, streamResponse.OutputIndex)
 		}
 	case "response.completed", "response.done", "response.incomplete":
+		if info != nil {
+			info.ApplyVendorToolUsage(message)
+		}
 		if imageCommitted != nil && !*imageCommitted {
-			if streamResponse.Response != nil && relaycommon.IsNonBillableResponsesStatus(streamResponse.Response.Status) {
-				imageCounter.Reset()
-			} else if streamResponse.Response != nil {
+			if streamResponse.Response != nil {
 				for i := range streamResponse.Response.Output {
 					idx := i
 					imageCounter.Observe(&streamResponse.Response.Output[i], &idx)
@@ -626,8 +628,16 @@ func collectResponsesWebsocketUsage(c *gin.Context, info *relaycommon.RelayInfo,
 		}
 		return streamResponse.Type, true, true
 	case "response.failed", "response.error", "error":
+		if info != nil {
+			info.ApplyVendorToolUsage(message)
+		}
 		if imageCommitted != nil && !*imageCommitted {
-			imageCounter.Reset()
+			// 失败前已返回的完整图片仍按上游统一规则计费。
+			if streamResponse.Response != nil {
+				for i := range streamResponse.Response.Output {
+					imageCounter.Observe(&streamResponse.Response.Output[i], &i)
+				}
+			}
 			imageCounter.Commit(info)
 			*imageCommitted = true
 		}
@@ -666,7 +676,7 @@ func finalizeResponsesWebsocketUsage(info *relaycommon.RelayInfo, usage *dto.Usa
 		return
 	}
 	if usage.CompletionTokens == 0 && responseText != "" {
-		usage.CompletionTokens = service.CountTextToken(responseText, info.UpstreamModelName)
+		usage.CompletionTokens = tokenkit.Count(info.GetUpstreamModelName(), responseText)
 	}
 	if usage.PromptTokens == 0 && usage.CompletionTokens != 0 {
 		usage.PromptTokens = info.GetEstimatePromptTokens()

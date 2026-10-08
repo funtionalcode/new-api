@@ -2127,7 +2127,8 @@ func TestConvertOpenAIResponsesRequestPreservesCodexCustomToolsAndHistory(t *tes
 	require.True(t, ok)
 	assert.Empty(t, createRequest.Model.Params)
 	assert.Equal(t, "xhigh", info.ReasoningEffort)
-	assert.Contains(t, createRequest.Prompt.Text, `"type":"custom"`)
+	assert.Contains(t, createRequest.Prompt.Text, `"arguments":{"input":"*** Begin Patch"}`)
+	assert.Contains(t, createRequest.Prompt.Text, `"required":["input"]`)
 	assert.Contains(t, createRequest.Prompt.Text, `"name":"apply_patch"`)
 	assert.Contains(t, createRequest.Prompt.Text, `"role":"tool"`)
 	assert.Contains(t, createRequest.Prompt.Text, `"tool_call_id":"call_patch"`)
@@ -2252,39 +2253,43 @@ func TestConvertOpenAIResponsesRequestSkipsCodexOpaqueReasoningHistory(t *testin
 }
 
 func TestCursorNonStreamResponseConvertsCustomToolCallToResponses(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	c.Set(cursorExternalToolsContextKey, map[string]cursorExternalToolSpec{"apply_patch": {Kind: dto.CustomType, Name: "apply_patch"}})
-	common.SetContextKey(c, common.RequestIdKey, "req-cursor-responses-tool")
+	for _, input := range []string{`"input":"*** Begin Patch"`, `"arguments":{"input":"*** Begin Patch"}`} {
+		t.Run(input, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			c.Set(cursorExternalToolsContextKey, map[string]cursorExternalToolSpec{"apply_patch": {Kind: dto.CustomType, Name: "apply_patch"}})
+			common.SetContextKey(c, common.RequestIdKey, "req-cursor-responses-tool")
 
-	toolEnvelope := `{"cursor_external_tool_calls":[{"id":"call_patch","name":"apply_patch","input":"*** Begin Patch"}]}`
-	resp := &http.Response{
-		StatusCode: http.StatusOK,
-		Header: http.Header{
-			cursorClientStreamHeader:    []string{"false"},
-			cursorSkipRemoteUsageHeader: []string{"true"},
-		},
-		Body: io.NopCloser(strings.NewReader("event: assistant\ndata: {\"text\":\"" + strings.ReplaceAll(toolEnvelope, `"`, `\"`) + "\"}\n\nevent: result\ndata: {\"runId\":\"run-1\",\"status\":\"FINISHED\",\"text\":\"" + strings.ReplaceAll(toolEnvelope, `"`, `\"`) + "\"}\n\n")),
-	}
-	info := &relaycommon.RelayInfo{
-		RelayFormat: types.RelayFormatOpenAIResponses,
-		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "composer-2"},
-	}
+			toolEnvelope := `{"cursor_external_tool_calls":[{"id":"call_patch","name":"apply_patch",` + input + `}]}`
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					cursorClientStreamHeader:    []string{"false"},
+					cursorSkipRemoteUsageHeader: []string{"true"},
+				},
+				Body: io.NopCloser(strings.NewReader("event: assistant\ndata: {\"text\":\"" + strings.ReplaceAll(toolEnvelope, `"`, `\"`) + "\"}\n\nevent: result\ndata: {\"runId\":\"run-1\",\"status\":\"FINISHED\",\"text\":\"" + strings.ReplaceAll(toolEnvelope, `"`, `\"`) + "\"}\n\n")),
+			}
+			info := &relaycommon.RelayInfo{
+				RelayFormat: types.RelayFormatOpenAIResponses,
+				ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "composer-2"},
+			}
 
-	usage, apiErr := (&Adaptor{}).DoResponse(c, resp, info)
-	require.Nil(t, apiErr)
-	require.NotNil(t, usage)
-	var response dto.OpenAIResponsesResponse
-	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
-	require.Len(t, response.Output, 1)
-	assert.Equal(t, "custom_tool_call", response.Output[0].Type)
-	assert.Equal(t, "call_patch", response.Output[0].CallId)
-	assert.Equal(t, "apply_patch", response.Output[0].Name)
-	require.NotNil(t, response.Output[0].Input)
-	assert.Equal(t, "*** Begin Patch", *response.Output[0].Input)
-	assert.NotContains(t, recorder.Body.String(), "cursor_external_tool_calls")
+			usage, apiErr := (&Adaptor{}).DoResponse(c, resp, info)
+			require.Nil(t, apiErr)
+			require.NotNil(t, usage)
+			var response dto.OpenAIResponsesResponse
+			require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+			require.Len(t, response.Output, 1)
+			assert.Equal(t, "custom_tool_call", response.Output[0].Type)
+			assert.Equal(t, "call_patch", response.Output[0].CallId)
+			assert.Equal(t, "apply_patch", response.Output[0].Name)
+			require.NotNil(t, response.Output[0].Input)
+			assert.JSONEq(t, `"*** Begin Patch"`, string(response.Output[0].Input))
+			assert.NotContains(t, recorder.Body.String(), "cursor_external_tool_calls")
+		})
+	}
 }
 
 func TestCursorStreamResponseConvertsCustomToolCallToResponsesEvents(t *testing.T) {

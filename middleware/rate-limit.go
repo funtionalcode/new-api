@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
 )
 
@@ -160,8 +161,17 @@ func rateLimitFactory(maxRequestNum int, duration int64, mark string) func(c *gi
 	}
 }
 
-func GlobalWebRateLimit() func(c *gin.Context) {
+// 静态资源使用独立限流，并在每次请求时读取可在线更新的配置。
+func GlobalWebRateLimit(frontendFS static.ServeFileSystem) func(c *gin.Context) {
 	return func(c *gin.Context) {
+		if frontendFS.Exists("/", c.Request.URL.Path) {
+			if common.GlobalStaticRateLimitEnable {
+				rateLimitFactory(common.GlobalStaticRateLimitNum, common.GlobalStaticRateLimitDuration, "GS")(c)
+				return
+			}
+			defNext(c)
+			return
+		}
 		if common.GlobalWebRateLimitEnable {
 			rateLimitFactory(common.GlobalWebRateLimitNum, common.GlobalWebRateLimitDuration, "GW")(c)
 			return

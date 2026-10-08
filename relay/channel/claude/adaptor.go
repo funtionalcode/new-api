@@ -43,6 +43,11 @@ func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayIn
 	filteredMessages := make([]dto.ClaudeMessage, 0, len(request.Messages))
 	for _, message := range request.Messages {
 		role := strings.ToLower(strings.TrimSpace(message.Role))
+		// 分段思考强度通过消息位置生效，不能提升到顶层或按空内容丢弃。
+		if role == "system" && len(message.OutputConfig) > 0 {
+			filteredMessages = append(filteredMessages, message)
+			continue
+		}
 		if role == "system" || role == "developer" {
 			messageSystemContent, err := normalizeClaudeSystemContent(message.Content)
 			if err != nil {
