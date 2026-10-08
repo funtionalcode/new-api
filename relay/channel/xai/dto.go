@@ -1,6 +1,10 @@
 package xai
 
-import "github.com/QuantumNous/new-api/relaykit/dto"
+import (
+	"encoding/json"
+
+	"github.com/QuantumNous/new-api/relaykit/dto"
+)
 
 // ChatCompletionResponse represents the response from XAI chat completion API
 type ChatCompletionResponse struct {
@@ -13,14 +17,17 @@ type ChatCompletionResponse struct {
 	SystemFingerprint string                         `json:"system_fingerprint"`
 }
 
-// quality, size or style are not supported by xAI API at the moment.
 type ImageRequest struct {
-	Model  string `json:"model"`
-	Prompt string `json:"prompt" binding:"required"`
-	N      int    `json:"n,omitempty"`
-	// Size           string          `json:"size,omitempty"`
-	// Quality        string          `json:"quality,omitempty"`
-	ResponseFormat string `json:"response_format,omitempty"`
+	Model          string          `json:"model"`
+	Prompt         string          `json:"prompt" binding:"required"`
+	N              *uint           `json:"n,omitempty"`
+	Resolution     *string         `json:"resolution,omitempty"`
+	AspectRatio    *string         `json:"aspect_ratio,omitempty"`
+	Quality        *string         `json:"quality,omitempty"`
+	Image          json.RawMessage `json:"image,omitempty"`
+	Images         json.RawMessage `json:"images,omitempty"`
+	Stream         *bool           `json:"stream,omitempty"`
+	ResponseFormat string          `json:"response_format,omitempty"`
 	// Style          string          `json:"style,omitempty"`
 	// User           string          `json:"user,omitempty"`
 	// ExtraFields    json.RawMessage `json:"extra_fields,omitempty"`

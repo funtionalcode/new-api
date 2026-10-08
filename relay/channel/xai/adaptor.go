@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/model_setting"
@@ -50,6 +51,40 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
+	var quality *string
+	resolution := request.Resolution
+	if request.Model == "grok-imagine-image-2.0" {
+		count, err := request.ImageCount(false)
+		if err != nil || count > 10 {
+			return nil, types.NewErrorWithStatusCode(errors.New("n must be between 1 and 10"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+		resolved := helper.ResolveGrokImageResolution(&request)
+		if resolved != "1k" && resolved != "1.5k" && resolved != "2k" {
+			return nil, types.NewErrorWithStatusCode(errors.New("resolution must be 1k, 1.5k or 2k"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+		resolution = &resolved
+		if request.Quality != "" {
+			if request.Quality != "low" && request.Quality != "medium" && request.Quality != "auto" {
+				return nil, types.NewErrorWithStatusCode(errors.New("quality must be low, medium or auto"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			}
+			quality = &request.Quality
+		}
+		// 显式转发官方当前的 auto 默认档位，避免实际质量和计费档位不同。
+		if request.Quality == "" || request.Quality == "auto" {
+			resolvedQuality := "low"
+			if info.RelayMode == constant.RelayModeImagesEdits {
+				resolvedQuality = "medium"
+			}
+			quality = &resolvedQuality
+		}
+		inputCount, err := helper.ResolveImageInputCount(c, &request)
+		if err != nil || inputCount > 5 || info.RelayMode == constant.RelayModeImagesEdits && inputCount == 0 {
+			return nil, types.NewErrorWithStatusCode(errors.New("image edits require 1 to 5 valid input images"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+		if info.RelayMode == constant.RelayModeImagesGenerations && inputCount != 0 {
+			return nil, types.NewErrorWithStatusCode(errors.New("input images require /v1/images/edits"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+	}
 	if info.RelayMode == constant.RelayModeImagesEdits && !xaiImageEditIsJSON(c) {
 		return a.openaiAdaptor.ConvertImageRequest(c, info, request)
 	}
@@ -57,7 +92,13 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 	xaiRequest := ImageRequest{
 		Model:          request.Model,
 		Prompt:         request.Prompt,
-		N:              int(lo.FromPtrOr(request.N, uint(1))),
+		N:              request.N,
+		Resolution:     resolution,
+		AspectRatio:    request.AspectRatio,
+		Quality:        quality,
+		Image:          request.Image,
+		Images:         request.Images,
+		Stream:         request.Stream,
 		ResponseFormat: request.ResponseFormat,
 	}
 	return xaiRequest, nil
