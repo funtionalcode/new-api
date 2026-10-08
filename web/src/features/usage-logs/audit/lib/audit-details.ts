@@ -21,7 +21,7 @@ import type { TFunction } from 'i18next'
 import { loginMethodLabel } from '@/features/security/components/login-session-utils'
 import { ROLE } from '@/lib/roles'
 
-import { renderAuditContent } from '../../lib/format'
+import { AUDIT_TEMPLATES, renderAuditContent } from '../../lib/format'
 import { buildQuotaAuditOperation } from '../../lib/quota-audit-operation'
 import type { LogOtherData } from '../../types'
 import type { AuditLog } from '../api'
@@ -59,6 +59,28 @@ const TOKEN_AUDIT_OPERATIONS: Record<
   },
   'token.delete_batch': { labelKey: 'Batch delete API tokens' },
   'token.key_view_batch': { labelKey: 'View API token keys in batch' },
+}
+
+export function findAuditEventActions(keyword: string, t: TFunction): string[] {
+  const search = keyword.trim().toLowerCase()
+  if (!search) return []
+  const actions = [...Object.keys(AUDIT_TEMPLATES), 'redemption.delete_batch']
+  return actions.filter((action) => {
+    const tokenLabel = TOKEN_AUDIT_OPERATIONS[action]?.labelKey
+    const labels = [
+      action,
+      AUDIT_TEMPLATES[action] ?? '',
+      renderAuditContent({ op: { action, params: {} } }, t) ?? '',
+      tokenLabel ? t(tokenLabel) : '',
+      action === 'generic' ? t('Operation audit') : '',
+    ]
+    return labels.some((label) =>
+      label
+        .replaceAll(/\{\{[^}]+\}\}/g, '')
+        .toLowerCase()
+        .includes(search)
+    )
+  })
 }
 
 export type AuditDetailField = {

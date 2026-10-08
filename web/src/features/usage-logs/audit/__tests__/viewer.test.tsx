@@ -502,6 +502,90 @@ it('administrator scope uses the admin endpoint and exposes the username filter'
   )
 })
 
+it('event search sends the keyword, resets pagination and clears on reset', async () => {
+  const get = vi.spyOn(api, 'get').mockResolvedValue({
+    data: { success: true, data: { items: [], total: 40 } },
+  })
+  renderViewer()
+  const user = userEvent.setup()
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Go to next page' })
+    ).toBeEnabled()
+  )
+  await user.click(screen.getByRole('button', { name: 'Go to next page' }))
+  await waitFor(() =>
+    expect(get).toHaveBeenLastCalledWith('/api/audit/self', {
+      params: expect.objectContaining({ p: 2 }),
+    })
+  )
+  fireEvent.change(screen.getByRole('textbox', { name: 'Event' }), {
+    target: { value: ' DeepSeek ' },
+  })
+  await waitFor(() =>
+    expect(get).toHaveBeenLastCalledWith('/api/audit/self', {
+      params: expect.objectContaining({ p: 1, event: 'DeepSeek' }),
+    })
+  )
+  get.mockClear()
+  screen.getByRole('textbox', { name: 'Event' }).focus()
+  await user.keyboard('{Enter}')
+  await waitFor(() =>
+    expect(get).toHaveBeenLastCalledWith('/api/audit/self', {
+      params: expect.objectContaining({ p: 1, event: 'DeepSeek' }),
+    })
+  )
+  await user.click(screen.getByRole('button', { name: 'Reset' }))
+  expect(screen.getByRole('textbox', { name: 'Event' })).toHaveValue('')
+  await waitFor(() =>
+    expect(get).toHaveBeenLastCalledWith('/api/audit/self', {
+      params: expect.not.objectContaining({ event: expect.any(String) }),
+    })
+  )
+})
+
+it('Chinese event search resolves translated actions and preserves the category filter', async () => {
+  const i18n = createInstance()
+  await i18n.init({ lng: 'zh', fallbackLng: false, resources: { zh } })
+  const get = vi.spyOn(api, 'get').mockResolvedValue({
+    data: { success: true, data: { items: [], total: 0 } },
+  })
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  render(
+    <I18nextProvider i18n={i18n}>
+      <QueryClientProvider client={client}>
+        <AuditLogViewer scope='all' />
+      </QueryClientProvider>
+    </I18nextProvider>
+  )
+  fireEvent.change(screen.getByRole('textbox', { name: '事件' }), {
+    target: { value: '更新渠道' },
+  })
+  await waitFor(() =>
+    expect(get).toHaveBeenLastCalledWith('/api/audit', {
+      params: expect.objectContaining({
+        event: '更新渠道',
+        event_actions: expect.stringContaining('channel.update'),
+      }),
+    })
+  )
+  await userEvent.click(
+    screen.getByRole('combobox', { name: i18n.t('Category') })
+  )
+  await userEvent.click(await screen.findByRole('option', { name: '操作审计' }))
+  await waitFor(() =>
+    expect(get).toHaveBeenLastCalledWith('/api/audit', {
+      params: expect.objectContaining({
+        event: '更新渠道',
+        category: 'operation',
+        p: 1,
+      }),
+    })
+  )
+})
+
 it('changing rows per page resets pagination and sends the selected page size', async () => {
   const get = vi.spyOn(api, 'get').mockResolvedValue({
     data: { success: true, data: { items: [], total: 80 } },

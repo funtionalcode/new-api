@@ -50,6 +50,8 @@ type AuditLogFilter struct {
 	UserId          int
 	Username        string
 	Category        string
+	Event           string
+	EventActions    []string
 	TokenRef        string
 	ExcludeTokenRef string
 	RequestId       string
@@ -156,6 +158,20 @@ func GetAuditLogs(filter AuditLogFilter, start, limit, viewerRole int) ([]*Audit
 	}
 	if filter.Category != "" {
 		query = query.Where("category = ?", filter.Category)
+	}
+	if keyword := strings.TrimSpace(filter.Event); keyword != "" {
+		// 仅查询可见事件字段，不搜索可能包含管理专用信息的 other 元数据。
+		var eventQuery *gorm.DB
+		if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+			eventQuery = LOG_DB.Where("positionCaseInsensitiveUTF8(content, ?) > 0 OR positionCaseInsensitiveUTF8(action, ?) > 0", keyword, keyword)
+		} else {
+			pattern := "%" + strings.NewReplacer("!", "!!", "%", "!%", "_", "!_").Replace(strings.ToLower(keyword)) + "%"
+			eventQuery = LOG_DB.Where("LOWER(content) LIKE ? ESCAPE '!' OR LOWER(action) LIKE ? ESCAPE '!'", pattern, pattern)
+		}
+		if len(filter.EventActions) > 0 {
+			eventQuery = eventQuery.Or("action IN ?", filter.EventActions)
+		}
+		query = query.Where(eventQuery)
 	}
 	if filter.TokenRef != "" {
 		query = query.Where("token_ref = ?", filter.TokenRef)

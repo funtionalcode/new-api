@@ -28,6 +28,7 @@ import { requireServerSuccess } from '@/lib/server-error-message'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { getAuditLogs, type AuditFilters, type AuditLog } from '../api'
+import { findAuditEventActions } from '../lib/audit-details'
 import { useAuditLogColumns } from './audit-log-columns'
 import { AuditLogFilterBar } from './audit-log-filter-bar'
 
@@ -44,6 +45,11 @@ export function AuditLogViewer(props: {
   const [filters, setFilters] = useState<AuditFilters>({ p: 1, page_size: 20 })
   const [tokenScope, setTokenScope] = useState('all')
   const params = { ...filters }
+  params.event = filters.event?.trim() || undefined
+  if (params.event) {
+    params.event_actions =
+      findAuditEventActions(params.event, t).join(',') || undefined
+  }
   if (props.accessOnly) params.category = 'access_token'
   if (tokenScope === 'current') params.token_ref = props.currentTokenRef
   if (tokenScope === 'historical') {

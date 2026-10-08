@@ -548,7 +548,7 @@ export function formatDuration(
  * renders localized content at display time so audit/login logs are fully
  * translatable instead of being frozen to whatever language was written to DB.
  */
-const AUDIT_TEMPLATES: Record<string, string> = {
+export const AUDIT_TEMPLATES: Record<string, string> = {
   'token.create': 'API token creation',
   'token.update': 'API token configuration update',
   'token.status_update': 'API token status update',

@@ -235,6 +235,62 @@ func TestAuditIsolationVisibilityAndFailureContracts(t *testing.T) {
 	assert.Equal(t, model.AccessTokenFingerprint(pat), status.TokenRef)
 }
 
+func TestAuditEventSearchFiltersBeforePaginationAndPreservesVisibility(t *testing.T) {
+	user, pat := setupAccessTokenAudit(t)
+	entries := []model.AuditLog{
+		{EventId: "channel-update", UserId: user.Id, ActorRole: common.RoleAdminUser, Category: model.AuditCategoryOperation, Action: "channel.update", Content: "Updated channel DeepSeek (ID: 7)", CreatedAt: 10, Success: true},
+		{EventId: "channel-key", UserId: user.Id, ActorRole: common.RoleAdminUser, Category: model.AuditCategoryOperation, Action: "channel.key_view", Content: "Viewed channel key deepseek (ID: 7)", CreatedAt: 11, Success: true},
+		{EventId: "other-owner", UserId: user.Id + 1, ActorRole: common.RoleAdminUser, Category: model.AuditCategoryOperation, Action: "channel.update", Content: "Updated channel deepseek", CreatedAt: 12, Success: true},
+		{EventId: "root-event", UserId: user.Id, ActorRole: common.RoleRootUser, Category: model.AuditCategoryOperation, Action: "channel.update", Content: "Updated channel deepseek", CreatedAt: 13, Success: true},
+		{EventId: "login", UserId: user.Id, ActorRole: common.RoleAdminUser, Category: model.AuditCategoryLogin, Action: "login", Content: "deepseek logged in", CreatedAt: 14, Success: true},
+		{EventId: "literal", UserId: user.Id, ActorRole: common.RoleAdminUser, Category: model.AuditCategoryOperation, Action: "generic", Content: "Updated name 50%_!\\", CreatedAt: 15, Success: false},
+	}
+	require.NoError(t, model.LOG_DB.Create(&entries).Error)
+	router := gin.New()
+	router.GET("/api/audit/self", middleware.UserAuth(), GetAuditLogs)
+	for _, tc := range []struct {
+		name, query string
+		total       int
+		ids         []string
+	}{
+		{"content and first page", "event=DEEPSEEK&category=operation&page_size=1", 2, []string{"channel-key"}},
+		{"content and second page", "event=deepseek&category=operation&page_size=1&p=2", 2, []string{"channel-update"}},
+		{"action substring", "event=KEY_VIEW", 1, []string{"channel-key"}},
+		{"localized event actions", "event=" + url.QueryEscape("更新渠道") + "&event_actions=channel.update&category=operation", 1, []string{"channel-update"}},
+		{"grouped conditions retain result filter", "event=deepseek&event_actions=channel.update&success=false", 0, []string{}},
+		{"literal wildcard characters", "event=" + url.QueryEscape("50%_!\\"), 1, []string{"literal"}},
+		{"empty search", "event=" + url.QueryEscape("  ") + "&event_actions=channel.update", 4, []string{"literal", "login", "channel-key", "channel-update"}},
+		{"unknown keyword", "event=no-matching-event", 0, []string{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			response := auditRequest(router, http.MethodGet, "/api/audit/self?end_timestamp=20&"+tc.query, pat)
+			var result struct {
+				Success bool
+				Data    struct {
+					Items []model.AuditLog
+					Total int
+				}
+			}
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
+			require.True(t, result.Success)
+			assert.Equal(t, tc.total, result.Data.Total)
+			ids := make([]string, 0, len(result.Data.Items))
+			for _, entry := range result.Data.Items {
+				ids = append(ids, entry.EventId)
+			}
+			assert.Equal(t, tc.ids, ids)
+		})
+	}
+	for _, query := range []string{
+		"event=" + url.QueryEscape(strings.Repeat("事", 201)),
+		"event=channel&event_actions=" + strings.Repeat("channel.update,", 129),
+	} {
+		response := auditRequest(router, http.MethodGet, "/api/audit/self?"+query, pat)
+		assert.Contains(t, response.Body.String(), `"success":false`)
+		assert.Contains(t, response.Body.String(), "Invalid audit event search")
+	}
+}
+
 func TestAuditRoleVisibilityAndPermissions(t *testing.T) {
 	admin, pat := setupAccessTokenAudit(t)
 	rootToken := "root-audit-token"
@@ -793,12 +849,21 @@ func TestIndependentAuditLogStores(t *testing.T) {
 					assert.Equal(t, "retained historical login", old.Content)
 				}
 				require.NoError(t, model.UpdateUserAccessToken(1, "independent-pat"))
-				model.RecordAuditLog(nil, model.AuditLog{ActorRole: common.RoleAdminUser, UserId: 1, Username: "independent", Category: model.AuditCategoryAccessToken, TokenRef: model.AccessTokenFingerprint("independent-pat"), Ip: "192.0.2.8", Success: false, Status: 403})
+				model.RecordAuditLog(nil, model.AuditLog{ActorRole: common.RoleAdminUser, UserId: 1, Username: "independent", Category: model.AuditCategoryAccessToken, Action: "access_token.request", Content: "Audit search 50%_!\\", TokenRef: model.AccessTokenFingerprint("independent-pat"), Ip: "192.0.2.8", Success: false, Status: 403})
 				entries, total, err := model.GetAuditLogs(model.AuditLogFilter{UserId: 1}, 0, 20, common.RoleAdminUser)
 				require.NoError(t, err)
 				assert.EqualValues(t, 1, total)
 				require.Len(t, entries, 1)
 				assert.False(t, entries[0].Success)
+				for _, event := range []string{"AUDIT SEARCH", "50%_!\\", "TOKEN.REQUEST"} {
+					found, matched, err := model.GetAuditLogs(model.AuditLogFilter{UserId: 1, Event: event}, 0, 20, common.RoleAdminUser)
+					require.NoError(t, err)
+					assert.EqualValues(t, 1, matched)
+					assert.Len(t, found, 1)
+				}
+				_, matched, err := model.GetAuditLogs(model.AuditLogFilter{UserId: 1, Event: "no-match"}, 0, 20, common.RoleAdminUser)
+				require.NoError(t, err)
+				assert.Zero(t, matched)
 				status, err := model.GetUserAccessTokenStatus(1)
 				require.NoError(t, err)
 				require.NotNil(t, status.LastUsedAt)

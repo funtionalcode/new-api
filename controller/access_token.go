@@ -3,6 +3,7 @@ package controller
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
@@ -70,6 +71,25 @@ func GetAuditLogs(c *gin.Context) {
 		return
 	}
 	filter := model.AuditLogFilter{Username: c.Query("username"), Category: c.Query("category"), TokenRef: c.Query("token_ref"), ExcludeTokenRef: c.Query("exclude_token_ref"), RequestId: c.Query("request_id")}
+	filter.Event = strings.TrimSpace(c.Query("event"))
+	if len([]rune(filter.Event)) > 200 {
+		common.ApiErrorMsg(c, "Invalid audit event search")
+		return
+	}
+	if filter.Event != "" {
+		// 前端将本地化的事件名称映射为稳定的 action；仍受原有权限和其他筛选条件约束。
+		for action := range strings.SplitSeq(c.Query("event_actions"), ",") {
+			action = strings.TrimSpace(action)
+			if action == "" {
+				continue
+			}
+			if len(action) > 128 || len(filter.EventActions) >= 128 {
+				common.ApiErrorMsg(c, "Invalid audit event search")
+				return
+			}
+			filter.EventActions = append(filter.EventActions, action)
+		}
+	}
 	viewerRole := c.GetInt("role")
 	if c.FullPath() == "/api/audit/self" {
 		filter.UserId = c.GetInt("id")

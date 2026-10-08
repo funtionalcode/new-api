@@ -49,6 +49,8 @@ export interface AuditFilters {
   end_timestamp?: number
   success?: string
   category?: string
+  event?: string
+  event_actions?: string
   token_ref?: string
   exclude_token_ref?: string
   username?: string
