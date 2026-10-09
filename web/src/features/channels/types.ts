@@ -91,6 +91,7 @@ export type Channel = z.infer<typeof channelSchema>
 // ============================================================================
 
 export interface ChannelSettings {
+  model_mapping_channels?: Record<string, number>
   task_plugin_key?: string
   task_extend_plugin_keys?: string[]
   force_format?: boolean

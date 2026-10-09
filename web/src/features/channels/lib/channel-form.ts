@@ -227,6 +227,9 @@ export const channelFormSchema = z
         isOptionalModelMapping,
         'Model mapping must be a JSON object with string values'
       ),
+    model_mapping_channels: z
+      .record(z.string(), z.number().int().positive())
+      .optional(),
     priority: z.number().optional(),
     weight: z.number().optional(),
     test_model: z.string().optional(),
@@ -459,6 +462,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   group: ['default'],
   open_user_ids: [],
   model_mapping: '',
+  model_mapping_channels: {},
   priority: 0,
   weight: 0,
   test_model: '',
@@ -521,6 +525,7 @@ export function transformChannelToFormDefaults(
 ): ChannelFormValues {
   // Parse channel extra settings from setting field
   let extraSettings = {
+    model_mapping_channels: {} as Record<string, number>,
     task_plugin_key: '',
     task_extend_plugin_keys: [] as string[],
     force_format: false,
@@ -544,6 +549,7 @@ export function transformChannelToFormDefaults(
         parsed.http2_connection_shards
       )
       extraSettings = {
+        model_mapping_channels: parsed.model_mapping_channels || {},
         adaptive_reasoning: readAdaptiveReasoning(parsed.adaptive_reasoning),
         task_plugin_key: parsed.task_plugin_key || '',
         task_extend_plugin_keys: readTaskExtendPluginKeys(channel.type, parsed),
@@ -675,7 +681,23 @@ export function transformChannelToFormDefaults(
  * Build the setting JSON string from form extra settings
  */
 export function buildSettingJSON(formData: ChannelFormValues): string {
+  let mappingSources = new Set<string>()
+  try {
+    const mapping: unknown = JSON.parse(formData.model_mapping || '{}')
+    if (mapping && typeof mapping === 'object' && !Array.isArray(mapping)) {
+      mappingSources = new Set(Object.keys(mapping))
+    }
+  } catch {
+    // 表单校验负责报告无效 JSON。
+  }
+  const mappingChannels = Object.fromEntries(
+    Object.entries(formData.model_mapping_channels ?? {}).filter(([source]) =>
+      mappingSources.has(source)
+    )
+  )
   const settingObj: Record<string, unknown> = {
+    model_mapping_channels:
+      Object.keys(mappingChannels).length > 0 ? mappingChannels : undefined,
     task_plugin_key:
       formData.type === CHANNEL_TYPE_TASK_PLUGIN
         ? formData.task_plugin_key?.trim() || ''

@@ -188,6 +188,13 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	c.Set("base_url", channel.GetBaseURL())
 	group, _ := model.GetUserGroup(testUserID, false)
 	c.Set("group", group)
+	var routeErr *types.NewAPIError
+	channel, routeErr = service.ResolveChannelModelMapping(c, channel, testModel, group)
+	if routeErr != nil {
+		return testResult{context: c, localErr: routeErr, newAPIError: routeErr}
+	}
+	c.Set("channel", channel.Type)
+	c.Set("base_url", channel.GetBaseURL())
 
 	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, testModel)
 	if newAPIError != nil {

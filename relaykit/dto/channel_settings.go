@@ -12,6 +12,8 @@ import (
 )
 
 type ChannelSettings struct {
+	// ModelMappingChannels 将对应的模型映射转交给指定渠道，未配置时沿用当前渠道。
+	ModelMappingChannels      map[string]int           `json:"model_mapping_channels,omitempty"`
 	AdaptiveReasoning         *AdaptiveReasoningConfig `json:"adaptive_reasoning,omitempty"`
 	TaskPluginKey             string                   `json:"task_plugin_key,omitempty"`
 	ForceFormat               bool                     `json:"force_format,omitempty"`

@@ -32,6 +32,13 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ComboboxInput } from '@/components/ui/combobox-input'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 type MappingField = 'from' | 'to'
@@ -59,6 +66,9 @@ type ModelMappingEditorProps = {
   disabled?: boolean
   sourceModelOptions?: string[]
   targetModelOptions?: string[]
+  channelOptions?: { id: number; name: string; models: string[] }[]
+  channelMapping?: Record<string, number>
+  onChannelMappingChange?: (mapping: Record<string, number>) => void
   /** Shows the batch button; the caller owns the batch dialog. */
   onBatchAdd?: () => void
   /**
@@ -75,6 +85,7 @@ type MappingRow = {
   id: string
   from: string
   to: string
+  channelId: number
 }
 
 const DUPLICATE_MAPPING_SENTINEL = '{ "duplicate_source_models": '
@@ -129,6 +140,24 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
       })),
     [props.targetModelOptions]
   )
+  const channelOptions = [
+    { value: '0', label: t('Current channel') },
+    ...(props.channelOptions ?? []).map((channel) => ({
+      value: String(channel.id),
+      label: `${channel.name} (#${channel.id})`,
+    })),
+  ]
+  for (const row of rows) {
+    if (
+      row.channelId > 0 &&
+      !channelOptions.some((option) => option.value === String(row.channelId))
+    ) {
+      channelOptions.push({
+        value: String(row.channelId),
+        label: `#${row.channelId}`,
+      })
+    }
+  }
 
   const createRowId = () => {
     nextRowIdRef.current += 1
@@ -172,12 +201,14 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
               id: existing.id,
               from,
               to: toString,
+              channelId: props.channelMapping?.[from] ?? 0,
             }
           }
           return {
             id: createRowId(),
             from,
             to: toString,
+            channelId: props.channelMapping?.[from] ?? 0,
           }
         })
         // Rows without a request name are not serialized yet; keep them so a
@@ -203,13 +234,27 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
   })
 
   const commit = () => {
+    try {
+      const mapping: unknown = JSON.parse(lastEmittedRef.current || '{}')
+      if (mapping && typeof mapping === 'object' && !Array.isArray(mapping)) {
+        props.onChannelMappingChange?.(
+          Object.fromEntries(
+            Object.entries(props.channelMapping ?? {}).filter(
+              ([source]) => source in mapping
+            )
+          )
+        )
+      }
+    } catch {
+      // 保留无效 JSON 草稿，等待用户修正。
+    }
     props.onCommit?.(lastEmittedRef.current)
   }
 
   // Only replace the draft when the external value changes, not on language changes.
   useEffect(() => {
     syncExternalValue()
-  }, [props.value])
+  }, [props.value, props.channelMapping])
 
   // A freshly added row exists one commit after the click, so focus it once
   // its inputs are rendered.
@@ -250,7 +295,7 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
       }
       setRows((previous) => [
         ...previous,
-        { id: rowId, from: request.from, to: request.to },
+        { id: rowId, from: request.from, to: request.to, channelId: 0 },
       ])
     }
     props.onDraftRequestHandled?.()
@@ -279,6 +324,13 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
 
   const syncRows = (updatedRows: MappingRow[]) => {
     setRows(updatedRows)
+    props.onChannelMappingChange?.(
+      Object.fromEntries(
+        updatedRows
+          .filter((row) => row.from.trim() && row.channelId > 0)
+          .map((row) => [row.from.trim(), row.channelId])
+      )
+    )
     const duplicates = getDuplicateSources(updatedRows)
     if (duplicates.length > 0) {
       setJsonError(t('Duplicate source model mappings are not allowed'))
@@ -300,6 +352,7 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
       id: createRowId(),
       from: '',
       to: '',
+      channelId: 0,
     }
     pendingRowFocusRef.current = { rowId: newRow.id, field: 'from' }
     syncRows([...rows, newRow])
@@ -329,6 +382,7 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
   }
 
   const handleFillTemplate = () => {
+    props.onChannelMappingChange?.({})
     const template = JSON.stringify(
       { 'gpt-3.5-turbo': 'gpt-3.5-turbo-0125' },
       null,
@@ -459,15 +513,28 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
                   )}
                 </div>
               )}
-              <div className='grid grid-cols-[1fr_1fr_auto] gap-2 text-sm font-medium'>
+              <div
+                className={
+                  props.onChannelMappingChange
+                    ? 'grid grid-cols-[1fr_1fr_1fr_auto] gap-2 text-sm font-medium'
+                    : 'grid grid-cols-[1fr_1fr_auto] gap-2 text-sm font-medium'
+                }
+              >
                 <div>{t('Request Model Name')}</div>
+                {props.onChannelMappingChange && (
+                  <div>{t('Target channel')}</div>
+                )}
                 <div>{t('Upstream Model Name')}</div>
                 <div className='w-10' />
               </div>
               {visibleRows.map((row) => (
                 <div
                   key={row.id}
-                  className='grid grid-cols-[1fr_1fr_auto] gap-2'
+                  className={
+                    props.onChannelMappingChange
+                      ? 'grid grid-cols-[1fr_1fr_1fr_auto] gap-2'
+                      : 'grid grid-cols-[1fr_1fr_auto] gap-2'
+                  }
                 >
                   <ComboboxInput
                     id={rowInputId(row.id, 'from')}
@@ -482,9 +549,47 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
                     disabled={props.disabled}
                     aria-label={t('Request Model Name')}
                   />
+                  {props.onChannelMappingChange && (
+                    <Select
+                      items={channelOptions}
+                      value={String(row.channelId)}
+                      onValueChange={(value) =>
+                        syncRows(
+                          rows.map((item) =>
+                            item.id === row.id
+                              ? { ...item, channelId: Number(value) }
+                              : item
+                          )
+                        )
+                      }
+                      disabled={props.disabled}
+                    >
+                      <SelectTrigger
+                        aria-label={t('Target channel')}
+                        className='w-full min-w-0'
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {channelOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                   <ComboboxInput
                     id={rowInputId(row.id, 'to')}
-                    options={targetOptions}
+                    options={
+                      row.channelId > 0
+                        ? (
+                            props.channelOptions?.find(
+                              (channel) => channel.id === row.channelId
+                            )?.models ?? []
+                          ).map((model) => ({ value: model, label: model }))
+                        : targetOptions
+                    }
                     value={row.to}
                     onValueChange={(value) =>
                       handleRowChange(row.id, 'to', value)

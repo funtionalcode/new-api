@@ -230,13 +230,11 @@ import {
   type ModelMappingBatchResult,
   type ModelMappingBatchSource,
 } from '../model-mapping-batch-dialog'
-import {
-  ModelMappingEditor,
-  type ModelMappingDraftRequest,
-} from '../model-mapping-editor'
+import type { ModelMappingDraftRequest } from '../model-mapping-editor'
 import { ModelRedirectPanel } from '../model-redirect-panel'
 import { ResponsesWebSocketSetting } from '../responses-websocket-setting'
 import { AdaptiveReasoningSettings } from '../adaptive-reasoning-settings'
+import { ChannelModelMappingEditor } from '../channel-model-mapping-editor'
 import { UpstreamModelSelection } from '../upstream-model-selection'
 import {
   ChannelConfiguration,
@@ -307,6 +305,7 @@ const SENSITIVE_FORM_FIELDS = [
   'pass_through_body_enabled',
   'responses_websocket_enabled',
   'adaptive_reasoning',
+  'model_mapping_channels',
   'system_prompt',
   'system_prompt_override',
   'allow_service_tier',
@@ -2529,9 +2528,16 @@ export function ChannelMutateDrawer({
               </div>
             </div>
             <FormControl>
-              <ModelMappingEditor
+              <ChannelModelMappingEditor
                 value={field.value || ''}
                 onChange={field.onChange}
+                currentChannelId={currentRow?.id}
+                channelMapping={formValues.model_mapping_channels}
+                onChannelMappingChange={(mapping) =>
+                  form.setValue('model_mapping_channels', mapping, {
+                    shouldDirty: true,
+                  })
+                }
                 disabled={isSubmitting}
                 sourceModelOptions={currentModelsArray}
                 targetModelOptions={modelOptions.map((option) => option.value)}

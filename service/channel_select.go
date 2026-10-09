@@ -112,6 +112,20 @@ func (p *RetryParam) ResetRetryNextTry() {
 //	Retry=3: GroupB, priority1 (startRetryIndex=2, priorityRetry=1)
 //	         分组B, 优先级1
 func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, error) {
+	delete(param.Ctx.Keys, string(constant.ContextKeyModelMappingTarget))
+	delete(param.Ctx.Keys, string(constant.ContextKeyModelMappingSourceChannel))
+	channel, group, err := cacheGetRandomSatisfiedChannel(param)
+	if err != nil || channel == nil {
+		return channel, group, err
+	}
+	channel, routeErr := ResolveChannelModelMapping(param.Ctx, channel, param.ModelName, group)
+	if routeErr != nil {
+		return nil, group, routeErr
+	}
+	return channel, group, nil
+}
+
+func cacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, error) {
 	var channel *model.Channel
 	var err error
 	selectGroup := param.TokenGroup
@@ -285,6 +299,20 @@ type ChannelSelectError struct {
 // filters. The group the channel was chosen from is returned for auto-group
 // callers. The caller still applies SetupContextForSelectedChannel.
 func SelectChannelForRequest(c *gin.Context, modelName string, retry *RetryParam) (*model.Channel, string, *ChannelSelectError) {
+	delete(c.Keys, string(constant.ContextKeyModelMappingTarget))
+	delete(c.Keys, string(constant.ContextKeyModelMappingSourceChannel))
+	channel, group, selectErr := selectChannelForRequest(c, modelName, retry)
+	if selectErr != nil {
+		return nil, group, selectErr
+	}
+	channel, routeErr := ResolveChannelModelMapping(c, channel, modelName, group)
+	if routeErr != nil {
+		return nil, group, &ChannelSelectError{StatusCode: routeErr.StatusCode, Code: routeErr.GetErrorCode(), Message: routeErr.Error()}
+	}
+	return channel, group, nil
+}
+
+func selectChannelForRequest(c *gin.Context, modelName string, retry *RetryParam) (*model.Channel, string, *ChannelSelectError) {
 	constraints := GetChannelConstraints(c)
 	if pin, found, overridden := constraints.ResolvedPin(); found {
 		for _, lost := range overridden {
@@ -352,7 +380,7 @@ func SelectChannelForRequest(c *gin.Context, modelName string, retry *RetryParam
 
 	if channel == nil {
 		var err error
-		channel, selectGroup, err = CacheGetRandomSatisfiedChannel(retry)
+		channel, selectGroup, err = cacheGetRandomSatisfiedChannel(retry)
 		if err != nil {
 			showGroup := usingGroup
 			if usingGroup == "auto" {

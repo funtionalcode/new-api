@@ -217,6 +217,8 @@ func shouldCheckUserTokenLimit(c *gin.Context, shouldSelectChannel bool) bool {
 }
 
 func SelectChannelForWebsocketRequest(c *gin.Context, modelName string) (*model.Channel, *types.NewAPIError) {
+	delete(c.Keys, string(constant.ContextKeyModelMappingTarget))
+	delete(c.Keys, string(constant.ContextKeyModelMappingSourceChannel))
 	modelRequest := &ModelRequest{Model: strings.TrimSpace(modelName)}
 	if modelRequest.Model == "" {
 		return nil, types.NewErrorWithStatusCode(
@@ -458,6 +460,13 @@ func SelectChannelForWebsocketRequest(c *gin.Context, modelName string) (*model.
 		}
 	}
 
+	if common.GetContextKeyString(c, constant.ContextKeyModelMappingTarget) == "" {
+		var routeErr *types.NewAPIError
+		channel, routeErr = service.ResolveChannelModelMapping(c, channel, modelRequest.Model, "")
+		if routeErr != nil {
+			return nil, routeErr
+		}
+	}
 	common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
 	if persistentErr := applyCursorPersistentChannelKey(c, channel); persistentErr != nil {
 		return nil, persistentErr

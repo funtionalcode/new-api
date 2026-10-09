@@ -44,6 +44,61 @@ test('external mapping changes update the editor without emitting an edit', () =
   expect(onChange).not.toHaveBeenCalled()
 })
 
+test('selecting another channel uses its models and deleting the row clears the channel mapping', async () => {
+  const user = userEvent.setup()
+  const onChannelMappingChange = vi.fn()
+  render(
+    <ModelMappingEditor
+      value='{"deepseek-v4-flash":"qwen3.8-27b"}'
+      onChange={vi.fn()}
+      channelMapping={{}}
+      onChannelMappingChange={onChannelMappingChange}
+      channelOptions={[
+        { id: 12, name: 'Qwen', models: ['qwen3.8-27b', 'qwen3.8-35b'] },
+      ]}
+      targetModelOptions={['deepseek-provider']}
+    />
+  )
+  await user.click(screen.getByRole('combobox', { name: 'Target channel' }))
+  await user.click(await screen.findByRole('option', { name: 'Qwen (#12)' }))
+  expect(onChannelMappingChange).toHaveBeenLastCalledWith({
+    'deepseek-v4-flash': 12,
+  })
+  await user.click(
+    screen.getByRole('combobox', { name: 'Upstream Model Name' })
+  )
+  expect(await screen.findByText('qwen3.8-35b')).toBeVisible()
+  expect(screen.queryByText('deepseek-provider')).not.toBeInTheDocument()
+  await user.keyboard('{Escape}')
+  await user.click(screen.getByRole('button', { name: 'Delete mapping' }))
+  expect(onChannelMappingChange).toHaveBeenLastCalledWith({})
+})
+
+test('JSON edits retain channel choices for surviving mappings and remove deleted choices', async () => {
+  const user = userEvent.setup()
+  const onChannelMappingChange = vi.fn()
+  render(
+    <>
+      <ModelMappingEditor
+        value='{"alias-a":"qwen-a","alias-b":"qwen-b"}'
+        onChange={vi.fn()}
+        channelMapping={{ 'alias-a': 12, 'alias-b': 13 }}
+        onChannelMappingChange={onChannelMappingChange}
+        channelOptions={[]}
+      />
+      <button type='button'>outside</button>
+    </>
+  )
+  await user.click(screen.getByRole('tab', { name: 'JSON' }))
+  const input = screen.getByRole('textbox', { name: 'Model Mapping' })
+  await user.clear(input)
+  expect(onChannelMappingChange).not.toHaveBeenCalled()
+  await user.click(input)
+  await user.paste('{"alias-a":"qwen-new"}')
+  await user.click(screen.getByRole('button', { name: 'outside' }))
+  expect(onChannelMappingChange).toHaveBeenLastCalledWith({ 'alias-a': 12 })
+})
+
 test('language changes preserve draft mappings and explain the same direction in JSON mode', async () => {
   const i18n = createInstance()
   await i18n.init({

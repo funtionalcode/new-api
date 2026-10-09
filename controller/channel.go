@@ -595,6 +595,24 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 	}
 
 	setting := channel.GetSetting()
+	if len(setting.ModelMappingChannels) > 0 {
+		var mapping map[string]string
+		if err := common.UnmarshalJsonStr(channel.GetModelMapping(), &mapping); err != nil {
+			return fmt.Errorf("跨渠道模型映射格式无效")
+		}
+		for source, targetID := range setting.ModelMappingChannels {
+			if targetID <= 0 || targetID == channel.Id || strings.TrimSpace(source) == "" || mapping[source] == "" {
+				return fmt.Errorf("跨渠道模型映射必须包含有效的源模型、目标模型和其他渠道")
+			}
+			if !slices.Contains(channel.GetModels(), source) {
+				return fmt.Errorf("跨渠道模型映射的源模型 %s 未在当前渠道开放", source)
+			}
+			target, err := model.GetChannelById(targetID, false)
+			if err != nil || target == nil || !slices.Contains(target.GetModels(), mapping[source]) {
+				return fmt.Errorf("跨渠道模型映射的目标模型 %s 未在渠道 #%d 开放", mapping[source], targetID)
+			}
+		}
+	}
 	if channel.Type != constant.ChannelTypeNewAPI && len(setting.TaskExtendPluginKeys) > 0 {
 		return fmt.Errorf("task_extend_plugin_keys is only supported on New API channels")
 	}
