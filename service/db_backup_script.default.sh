@@ -4,6 +4,7 @@
 # Secrets (CK_PASSWORD, DB_BACKUP_AGENT_TOKEN) must come from the host environment.
 
 set -euo pipefail
+umask 077
 
 BACKUP_ROOT="${BACKUP_ROOT:-/data/backups/new-api}"
 PG_CONTAINER="${PG_CONTAINER:-postgres}"
@@ -188,28 +189,76 @@ else
     ck_args+=(--password "$CK_PASSWORD")
   fi
   for db in $CK_DATABASES; do
-    CK_FILE="${RUN_DIR}/clickhouse-${db}.sql.gz"
+    CK_FILE="${RUN_DIR}/clickhouse-${db}.tar.gz"
     log "dump clickhouse container=$CK_CONTAINER db=$db"
     exists_output="$(docker exec "$CK_CONTAINER" clickhouse-client "${ck_args[@]}" --query "EXISTS DATABASE ${db}")"
     if [[ "$(printf '%s' "$exists_output" | tr -d '[:space:]')" != "1" ]]; then
       log "skip clickhouse db=$db: database not found"
       continue
     fi
-    # Prefer native dump if available; fall back to SHOW CREATE + SELECT is host-specific.
-    if docker exec "$CK_CONTAINER" clickhouse-client "${ck_args[@]}" \
-        --query "BACKUP DATABASE ${db} TO Disk('backups', 'new-api/${STAMP}/${db}')" >/dev/null 2>&1; then
-      log "clickhouse BACKUP DATABASE used for $db (server-side)"
-    fi
-    docker exec "$CK_CONTAINER" clickhouse-client "${ck_args[@]}" \
-      --query "SHOW CREATE DATABASE ${db}" | gzip -c >"$CK_FILE"
-    append_artifact "clickhouse" "$CK_FILE" "$db" "$CK_CONTAINER" "sql.gz"
+    # 保存数据库和表定义，以及可重新导入的 Native 数据，不依赖服务器备份磁盘配置。
+    CK_PASSWORD="${CK_PASSWORD:-}" python3 - "$CK_CONTAINER" "$CK_USER" "$db" "$CK_FILE" <<'PY'
+import json, os, pathlib, subprocess, sys, tarfile, tempfile
+
+container, user, database, archive = sys.argv[1:]
+client = ["docker", "exec", container, "clickhouse-client", "--user", user]
+password = os.environ.get("CK_PASSWORD")
+if password:
+    client += ["--password", password]
+
+def identifier(name):
+    return "`" + name.replace("\\", "\\\\").replace("`", "\\`") + "`"
+
+def query(sql, output=None):
+    result = subprocess.run(client + ["--query", sql], stdout=output or subprocess.PIPE, stderr=subprocess.PIPE)
+    if result.returncode:
+        error = result.stderr.decode(errors="replace")
+        if password:
+            error = error.replace(password, "[redacted]")
+        raise RuntimeError("ClickHouse 导出失败: " + error.strip())
+    return result.stdout
+
+with tempfile.TemporaryDirectory(prefix="clickhouse-export-", dir=pathlib.Path(archive).parent) as temporary:
+    root = pathlib.Path(temporary)
+    (root / "database.sql").write_bytes(query("SHOW CREATE DATABASE " + identifier(database) + " FORMAT TSVRaw") + b";\n")
+    literal = database.replace("\\", "\\\\").replace("'", "\\'")
+    tables = query("SELECT name, engine FROM system.tables WHERE database = '" + literal + "' ORDER BY name FORMAT JSONEachRow")
+    manifest = {"database": database, "format": "Native", "tables": []}
+    for index, line in enumerate(tables.splitlines()):
+        table = json.loads(line)
+        qualified = identifier(database) + "." + identifier(table["name"])
+        schema = "table-" + str(index) + ".sql"
+        (root / schema).write_bytes(query("SHOW CREATE TABLE " + qualified + " FORMAT TSVRaw") + b";\n")
+        entry = {"name": table["name"], "engine": table["engine"], "schema": schema}
+        # 视图不重复导出查询结果；其源表和物化视图的存储表均在表清单中保存。
+        if table["engine"] not in {"View", "MaterializedView", "LiveView", "WindowView", "Dictionary"}:
+            entry["data"] = "table-" + str(index) + ".native"
+            with (root / entry["data"]).open("wb") as output:
+                query("SELECT * FROM " + qualified + " FORMAT Native", output)
+            entry["size_bytes"] = (root / entry["data"]).stat().st_size
+        manifest["tables"].append(entry)
+    (root / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    # 优先缩短备份运行时间，避免大日志库因高压缩级别耗尽任务租约。
+    with tarfile.open(archive, "w:gz", compresslevel=1) as output:
+        for file in sorted(root.iterdir()):
+            output.add(file, arcname=file.name)
+    print("ClickHouse 已保存数据库 " + database + " 的 " + str(len(manifest["tables"])) + " 个表定义及数据")
+PY
+    append_artifact "clickhouse" "$CK_FILE" "$db" "$CK_CONTAINER" "tar.gz"
     log "clickhouse ok db=$db size=$(wc -c <"$CK_FILE" | tr -d ' ')"
   done
 fi
 
-# Retention: keep last KEEP_WEEKLY directories under BACKUP_ROOT
+# 仅清理由本脚本成功完成的备份，保留其他目录和失败备份。
+touch "${RUN_DIR}/.backup-complete"
 log "retention keep_weekly=$KEEP_WEEKLY"
-mapfile -t ALL_DIRS < <(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d | sort)
+mapfile -t ALL_DIRS < <(python3 - "$BACKUP_ROOT" <<'PY'
+import pathlib, re, sys
+for directory in sorted(pathlib.Path(sys.argv[1]).iterdir()):
+    if not directory.is_symlink() and directory.is_dir() and re.fullmatch(r"\d{8}T\d{6}Z", directory.name) and (directory / ".backup-complete").is_file():
+        print(directory)
+PY
+)
 if ((${#ALL_DIRS[@]} > KEEP_WEEKLY)); then
   REMOVE_COUNT=$((${#ALL_DIRS[@]} - KEEP_WEEKLY))
   for old in "${ALL_DIRS[@]:0:REMOVE_COUNT}"; do
