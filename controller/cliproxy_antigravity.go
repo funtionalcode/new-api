@@ -2,11 +2,9 @@ package controller
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -19,50 +17,6 @@ type cliproxyAntigravityQuotaBucket struct {
 	RemainingFraction *float64 `json:"remaining_fraction,omitempty"`
 	ResetAt           int64    `json:"reset_at"`
 	Disabled          bool     `json:"disabled,omitempty"`
-}
-
-func refreshCliproxyAntigravityUsage(ctx context.Context, caller cliproxyAPICaller, binding *model.CliproxyAuthFileBinding) (cliproxyUsageRefreshBody, error) {
-	request := buildCliproxyUsageRefreshRequest(binding)
-	var lastErr error
-	for _, method := range []string{"retrieveUserQuotaSummary", "fetchAvailableModels"} {
-		for _, host := range []string{"daily-cloudcode-pa.googleapis.com", "daily-cloudcode-pa.sandbox.googleapis.com", "cloudcode-pa.googleapis.com"} {
-			if ctx.Err() != nil {
-				return cliproxyUsageRefreshBody{}, ctx.Err()
-			}
-			request.URL = "https://" + host + "/v1internal:" + method
-			result, err := caller.CallAPI(ctx, request)
-			if err != nil {
-				var statusErr interface{ StatusCode() int }
-				if errors.As(err, &statusErr) && statusErr.StatusCode() == http.StatusTooManyRequests {
-					return cliproxyUsageRefreshBody{}, err
-				}
-				lastErr = err
-				continue
-			}
-			if result == nil {
-				lastErr = fmt.Errorf("Antigravity 刷新结果为空")
-				continue
-			}
-			status := max(result.Status, result.StatusCode)
-			if status >= http.StatusBadRequest {
-				lastErr = fmt.Errorf("刷新额度失败，上游状态码: %d", status)
-				if status == http.StatusTooManyRequests {
-					return cliproxyUsageRefreshBody{}, lastErr
-				}
-				continue
-			}
-			body := result.Body
-			if len(body) == 0 {
-				body = result.Data
-			}
-			usage, err := extractCliproxyAntigravityUsage(body)
-			if err == nil {
-				return usage, nil
-			}
-			lastErr = err
-		}
-	}
-	return cliproxyUsageRefreshBody{}, lastErr
 }
 
 func fetchCliproxyAntigravityPlan(ctx context.Context, caller cliproxyAPICaller, authIndex string) string {
@@ -112,15 +66,6 @@ func isCliproxyAntigravityAuthFile(binding *model.CliproxyAuthFileBinding) bool 
 
 func extractCliproxyAntigravityUsage(body map[string]any) (cliproxyUsageRefreshBody, error) {
 	var response struct {
-		Models map[string]struct {
-			DisplayName          string `json:"displayName"`
-			DisplayNameSnakeCase string `json:"display_name"`
-			ModelProvider        string `json:"modelProvider"`
-			QuotaInfo            *struct {
-				RemainingFraction *float64 `json:"remainingFraction"`
-				ResetTime         string   `json:"resetTime"`
-			} `json:"quotaInfo"`
-		} `json:"models"`
 		Groups []struct {
 			Buckets []struct {
 				BucketID          string   `json:"bucketId"`
@@ -170,52 +115,10 @@ func extractCliproxyAntigravityUsage(body map[string]any) (cliproxyUsageRefreshB
 		}
 	}
 	if len(buckets) == 0 {
-		// 模型额度没有五小时或每周窗口语义，按提供商保留最少的剩余额度。
-		for id, item := range response.Models {
-			if item.QuotaInfo == nil || item.QuotaInfo.RemainingFraction == nil {
-				continue
-			}
-			name := strings.ToLower(id + " " + item.DisplayName + " " + item.DisplayNameSnakeCase + " " + item.ModelProvider)
-			var bucketID string
-			switch {
-			case strings.Contains(name, "claude"), strings.Contains(name, "gpt"), strings.Contains(name, "anthropic"), strings.Contains(name, "openai"):
-				bucketID = "3p-shared"
-			case strings.Contains(name, "gemini"):
-				bucketID = "gemini-shared"
-			default:
-				continue
-			}
-			fraction := item.QuotaInfo.RemainingFraction
-			if math.IsNaN(*fraction) || math.IsInf(*fraction, 0) || *fraction < 0 || *fraction > 1 {
-				return cliproxyUsageRefreshBody{}, fmt.Errorf("Antigravity 剩余额度超出范围: %s", id)
-			}
-			var resetAt int64
-			if item.QuotaInfo.ResetTime != "" {
-				reset, err := time.Parse(time.RFC3339, item.QuotaInfo.ResetTime)
-				if err != nil {
-					return cliproxyUsageRefreshBody{}, fmt.Errorf("Antigravity 重置时间无效: %s", id)
-				}
-				resetAt = reset.Unix()
-			}
-			bucket, exists := buckets[bucketID]
-			if !exists || *fraction < *bucket.RemainingFraction {
-				buckets[bucketID] = cliproxyAntigravityQuotaBucket{BucketID: bucketID, RemainingFraction: fraction, ResetAt: resetAt}
-			} else if *fraction == *bucket.RemainingFraction {
-				// 限制额度的模型中任一重置时间未知时，不推断整个分组的恢复时间。
-				if resetAt == 0 || bucket.ResetAt == 0 {
-					bucket.ResetAt = 0
-				} else {
-					bucket.ResetAt = max(bucket.ResetAt, resetAt)
-				}
-				buckets[bucketID] = bucket
-			}
-		}
-	}
-	if len(buckets) == 0 {
-		return cliproxyUsageRefreshBody{}, fmt.Errorf("Antigravity 刷新结果缺少额度窗口或模型额度")
+		return cliproxyUsageRefreshBody{}, fmt.Errorf("Antigravity 刷新结果缺少额度窗口")
 	}
 	ordered := make([]cliproxyAntigravityQuotaBucket, 0, len(buckets))
-	for _, id := range []string{"gemini-5h", "gemini-weekly", "3p-5h", "3p-weekly", "gemini-shared", "3p-shared"} {
+	for _, id := range []string{"gemini-5h", "gemini-weekly", "3p-5h", "3p-weekly"} {
 		if bucket, ok := buckets[id]; ok {
 			ordered = append(ordered, bucket)
 		}

@@ -215,6 +215,36 @@ func TestCliproxyAPIClientCallAPIRejectsInnerErrorStatus(t *testing.T) {
 	require.Contains(t, err.Error(), "上游状态码: 401")
 }
 
+func TestCliproxyAPIClientCallAPIPreservesForbiddenDetails(t *testing.T) {
+	for _, tt := range []struct {
+		name, body, want string
+		status           int
+	}{
+		{"上游对象错误", `{"status_code":403,"body":{"error":{"status":"PERMISSION_DENIED","message":"Verify your account to continue.","details":[{"reason":"VALIDATION_REQUIRED","metadata":{"validation_url":"https://accounts.google.com/verify?token=private-validation-token"}}]}}}`, "403; PERMISSION_DENIED; VALIDATION_REQUIRED; Verify your account to continue.", http.StatusOK},
+		{"上游字符串响应", `{"status_code":403,"body":"{\"error\":{\"message\":\"Verify your account to continue.\",\"details\":[{\"reason\":\"VALIDATION_REQUIRED\"}]}}"}`, "403; VALIDATION_REQUIRED; Verify your account to continue.", http.StatusOK},
+		{"管理接口拒绝", `{"error":"management access denied"}`, "403; management access denied", http.StatusForbidden},
+		{"错误缺少正文", `{"status_code":403,"body":{}}`, "403", http.StatusOK},
+		{"错误包含验证链接", `{"status_code":403,"body":{"error":{"message":"Verify at https://accounts.google.com/verify?token=private-validation-token"}}}`, "Verify at https://accounts.google.com", http.StatusOK},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var hits atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				hits.Add(1)
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			t.Cleanup(server.Close)
+			client, err := NewCliproxyAPIClient(server.URL, "cliproxyapi")
+			require.NoError(t, err)
+			_, err = client.CallAPI(context.Background(), CliproxyAPICallRequest{AuthIndex: "ag", Method: http.MethodPost, URL: "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"})
+			require.ErrorContains(t, err, tt.want)
+			require.NotContains(t, err.Error(), "private-validation-token")
+			require.NotContains(t, err.Error(), "validation_url")
+			require.Equal(t, int32(1), hits.Load())
+		})
+	}
+}
+
 func TestNewCliproxyAPIClientRejectsInvalidBaseURL(t *testing.T) {
 	_, err := NewCliproxyAPIClient("file:///tmp/socket", "cliproxyapi")
 	require.Error(t, err)

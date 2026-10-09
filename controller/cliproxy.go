@@ -241,20 +241,21 @@ func RefreshCliproxyAuthFileBindingUsage(c *gin.Context) {
 		common.ApiSuccess(c, updatedBinding)
 		return
 	}
-	var usage cliproxyUsageRefreshBody
-	if isCliproxyAntigravityAuthFile(binding) {
-		usage, err = refreshCliproxyAntigravityUsage(c.Request.Context(), client, binding)
-	} else {
-		var result *service.CliproxyAPICallResponse
-		result, err = client.CallAPI(c.Request.Context(), buildCliproxyUsageRefreshRequest(binding))
-		if err == nil {
-			usage, err = extractCliproxyUsage(result)
-		}
-	}
+	result, err := client.CallAPI(c.Request.Context(), buildCliproxyUsageRefreshRequest(binding))
 	if err != nil {
 		updatedBinding, updateErr := model.UpdateCliproxyAuthFileBindingUsage(id, model.CliproxyUsageRefreshUpdate{LastError: err.Error()})
 		if updateErr != nil {
 			common.ApiError(c, fmt.Errorf("刷新额度失败: %s；保存错误失败: %w", err.Error(), updateErr))
+			return
+		}
+		common.ApiSuccess(c, updatedBinding)
+		return
+	}
+	usage, usageErr := extractCliproxyUsage(result)
+	if usageErr != nil {
+		updatedBinding, updateErr := model.UpdateCliproxyAuthFileBindingUsage(id, model.CliproxyUsageRefreshUpdate{LastError: usageErr.Error()})
+		if updateErr != nil {
+			common.ApiError(c, fmt.Errorf("解析额度失败: %s；保存错误失败: %w", usageErr.Error(), updateErr))
 			return
 		}
 		common.ApiSuccess(c, updatedBinding)

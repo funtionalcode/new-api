@@ -5,8 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -334,8 +336,10 @@ func (client *CliproxyAPIClient) doCallAPI(ctx context.Context, payload Cliproxy
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= http.StatusBadRequest {
+		var body map[string]any
+		_ = common.DecodeJson(io.LimitReader(resp.Body, 64*1024), &body)
 		return nil, &cliproxyHTTPStatusError{
-			message:    fmt.Sprintf("刷新额度失败，状态码: %d", resp.StatusCode),
+			message:    cliproxyAPIErrorMessage("刷新额度失败，状态码", resp.StatusCode, body),
 			statusCode: resp.StatusCode,
 		}
 	}
@@ -346,12 +350,52 @@ func (client *CliproxyAPIClient) doCallAPI(ctx context.Context, payload Cliproxy
 	}
 	normalizeCliproxyAPICallResponse(&result)
 	if result.Status >= http.StatusBadRequest {
+		body := result.Body
+		if len(body) == 0 {
+			body = result.Data
+		}
 		return nil, &cliproxyHTTPStatusError{
-			message:    fmt.Sprintf("刷新额度失败，上游状态码: %d", result.Status),
+			message:    cliproxyAPIErrorMessage("刷新额度失败，上游状态码", result.Status, body),
 			statusCode: result.Status,
 		}
 	}
 	return &result, nil
+}
+
+func cliproxyAPIErrorMessage(prefix string, status int, body map[string]any) string {
+	parts := []string{fmt.Sprintf("%s: %d", prefix, status)}
+	var detail struct {
+		Status  string `json:"status"`
+		Message string `json:"message"`
+		Details []struct {
+			Reason string `json:"reason"`
+		} `json:"details"`
+	}
+	if errorBody, ok := body["error"].(map[string]any); ok {
+		body = errorBody
+	} else if message, ok := body["error"].(string); ok {
+		detail.Message = message
+	}
+	// 只提取可诊断的错误文本，不返回包含验证链接或令牌的 metadata。
+	if raw, err := common.Marshal(body); err == nil {
+		_ = common.Unmarshal(raw, &detail)
+	}
+	candidates := []string{detail.Status}
+	for _, item := range detail.Details {
+		candidates = append(candidates, item.Reason)
+	}
+	candidates = append(candidates, detail.Message)
+	for _, item := range candidates {
+		item = common.MaskSensitiveInfo(strings.TrimSpace(item))
+		if item == "" || slices.Contains(parts, item) {
+			continue
+		}
+		if runes := []rune(item); len(runes) > 512 {
+			item = string(runes[:512]) + "…"
+		}
+		parts = append(parts, item)
+	}
+	return strings.Join(parts, "; ")
 }
 
 type cliproxyHTTPStatusError struct {
@@ -364,10 +408,6 @@ func (e *cliproxyHTTPStatusError) Error() string {
 		return ""
 	}
 	return e.message
-}
-
-func (e *cliproxyHTTPStatusError) StatusCode() int {
-	return e.statusCode
 }
 
 func isCliproxyTransientCallError(err error) bool {
