@@ -366,6 +366,10 @@ func (e *cliproxyHTTPStatusError) Error() string {
 	return e.message
 }
 
+func (e *cliproxyHTTPStatusError) StatusCode() int {
+	return e.statusCode
+}
+
 func isCliproxyTransientCallError(err error) bool {
 	if err == nil {
 		return false

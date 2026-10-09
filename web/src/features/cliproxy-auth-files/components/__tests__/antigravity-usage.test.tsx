@@ -5,6 +5,41 @@ import { describe, expect, test } from 'vitest'
 import { AntigravityUsageCell } from '../antigravity-usage-cell'
 
 describe('Antigravity 额度展示', () => {
+  test('模型额度按分组显示，不标记为五小时或每周窗口', async () => {
+    const user = userEvent.setup()
+    render(
+      <AntigravityUsageCell
+        binding={{
+          last_error: '',
+          last_antigravity_quota: JSON.stringify([
+            {
+              bucket_id: 'gemini-shared',
+              remaining_fraction: 0.2,
+              reset_at: 0,
+            },
+            {
+              bucket_id: '3p-shared',
+              remaining_fraction: 0,
+              reset_at: 1791528892,
+            },
+          ]),
+        }}
+      />
+    )
+    expect(screen.getByText('Gemini Models')).toBeInTheDocument()
+    expect(screen.getByText('Claude and GPT models')).toBeInTheDocument()
+    expect(screen.getByText('80%')).toBeInTheDocument()
+    expect(screen.getByText('100%')).toBeInTheDocument()
+    expect(screen.getAllByRole('progressbar')).toHaveLength(2)
+    expect(screen.queryByText('5-Hour Window')).not.toBeInTheDocument()
+    expect(screen.queryByText('Weekly Window')).not.toBeInTheDocument()
+    await user.hover(screen.getByRole('button', { name: 'Antigravity' }))
+    const details = within(await screen.findByRole('tooltip'))
+    expect(details.getAllByText('Shared model quota')).toHaveLength(2)
+    expect(details.getByText('Reset: -')).toBeInTheDocument()
+    expect(details.queryByText('Weekly Window')).not.toBeInTheDocument()
+  })
+
   test('显示真实 Pro 套餐标签，并与 Codex 的倍率区分', () => {
     render(
       <AntigravityUsageCell
@@ -19,6 +54,23 @@ describe('Antigravity 额度展示', () => {
     expect(screen.getByText('Pro')).toBeInTheDocument()
     expect(screen.getByText('1.96%')).toBeInTheDocument()
     expect(screen.queryByText('20x')).not.toBeInTheDocument()
+  })
+
+  test('模型接口缺少第三方额度时显示不可用，保留 Gemini 的真实数值', () => {
+    render(
+      <AntigravityUsageCell
+        binding={{
+          last_error: '',
+          last_antigravity_quota:
+            '[{"bucket_id":"gemini-shared","remaining_fraction":0.5,"reset_at":0}]',
+        }}
+      />
+    )
+    expect(screen.getByText('50%')).toBeInTheDocument()
+    expect(screen.getByText('Unavailable')).toBeInTheDocument()
+    expect(screen.getAllByRole('progressbar')).toHaveLength(1)
+    expect(screen.queryByText('0%')).not.toBeInTheDocument()
+    expect(screen.queryByText('Weekly Window')).not.toBeInTheDocument()
   })
 
   test.each(['antigravity', 'oauth', ''])(

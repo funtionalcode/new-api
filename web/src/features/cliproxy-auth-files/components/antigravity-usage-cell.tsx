@@ -25,6 +25,9 @@ export function AntigravityUsageCell(props: {
 }) {
   const { t, i18n } = useTranslation()
   const buckets = parseAntigravityQuota(props.binding.last_antigravity_quota)
+  const sharedQuota = buckets.some((bucket) =>
+    bucket.bucket_id.endsWith('-shared')
+  )
   const plan = getCliproxyPlanLabelConfig(
     'antigravity',
     props.binding.last_plan_type
@@ -40,7 +43,7 @@ export function AntigravityUsageCell(props: {
     { prefix: '3p-', label: t('Claude and GPT models') },
   ].map((group) => ({
     ...group,
-    windows: ['5h', 'weekly'].map((window) => {
+    windows: (sharedQuota ? ['shared'] : ['5h', 'weekly']).map((window) => {
       const bucket = buckets.find(
         (item) => item.bucket_id === group.prefix + window
       )
@@ -53,9 +56,15 @@ export function AntigravityUsageCell(props: {
       } else if (percent >= 70) {
         progressColor = '[&_[data-slot=progress-indicator]]:bg-amber-500'
       }
+      let label = t('Weekly Window')
+      if (window === 'shared') {
+        label = t('Shared model quota')
+      } else if (window === '5h') {
+        label = t('5-Hour Window')
+      }
       return {
         key: window,
-        label: window === '5h' ? t('5-Hour Window') : t('Weekly Window'),
+        label,
         available,
         percent,
         progressColor,
@@ -86,25 +95,30 @@ export function AntigravityUsageCell(props: {
             </span>
           ) : (
             <div className='grid gap-2 sm:grid-cols-2'>
-              {groups[0].windows.map((window) => (
-                <div key={window.key} className='min-w-[140px] space-y-1'>
-                  <div className='flex items-center justify-between gap-3 text-xs'>
-                    <span className='text-muted-foreground'>
-                      {window.label}
-                    </span>
-                    <span className='font-mono font-medium tabular-nums'>
-                      {window.value}
-                    </span>
+              {(sharedQuota ? groups : [groups[0]]).flatMap((group) =>
+                group.windows.map((window) => (
+                  <div
+                    key={group.prefix + window.key}
+                    className='min-w-[140px] space-y-1'
+                  >
+                    <div className='flex items-center justify-between gap-3 text-xs'>
+                      <span className='text-muted-foreground'>
+                        {sharedQuota ? group.label : window.label}
+                      </span>
+                      <span className='font-mono font-medium tabular-nums'>
+                        {window.value}
+                      </span>
+                    </div>
+                    {window.available ? (
+                      <Progress
+                        aria-label={`${group.label} ${window.label} ${t('Used')}`}
+                        value={window.percent}
+                        className={cn('h-1.5', window.progressColor)}
+                      />
+                    ) : null}
                   </div>
-                  {window.available ? (
-                    <Progress
-                      aria-label={`${groups[0].label} ${window.label} ${t('Used')}`}
-                      value={window.percent}
-                      className={cn('h-1.5', window.progressColor)}
-                    />
-                  ) : null}
-                </div>
-              ))}
+                ))
+              )}
             </div>
           )}
           {plan || props.binding.last_error ? (

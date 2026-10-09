@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -44,6 +45,8 @@ func TestRefreshCliproxyAntigravityUsageStoresAndPreservesPlan(t *testing.T) {
 	t.Cleanup(func() { model.DB = originalDB })
 	require.NoError(t, db.Create(&model.CliproxyAuthFileBinding{Id: 1, UserId: 1, AuthIndex: "ag", AuthName: "account.json", LastPlanType: "antigravity", Enabled: true}).Error)
 	planUnavailable := false
+	summaryUnavailable := false
+	modelQuotaUnavailable := false
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request service.CliproxyAPICallRequest
 		if !assert.NoError(t, common.DecodeJson(r.Body, &request)) {
@@ -60,6 +63,19 @@ func TestRefreshCliproxyAntigravityUsageStoresAndPreservesPlan(t *testing.T) {
 				return
 			}
 			_, _ = w.Write([]byte(`{"status_code":200,"body":{"paidTier":{"id":"g1-pro-tier","name":"Google AI Pro"},"currentTier":{"id":"free-tier","name":"Antigravity"}}}`))
+			return
+		}
+		if summaryUnavailable {
+			if strings.HasSuffix(request.URL, ":retrieveUserQuotaSummary") {
+				_, _ = w.Write([]byte(`{"status_code":403,"body":{"error":{"status":"PERMISSION_DENIED"}}}`))
+				return
+			}
+			assert.True(t, strings.HasSuffix(request.URL, ":fetchAvailableModels"))
+			if modelQuotaUnavailable {
+				_, _ = w.Write([]byte(`{"status_code":200,"body":{"models":{"gemini-pro":{}}}}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"status_code":200,"body":{"models":{"gemini-pro":{"quotaInfo":{"remainingFraction":0.5}},"claude-sonnet":{"quotaInfo":{"remainingFraction":0}}}}}`))
 			return
 		}
 		assert.Equal(t, "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary", request.URL)
@@ -81,8 +97,17 @@ func TestRefreshCliproxyAntigravityUsageStoresAndPreservesPlan(t *testing.T) {
 		c.Set("role", common.RoleAdminUser)
 		RefreshCliproxyAuthFileBindingUsage(c)
 	})
-	for _, unavailable := range []bool{false, true} {
-		planUnavailable = unavailable
+	for _, scenario := range []struct{ planUnavailable, summaryUnavailable, modelQuotaUnavailable bool }{
+		{},
+		{planUnavailable: true},
+		{planUnavailable: true, summaryUnavailable: true},
+		{planUnavailable: true, summaryUnavailable: true, modelQuotaUnavailable: true},
+	} {
+		planUnavailable, summaryUnavailable = scenario.planUnavailable, scenario.summaryUnavailable
+		modelQuotaUnavailable = scenario.modelQuotaUnavailable
+		if summaryUnavailable {
+			require.NoError(t, db.Model(&model.CliproxyAuthFileBinding{}).Where("id = ?", 1).Update("last_error", "刷新额度失败，上游状态码: 403").Error)
+		}
 		recorder := httptest.NewRecorder()
 		router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/bindings/1/refresh-usage", nil))
 		var response struct {
@@ -92,11 +117,21 @@ func TestRefreshCliproxyAntigravityUsageStoresAndPreservesPlan(t *testing.T) {
 		require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 		require.True(t, response.Success)
 		assert.Equal(t, "Google AI Pro", response.Data.LastPlanType)
-		assert.Empty(t, response.Data.LastError)
-		assert.Contains(t, response.Data.LastAntigravityQuota, "0.9804")
+		if modelQuotaUnavailable {
+			assert.Contains(t, response.Data.LastError, "缺少额度窗口或模型额度")
+		} else {
+			assert.Empty(t, response.Data.LastError)
+		}
+		if summaryUnavailable {
+			assert.JSONEq(t, `[{"bucket_id":"gemini-shared","remaining_fraction":0.5,"reset_at":0},{"bucket_id":"3p-shared","remaining_fraction":0,"reset_at":0}]`, response.Data.LastAntigravityQuota)
+		} else {
+			assert.Contains(t, response.Data.LastAntigravityQuota, "0.9804")
+		}
 		stored, err := model.GetCliproxyAuthFileBindingById(1)
 		require.NoError(t, err)
 		assert.Equal(t, "Google AI Pro", stored.LastPlanType)
 		assert.Equal(t, "antigravity", stored.Provider)
+		assert.Equal(t, response.Data.LastError, stored.LastError)
+		assert.Equal(t, response.Data.LastAntigravityQuota, stored.LastAntigravityQuota)
 	}
 }

@@ -1,7 +1,10 @@
 package controller
 
 import (
+	"context"
 	"net/http"
+	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,6 +33,63 @@ func TestBuildCliproxyUsageRefreshRequestUsesAntigravityQuotaSummary(t *testing.
 		request := buildCliproxyUsageRefreshRequest(&model.CliproxyAuthFileBinding{Provider: "codex", AuthName: "antigravity-account.json"})
 		assert.Equal(t, "https://chatgpt.com/backend-api/wham/usage", request.URL)
 	})
+}
+
+func TestExtractAntigravityModelQuotaPreservesConservativeGroups(t *testing.T) {
+	for _, tt := range []struct {
+		name, body, want string
+	}{
+		{
+			name: "分组取最低剩余比例和限制模型的最晚重置时间",
+			body: `{"models":{"gemini-flash":{"quotaInfo":{"remainingFraction":0.8,"resetTime":"2026-10-10T08:00:00Z"}},"gemini-pro":{"quotaInfo":{"remainingFraction":0.2,"resetTime":"2026-10-09T08:00:00Z"}},"gemini-agent":{"quotaInfo":{"remainingFraction":0.2,"resetTime":"2026-10-09T09:00:00Z"}},"claude-sonnet":{"quotaInfo":{"remainingFraction":1}},"gpt-oss":{"quotaInfo":{"remainingFraction":0}},"tab_flash_lite_preview":{"quotaInfo":{"remainingFraction":0}},"gemini-no-quota":{}}}`,
+			want: `[{"bucket_id":"gemini-shared","remaining_fraction":0.2,"reset_at":1791536400},{"bucket_id":"3p-shared","remaining_fraction":0,"reset_at":0}]`,
+		},
+		{
+			name: "限制模型缺少重置时间时保留未知状态",
+			body: `{"models":{"gemini-a":{"quotaInfo":{"remainingFraction":0.1}},"gemini-b":{"quotaInfo":{"remainingFraction":0.1,"resetTime":"2026-10-09T09:00:00Z"}},"opaque":{"displayName":"Claude Sonnet","quotaInfo":{"remainingFraction":0.5}}}}`,
+			want: `[{"bucket_id":"gemini-shared","remaining_fraction":0.1,"reset_at":0},{"bucket_id":"3p-shared","remaining_fraction":0.5,"reset_at":0}]`,
+		},
+		{
+			name: "模型响应不覆盖已有窗口数据",
+			body: `{"groups":[{"buckets":[{"bucketId":"gemini-5h","remainingFraction":0.9}]}],"models":{"gemini-pro":{"quotaInfo":{"remainingFraction":0.1}}}}`,
+			want: `[{"bucket_id":"gemini-5h","remaining_fraction":0.9,"reset_at":0}]`,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var body map[string]any
+			require.NoError(t, common.UnmarshalJsonStr(tt.body, &body))
+			usage, err := extractCliproxyAntigravityUsage(body)
+			require.NoError(t, err)
+			assert.JSONEq(t, tt.want, usage.AntigravityQuota)
+		})
+	}
+}
+
+func TestRefreshAntigravityQuotaStopsFallbackAfterRateLimit(t *testing.T) {
+	var mu sync.Mutex
+	var requests []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request service.CliproxyAPICallRequest
+		if !assert.NoError(t, common.DecodeJson(r.Body, &request)) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		mu.Lock()
+		requests = append(requests, request.URL)
+		mu.Unlock()
+		_, _ = w.Write([]byte(`{"status_code":429,"body":{}}`))
+	}))
+	t.Cleanup(upstream.Close)
+	client, err := service.NewCliproxyAPIClient(upstream.URL, "test-password")
+	require.NoError(t, err)
+	_, err = refreshCliproxyAntigravityUsage(context.Background(), client, &model.CliproxyAuthFileBinding{Provider: "antigravity", AuthIndex: "ag"})
+	require.ErrorContains(t, err, "429")
+	mu.Lock()
+	defer mu.Unlock()
+	require.NotEmpty(t, requests)
+	for _, requestURL := range requests {
+		assert.Equal(t, "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary", requestURL)
+	}
 }
 
 func TestExtractCliproxyUsagePreservesAntigravityQuotaGroups(t *testing.T) {
@@ -63,6 +123,9 @@ func TestExtractAntigravityUsageHandlesUnavailableAndInvalidBuckets(t *testing.T
 		{"empty", `{"groups":[]}`, true},
 		{"invalid fraction", `{"groups":[{"buckets":[{"bucketId":"gemini-5h","remainingFraction":2}]}]}`, true},
 		{"invalid date", `{"groups":[{"buckets":[{"bucketId":"gemini-5h","remainingFraction":1,"resetTime":"invalid"}]}]}`, true},
+		{"model missing fraction", `{"models":{"gemini-pro":{"quotaInfo":{"resetTime":"2026-10-09T09:00:00Z"}}}}`, true},
+		{"model invalid fraction", `{"models":{"gemini-pro":{"quotaInfo":{"remainingFraction":-0.1}}}}`, true},
+		{"model invalid date", `{"models":{"gemini-pro":{"quotaInfo":{"remainingFraction":0.1,"resetTime":"invalid"}}}}`, true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var body map[string]any

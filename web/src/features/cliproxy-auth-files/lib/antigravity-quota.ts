@@ -3,6 +3,8 @@ export type AntigravityBucketID =
   | 'gemini-weekly'
   | '3p-5h'
   | '3p-weekly'
+  | 'gemini-shared'
+  | '3p-shared'
 
 export interface AntigravityQuotaBucket {
   bucket_id: AntigravityBucketID
@@ -19,9 +21,14 @@ export function parseAntigravityQuota(raw?: string): AntigravityQuotaBucket[] {
     return value.filter((bucket): bucket is AntigravityQuotaBucket => {
       if (!bucket || typeof bucket !== 'object') return false
       return (
-        ['gemini-5h', 'gemini-weekly', '3p-5h', '3p-weekly'].includes(
-          bucket.bucket_id
-        ) &&
+        [
+          'gemini-5h',
+          'gemini-weekly',
+          '3p-5h',
+          '3p-weekly',
+          'gemini-shared',
+          '3p-shared',
+        ].includes(bucket.bucket_id) &&
         typeof bucket.reset_at === 'number' &&
         Number.isFinite(bucket.reset_at) &&
         (bucket.remaining_fraction === undefined ||
