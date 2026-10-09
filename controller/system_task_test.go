@@ -47,6 +47,25 @@ func TestSystemTaskListFiltersAndPaginationResponse(t *testing.T) {
 	assert.EqualValues(t, 2, response.Total)
 	require.Len(t, response.Data, 1)
 	assert.Equal(t, "older", response.Data[0].TaskID)
+	assert.Zero(t, response.Data[0].RunCount, "原单次执行列表保持兼容")
+
+	recorder = httptest.NewRecorder()
+	c, _ = gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/system-task/list?scope=history&grouped=true&type=model_update&status=failed&limit=1", nil)
+	ListSystemTasks(c)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.True(t, response.Success)
+	assert.EqualValues(t, 1, response.Total)
+	require.Len(t, response.Data, 1)
+	assert.Equal(t, "newer", response.Data[0].TaskID)
+	assert.EqualValues(t, 2, response.Data[0].RunCount)
+
+	recorder = httptest.NewRecorder()
+	c, _ = gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/system-task/list?scope=active&grouped=true", nil)
+	ListSystemTasks(c)
+	assert.Equal(t, http.StatusBadRequest, recorder.Code)
 }
 
 func TestSystemTaskInvalidFiltersAreRejected(t *testing.T) {
@@ -58,6 +77,7 @@ func TestSystemTaskInvalidFiltersAreRejected(t *testing.T) {
 		{"?status=unknown", ListSystemTasks},
 		{"?offset=-1", ListSystemTasks},
 		{"?limit=invalid", ListSystemTasks},
+		{"?grouped=invalid", ListSystemTasks},
 		{"?status=unknown", DeleteSystemTaskHistory},
 		{"?scope=invalid", DeleteSystemTaskHistory},
 	} {

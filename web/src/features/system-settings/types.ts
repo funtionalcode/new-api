@@ -96,6 +96,7 @@ export type SystemTask<
   locked_until?: number
   created_at: number
   updated_at: number
+  run_count?: number
 }
 
 export type LogCleanupTaskPayload = {
@@ -192,6 +193,7 @@ export type SystemTaskFilters = {
   status?: SystemTaskStatus | ''
   scope?: 'active' | 'history'
   offset?: number
+  grouped?: boolean
 }
 
 export type SiteSettings = {

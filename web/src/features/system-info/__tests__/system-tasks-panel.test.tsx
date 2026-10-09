@@ -60,6 +60,161 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+it('shows full-history run counts separately for successes and failures while keeping active tasks individual', async () => {
+  const get = vi.spyOn(api, 'get').mockImplementation(async (_url, config) => ({
+    data: {
+      success: true,
+      data:
+        config?.params?.scope === 'active'
+          ? [
+              {
+                ...task,
+                task_id: 'active',
+                status: 'running',
+                locked_by: 'active-runner',
+              },
+            ]
+          : [
+              { ...task, run_count: 42 },
+              {
+                ...task,
+                task_id: 'failed-group',
+                status: 'failed',
+                run_count: 3,
+                error: 'Model update failed',
+              },
+              {
+                ...task,
+                task_id: 'single-group',
+                type: 'channel_test',
+                run_count: 1,
+              },
+            ],
+      total: 3,
+    },
+  }))
+  const client = renderPanel()
+  expect(await screen.findByText('x42')).toBeVisible()
+  expect(screen.getByText('x3')).toBeVisible()
+  expect(screen.getByText('x1')).toBeVisible()
+  expect(screen.getByText('Model update failed')).toBeVisible()
+  expect(screen.getByText('active-runner')).toBeVisible()
+  expect(get).toHaveBeenCalledWith(
+    '/api/system-task/list',
+    expect.objectContaining({
+      params: expect.objectContaining({
+        scope: 'history',
+        grouped: true,
+        offset: 0,
+      }),
+    })
+  )
+  client.clear()
+})
+
+it('opens a group with the keyboard, pages through individual runs and preserves their details', async () => {
+  const get = vi.spyOn(api, 'get').mockImplementation(async (_url, config) => {
+    const params = config?.params
+    if (params?.scope === 'active') {
+      return { data: { success: true, data: [], total: 0 } }
+    }
+    if (params?.grouped) {
+      return {
+        data: { success: true, data: [{ ...task, run_count: 21 }], total: 1 },
+      }
+    }
+    const older = !!params?.offset
+    return {
+      data: {
+        success: true,
+        data: [
+          {
+            ...task,
+            task_id: older ? 'older-run' : 'latest-run',
+            locked_by: older ? 'older-runner' : 'latest-runner',
+            result: { message: older ? 'Older result' : 'Latest result' },
+          },
+        ],
+        total: 21,
+      },
+    }
+  })
+  const client = renderPanel()
+  const count = await screen.findByRole('button', { name: 'View 21 task runs' })
+  count.focus()
+  await userEvent.keyboard('{Enter}')
+  const dialog = await screen.findByRole('dialog', { name: 'Task runs' })
+  expect(await within(dialog).findByText('latest-runner')).toBeVisible()
+  await userEvent.click(
+    within(dialog).getByRole('button', { name: 'Go to next page' })
+  )
+  expect(await within(dialog).findByText('older-runner')).toBeVisible()
+  expect(get).toHaveBeenLastCalledWith(
+    '/api/system-task/list',
+    expect.objectContaining({
+      params: expect.objectContaining({
+        scope: 'history',
+        type: 'model_update',
+        status: 'succeeded',
+        offset: 20,
+      }),
+    })
+  )
+  await userEvent.click(
+    within(dialog).getByRole('button', { name: 'View details' })
+  )
+  const detail = await screen.findByRole('dialog', { name: 'Task detail' })
+  expect(within(detail).getByText(/Older result/)).toBeVisible()
+  await userEvent.keyboard('{Escape}')
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('dialog', { name: 'Task detail' })
+    ).not.toBeInTheDocument()
+  )
+  expect(dialog).toBeVisible()
+  await userEvent.keyboard('{Escape}')
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('dialog', { name: 'Task runs' })
+    ).not.toBeInTheDocument()
+  )
+  expect(count).toHaveFocus()
+  client.clear()
+})
+
+it('shows a group query error and allows retry without losing the summary', async () => {
+  let failed = true
+  vi.spyOn(api, 'get').mockImplementation(async (_url, config) => {
+    if (config?.params?.scope === 'active') {
+      return { data: { success: true, data: [], total: 0 } }
+    }
+    if (config?.params?.grouped) {
+      return {
+        data: { success: true, data: [{ ...task, run_count: 2 }], total: 1 },
+      }
+    }
+    if (failed) return { data: { success: false, message: 'Runs unavailable' } }
+    return { data: { success: true, data: [], total: 0 } }
+  })
+  const client = renderPanel()
+  await userEvent.click(
+    await screen.findByRole('button', { name: 'View 2 task runs' })
+  )
+  const dialog = await screen.findByRole('dialog', { name: 'Task runs' })
+  expect(await within(dialog).findByText('Runs unavailable')).toBeVisible()
+  failed = false
+  await userEvent.click(
+    within(dialog).getByRole('button', { name: /retry|try again/i })
+  )
+  expect(
+    await within(dialog).findByText('No historical system tasks.')
+  ).toBeVisible()
+  expect(
+    within(dialog).getByRole('button', { name: 'Go to next page' })
+  ).toBeDisabled()
+  client.clear()
+})
+
 it('filters history on the server and resets pagination without hiding active tasks', async () => {
   const get = vi.spyOn(api, 'get').mockImplementation(async (_url, config) => {
     if (config?.params?.scope === 'active') {

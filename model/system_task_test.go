@@ -58,15 +58,33 @@ func TestSystemTaskHistoryDatabaseMatrix(t *testing.T) {
 
 			tasks := []SystemTask{
 				{TaskID: "model-failed-old", Type: SystemTaskTypeModelUpdate, Status: SystemTaskStatusFailed},
-				{TaskID: "model-success", Type: SystemTaskTypeModelUpdate, Status: SystemTaskStatusSucceeded},
+				{TaskID: "model-success", Type: SystemTaskTypeModelUpdate, Status: SystemTaskStatusSucceeded, LockedBy: "previous-instance"},
 				{TaskID: "channel-failed", Type: SystemTaskTypeChannelTest, Status: SystemTaskStatusFailed},
 				{TaskID: "model-failed-recent", Type: SystemTaskTypeModelUpdate, Status: SystemTaskStatusFailed},
-				{TaskID: "model-latest", Type: SystemTaskTypeModelUpdate, Status: SystemTaskStatusSucceeded},
+				{TaskID: "model-latest", Type: SystemTaskTypeModelUpdate, Status: SystemTaskStatusSucceeded, LockedBy: "current-instance"},
 				{TaskID: "channel-pending", Type: SystemTaskTypeChannelTest, Status: SystemTaskStatusPending},
 				{TaskID: "channel-running", Type: SystemTaskTypeChannelTest, Status: SystemTaskStatusRunning},
 				{TaskID: "log-only-history", Type: SystemTaskTypeLogCleanup, Status: SystemTaskStatusSucceeded},
 			}
 			require.NoError(t, db.Create(&tasks).Error)
+			groups, total, err := ListSystemTaskHistoryGroups(SystemTaskFilter{}, 1, 2)
+			require.NoError(t, err)
+			assert.EqualValues(t, 4, total, "分页统计分组数，活动任务不计入历史")
+			require.Len(t, groups, 2)
+			assert.Equal(t, "model-latest", groups[0].TaskID)
+			assert.Equal(t, "current-instance", groups[0].LockedBy)
+			assert.EqualValues(t, 2, groups[0].RunCount, "相同类型和状态跨实例汇总全部执行")
+			assert.Equal(t, "model-failed-recent", groups[1].TaskID)
+			assert.EqualValues(t, 2, groups[1].RunCount, "失败记录独立汇总")
+			groups, total, err = ListSystemTaskHistoryGroups(SystemTaskFilter{Type: SystemTaskTypeModelUpdate, Status: SystemTaskStatusFailed}, 0, 20)
+			require.NoError(t, err)
+			assert.EqualValues(t, 1, total)
+			require.Len(t, groups, 1)
+			assert.EqualValues(t, 2, groups[0].RunCount)
+			groups, total, err = ListSystemTaskHistoryGroups(SystemTaskFilter{}, 4, 20)
+			require.NoError(t, err)
+			assert.EqualValues(t, 4, total)
+			assert.Empty(t, groups)
 			filter := SystemTaskFilter{Scope: "history", Type: SystemTaskTypeModelUpdate, Status: SystemTaskStatusFailed}
 			page, total, err := ListSystemTasks(filter, 1, 1)
 			require.NoError(t, err)
@@ -91,6 +109,11 @@ func TestSystemTaskHistoryDatabaseMatrix(t *testing.T) {
 			_, total, err = ListSystemTasks(SystemTaskFilter{Scope: "history"}, 0, 20)
 			require.NoError(t, err)
 			assert.EqualValues(t, 4, total, "other types and statuses are untouched")
+			groups, total, err = ListSystemTaskHistoryGroups(SystemTaskFilter{Type: SystemTaskTypeModelUpdate, Status: SystemTaskStatusFailed}, 0, 20)
+			require.NoError(t, err)
+			assert.Zero(t, total)
+			assert.NotNil(t, groups, "空列表序列化为数组")
+			assert.Empty(t, groups)
 
 			deleted, err = DeleteSystemTaskHistory(SystemTaskFilter{Scope: "active", Status: SystemTaskStatusRunning})
 			require.NoError(t, err)

@@ -63,6 +63,7 @@ type SystemTaskResponse struct {
 	LockedBy  string           `json:"locked_by"`
 	CreatedAt int64            `json:"created_at"`
 	UpdatedAt int64            `json:"updated_at"`
+	RunCount  int64            `json:"run_count,omitempty"`
 }
 
 func (task *SystemTask) BeforeCreate(_ *gorm.DB) error {
@@ -249,6 +250,47 @@ func ListSystemTasks(filter SystemTaskFilter, offset, limit int) ([]*SystemTask,
 	var tasks []*SystemTask
 	err := query.Order("id desc").Offset(max(0, offset)).Limit(min(limit, 100)).Find(&tasks).Error
 	return tasks, total, err
+}
+
+// ListSystemTaskHistoryGroups 按类型和最终状态汇总全部历史，分页单位为分组。
+// 每组返回最新一次执行及总次数，单次执行仍通过原列表接口查询。
+func ListSystemTaskHistoryGroups(filter SystemTaskFilter, offset, limit int) ([]SystemTaskResponse, int64, error) {
+	filter.Scope = "history"
+	if limit <= 0 {
+		limit = 20
+	}
+	grouped := filter.query().Select("MAX(id) AS id, COUNT(*) AS run_count").Group("type, status")
+	var total int64
+	if err := DB.Table("(?) AS task_groups", grouped).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var groups []struct {
+		ID       int64
+		RunCount int64
+	}
+	if err := grouped.Order("MAX(id) desc").Offset(max(0, offset)).Limit(min(limit, 100)).Scan(&groups).Error; err != nil {
+		return nil, 0, err
+	}
+	responses := make([]SystemTaskResponse, 0, len(groups))
+	if len(groups) == 0 {
+		return responses, total, nil
+	}
+	ids := make([]int64, 0, len(groups))
+	counts := make(map[int64]int64, len(groups))
+	for _, group := range groups {
+		ids = append(ids, group.ID)
+		counts[group.ID] = group.RunCount
+	}
+	var tasks []*SystemTask
+	if err := DB.Where("id IN ?", ids).Order("id desc").Find(&tasks).Error; err != nil {
+		return nil, 0, err
+	}
+	for _, task := range tasks {
+		response := task.ToResponse()
+		response.RunCount = counts[task.ID]
+		responses = append(responses, response)
+	}
+	return responses, total, nil
 }
 
 // DeleteSystemTaskHistory preserves the latest row of every type because the

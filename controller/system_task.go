@@ -68,11 +68,25 @@ func GetCurrentSystemTask(c *gin.Context) {
 func ListSystemTasks(c *gin.Context) {
 	var query struct {
 		model.SystemTaskFilter
-		Offset int `form:"offset" binding:"gte=0"`
-		Limit  int `form:"limit"`
+		Offset  int  `form:"offset" binding:"gte=0"`
+		Limit   int  `form:"limit"`
+		Grouped bool `form:"grouped"`
 	}
 	if err := c.ShouldBindQuery(&query); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid system task filters"})
+		return
+	}
+	if query.Grouped {
+		if query.Scope != "history" {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "grouping requires history scope"})
+			return
+		}
+		responses, total, err := model.ListSystemTaskHistoryGroups(query.SystemTaskFilter, query.Offset, query.Limit)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": responses, "total": total})
 		return
 	}
 

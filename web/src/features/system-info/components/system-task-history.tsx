@@ -42,6 +42,7 @@ import { createServerError } from '@/lib/server-error-message'
 
 import { deleteSystemTaskHistory } from '../api'
 import { SYSTEM_TASK_TYPE_LABEL } from '../constants'
+import { SystemTaskGroupDialog } from './system-task-group-dialog'
 import { SystemTasksTable } from './system-tasks-table'
 
 const EMPTY_TASKS: SystemTask[] = []
@@ -55,12 +56,14 @@ export function SystemTaskHistory(props: { activeRefreshAt: number }) {
   >({ type: '', status: '' })
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 20 })
   const [cleanupOpen, setCleanupOpen] = useState(false)
+  const [selectedGroup, setSelectedGroup] = useState<SystemTask | null>(null)
   const historyQuery = useQuery({
     queryKey: [...HISTORY_QUERY_KEY, filters, pagination],
     queryFn: async () => {
       const res = await listSystemTasks(pagination.pageSize, {
         ...filters,
         scope: 'history',
+        grouped: true,
         offset: pagination.pageIndex * pagination.pageSize,
       })
       if (!res.success || !Array.isArray(res.data)) {
@@ -123,7 +126,9 @@ export function SystemTaskHistory(props: { activeRefreshAt: number }) {
       <div>
         <h4 className='text-sm font-medium'>{t('Task History')}</h4>
         <p className='text-muted-foreground mt-0.5 text-xs'>
-          {t('Recently completed or failed system task runs.')}
+          {t(
+            'Task runs are grouped by type and status. Each row shows the latest run.'
+          )}
         </p>
       </div>
       <DataTableToolbar
@@ -207,7 +212,7 @@ export function SystemTaskHistory(props: { activeRefreshAt: number }) {
         {!historyQuery.isLoading && !historyQuery.isError && (
           <>
             {tasks.length > 0 ? (
-              <SystemTasksTable tasks={tasks} />
+              <SystemTasksTable tasks={tasks} onViewRuns={setSelectedGroup} />
             ) : (
               <EmptyState
                 title={t('No historical system tasks.')}
@@ -221,6 +226,15 @@ export function SystemTaskHistory(props: { activeRefreshAt: number }) {
           </>
         )}
       </div>
+      {selectedGroup && (
+        <SystemTaskGroupDialog
+          key={`${selectedGroup.type}:${selectedGroup.status}`}
+          task={selectedGroup}
+          onOpenChange={(open) => {
+            if (!open) setSelectedGroup(null)
+          }}
+        />
+      )}
       <ConfirmDialog
         open={cleanupOpen}
         onOpenChange={(open) => {
