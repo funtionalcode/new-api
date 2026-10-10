@@ -320,6 +320,51 @@ test.each([
   }
 )
 
+test('editing a VolcEngine Coding Plan channel preserves its endpoint and empty model mapping', async () => {
+  editingChannel.type = 45
+  editingChannel.base_url = 'doubao-coding-plan'
+  editingChannel.model_mapping = ''
+  const put = vi
+    .spyOn(api, 'put')
+    .mockResolvedValue({ data: { success: true } })
+  const user = userEvent.setup()
+  render(<ConfigurationHarness currentRow={editingChannel} />)
+  const name = await screen.findByDisplayValue('Existing channel')
+  expect(screen.getByText('Doubao Coding Plan')).toBeVisible()
+  await user.clear(name)
+  await user.type(name, 'Updated channel')
+  await user.click(screen.getByRole('button', { name: 'Update Channel' }))
+  await waitFor(() => expect(put).toHaveBeenCalled())
+  expect(put.mock.calls[0]?.[1]).toMatchObject({
+    id: 42,
+    name: 'Updated channel',
+    base_url: 'doubao-coding-plan',
+    model_mapping: '',
+  })
+  const payload = put.mock.calls[0]?.[1] as { setting: string }
+  expect(JSON.parse(payload.setting).model_mapping_channels).toBeUndefined()
+})
+
+test('a VolcEngine channel can select the Coding Plan endpoint without model mapping', async () => {
+  editingChannel.type = 45
+  editingChannel.base_url = 'https://ark.cn-beijing.volces.com'
+  const put = vi
+    .spyOn(api, 'put')
+    .mockResolvedValue({ data: { success: true } })
+  const user = userEvent.setup()
+  render(<ConfigurationHarness currentRow={editingChannel} />)
+  await screen.findByDisplayValue('Existing channel')
+  await user.click(screen.getByRole('combobox', { name: /^API Base URL/ }))
+  await user.click(screen.getByRole('option', { name: 'Doubao Coding Plan' }))
+  await user.click(screen.getByRole('button', { name: 'Update Channel' }))
+  await waitFor(() => expect(put).toHaveBeenCalled())
+  expect(put.mock.calls[0]?.[1]).toMatchObject({
+    id: 42,
+    base_url: 'doubao-coding-plan',
+    model_mapping: '',
+  })
+})
+
 test('an unavailable default URL endpoint keeps the fallback placeholder and allows saving a custom address', async () => {
   const onInternalServerError = vi.fn()
   client = createAppQueryClient(onInternalServerError)

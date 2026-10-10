@@ -1165,15 +1165,6 @@ export function ChannelMutateDrawer({
   }, [currentType, isEditing, form])
 
   useEffect(() => {
-    if (currentType !== 45 || currentBaseUrl !== 'doubao-coding-plan') return
-
-    form.setValue('base_url', 'https://ark.cn-beijing.volces.com', {
-      shouldDirty: false,
-      shouldValidate: true,
-    })
-  }, [currentBaseUrl, currentType, form])
-
-  useEffect(() => {
     if (isEditing || supportsMultiKeyAddMode) return
     if (multiKeyMode && multiKeyMode !== 'single') {
       form.setValue('multi_key_mode', 'single', {
@@ -4126,6 +4117,10 @@ export function ChannelMutateDrawer({
                       disabled={sensitiveLocked}
                       items={[
                         {
+                          value: 'doubao-coding-plan',
+                          label: t('Doubao Coding Plan'),
+                        },
+                        {
                           value: 'https://ark.cn-beijing.volces.com',
                           label: t('https://ark.cn-beijing.volces.com'),
                         },
@@ -4135,11 +4130,7 @@ export function ChannelMutateDrawer({
                         },
                       ]}
                       onValueChange={field.onChange}
-                      value={
-                        field.value === 'doubao-coding-plan'
-                          ? 'https://ark.cn-beijing.volces.com'
-                          : field.value || 'https://ark.cn-beijing.volces.com'
-                      }
+                      value={field.value || 'https://ark.cn-beijing.volces.com'}
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -4148,6 +4139,9 @@ export function ChannelMutateDrawer({
                       </FormControl>
                       <SelectContent alignItemWithTrigger={false}>
                         <SelectGroup>
+                          <SelectItem value='doubao-coding-plan'>
+                            {t('Doubao Coding Plan')}
+                          </SelectItem>
                           <SelectItem value='https://ark.cn-beijing.volces.com'>
                             {t('https://ark.cn-beijing.volces.com')}
                           </SelectItem>
