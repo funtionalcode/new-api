@@ -24,6 +24,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 const (
@@ -346,6 +348,44 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		request.THINKING = json.RawMessage(`{"type": "enabled"}`)
 	}
 	return request, nil
+}
+
+func (a *Adaptor) NormalizeOpenAIRequestJSON(c *gin.Context, info *relaycommon.RelayInfo, body []byte) ([]byte, error) {
+	switch gjson.GetBytes(body, "model").String() {
+	case "glm-5.3-flash", "glm-5-3-flash", "glm-5-3-flash-260828":
+	default:
+		return body, nil
+	}
+	thinkingDisabled := gjson.GetBytes(body, "thinking.type").String() == "disabled"
+	if !thinkingDisabled && gjson.GetBytes(body, "reasoning_effort").String() != "none" {
+		return body, nil
+	}
+
+	// 方舟 GLM 5.3 Flash 始终开启思考，关闭请求按官方规则使用最低强度。
+	// https://docs.volcengine.com/docs/ark/deep-thinking?lang=zh
+	var err error
+	body, err = sjson.SetBytes(body, "thinking.type", "enabled")
+	if err != nil {
+		return nil, fmt.Errorf("设置火山模型必需的思考模式失败: %w", err)
+	}
+	body, err = sjson.SetBytes(body, "reasoning_effort", "low")
+	if err != nil {
+		return nil, fmt.Errorf("设置火山模型最低思考强度失败: %w", err)
+	}
+	info.SetReasoningEffort("low")
+	path := "thinking.type"
+	if !thinkingDisabled {
+		path = "reasoning_effort"
+	}
+	info.RecordConversionDiagnostics(c, []types.ConversionDiagnostic{{
+		Code:     "thinking_disabled_unsupported",
+		Path:     path,
+		Message:  "火山 GLM 5.3 Flash 不支持关闭思考，已改为开启思考并使用最低强度 low",
+		Severity: types.ConversionDiagnosticWarning,
+		From:     types.RelayFormatOpenAI,
+		To:       types.RelayFormatOpenAI,
+	}})
+	return body, nil
 }
 
 func (a *Adaptor) ConvertRerankRequest(c *gin.Context, relayMode int, request dto.RerankRequest) (any, error) {

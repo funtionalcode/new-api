@@ -33,6 +33,12 @@ type Adaptor interface {
 	ConvertGeminiRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeminiChatRequest) (any, error)
 }
 
+// OpenAIRequestJSONNormalizer 在参数覆盖和思考评估完成后校验提供商的请求约束。
+// 仅用于正常转换的 Chat 请求；透传路径保持请求体原文。
+type OpenAIRequestJSONNormalizer interface {
+	NormalizeOpenAIRequestJSON(c *gin.Context, info *relaycommon.RelayInfo, body []byte) ([]byte, error)
+}
+
 type TaskAdaptor interface {
 	Init(info *relaycommon.RelayInfo)
 
