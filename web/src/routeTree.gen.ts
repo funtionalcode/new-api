@@ -49,6 +49,7 @@ import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authentica
 import { Route as AuthenticatedKimiQuotaIndexRouteImport } from './routes/_authenticated/kimi-quota/index'
 import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenticated/models/index'
 import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authenticated/models/$section'
+import { Route as AuthenticatedPelicanTestIndexRouteImport } from './routes/_authenticated/pelican-test/index'
 import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_authenticated/playground/index'
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
 import { Route as AuthenticatedRedemptionCodesIndexRouteImport } from './routes/_authenticated/redemption-codes/index'
@@ -295,6 +296,12 @@ const AuthenticatedModelsSectionRoute =
     path: '/models/$section',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedPelicanTestIndexRoute =
+  AuthenticatedPelicanTestIndexRouteImport.update({
+    id: '/pelican-test/',
+    path: '/pelican-test/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedPlaygroundIndexRoute =
   AuthenticatedPlaygroundIndexRouteImport.update({
     id: '/playground/',
@@ -539,6 +546,7 @@ export interface FileRoutesByFullPath {
   '/keys/': typeof AuthenticatedKeysIndexRoute
   '/kimi-quota/': typeof AuthenticatedKimiQuotaIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
+  '/pelican-test/': typeof AuthenticatedPelicanTestIndexRoute
   '/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/profile/': typeof AuthenticatedProfileIndexRoute
   '/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
@@ -612,6 +620,7 @@ export interface FileRoutesByTo {
   '/keys': typeof AuthenticatedKeysIndexRoute
   '/kimi-quota': typeof AuthenticatedKimiQuotaIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
+  '/pelican-test': typeof AuthenticatedPelicanTestIndexRoute
   '/playground': typeof AuthenticatedPlaygroundIndexRoute
   '/profile': typeof AuthenticatedProfileIndexRoute
   '/redemption-codes': typeof AuthenticatedRedemptionCodesIndexRoute
@@ -689,6 +698,7 @@ export interface FileRoutesById {
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
   '/_authenticated/kimi-quota/': typeof AuthenticatedKimiQuotaIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
+  '/_authenticated/pelican-test/': typeof AuthenticatedPelicanTestIndexRoute
   '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
   '/_authenticated/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
@@ -765,6 +775,7 @@ export interface FileRouteTypes {
     | '/keys/'
     | '/kimi-quota/'
     | '/models/'
+    | '/pelican-test/'
     | '/playground/'
     | '/profile/'
     | '/redemption-codes/'
@@ -838,6 +849,7 @@ export interface FileRouteTypes {
     | '/keys'
     | '/kimi-quota'
     | '/models'
+    | '/pelican-test'
     | '/playground'
     | '/profile'
     | '/redemption-codes'
@@ -914,6 +926,7 @@ export interface FileRouteTypes {
     | '/_authenticated/keys/'
     | '/_authenticated/kimi-quota/'
     | '/_authenticated/models/'
+    | '/_authenticated/pelican-test/'
     | '/_authenticated/playground/'
     | '/_authenticated/profile/'
     | '/_authenticated/redemption-codes/'
@@ -1248,6 +1261,13 @@ declare module '@tanstack/react-router' {
       path: '/models/$section'
       fullPath: '/models/$section'
       preLoaderRoute: typeof AuthenticatedModelsSectionRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/pelican-test/': {
+      id: '/_authenticated/pelican-test/'
+      path: '/pelican-test'
+      fullPath: '/pelican-test/'
+      preLoaderRoute: typeof AuthenticatedPelicanTestIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/playground/': {
@@ -1599,6 +1619,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
   AuthenticatedKimiQuotaIndexRoute: typeof AuthenticatedKimiQuotaIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
+  AuthenticatedPelicanTestIndexRoute: typeof AuthenticatedPelicanTestIndexRoute
   AuthenticatedPlaygroundIndexRoute: typeof AuthenticatedPlaygroundIndexRoute
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
   AuthenticatedRedemptionCodesIndexRoute: typeof AuthenticatedRedemptionCodesIndexRoute
@@ -1636,6 +1657,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
   AuthenticatedKimiQuotaIndexRoute: AuthenticatedKimiQuotaIndexRoute,
   AuthenticatedModelsIndexRoute: AuthenticatedModelsIndexRoute,
+  AuthenticatedPelicanTestIndexRoute: AuthenticatedPelicanTestIndexRoute,
   AuthenticatedPlaygroundIndexRoute: AuthenticatedPlaygroundIndexRoute,
   AuthenticatedProfileIndexRoute: AuthenticatedProfileIndexRoute,
   AuthenticatedRedemptionCodesIndexRoute:

@@ -19,6 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 // Static translation keys that don't get picked up by the t('...') regex.
 // These cover dynamic labels (e.g. constants, configs) that are passed into t at runtime.
 export const STATIC_I18N_KEYS = [
+  'History could not be saved. Keep this page open and copy the results before leaving.',
+  'Test history could not be loaded. Existing stored data has not been overwritten.',
   'Paste the curl request for https://console.typesafe.ai/api/usage from browser developer tools',
   'Task usage metadata is unavailable. Pricing details cannot be displayed.',
   'This expression cannot be expanded into a price table. View the original expression below.',

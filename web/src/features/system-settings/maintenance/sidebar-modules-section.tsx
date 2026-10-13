@@ -92,6 +92,12 @@ export function SidebarModulesSection({
         title: t('Playground'),
         description: t('Experiment with prompts and models in real time.'),
       },
+      pelicanTest: {
+        title: t('Pelican Test'),
+        description: t(
+          'Compare HTML and SVG animation generation across models.'
+        ),
+      },
       chat: {
         title: t('Chat'),
         description: t('Access previous conversations and start new ones.'),

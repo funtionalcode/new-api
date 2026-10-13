@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   Activity,
   BarChart3,
+  Bird,
   Box,
   ChartNoAxesColumn,
   ClipboardList,
@@ -70,6 +71,11 @@ export function useSidebarData(): SidebarData {
             title: t('Playground'),
             url: '/playground',
             icon: FlaskConical,
+          },
+          {
+            title: t('Pelican Test'),
+            url: '/pelican-test',
+            icon: Bird,
           },
           {
             title: t('Chat'),

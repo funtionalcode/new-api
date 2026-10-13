@@ -73,6 +73,41 @@ function sidebarFor(admin?: object, user?: object, canConfigure = true) {
   return result
 }
 
+describe('pelican test sidebar visibility', () => {
+  it('旧配置默认显示独立鹈鹕测试菜单，并在保存配置后保留开关', () => {
+    const config = parseSidebarModulesAdmin(
+      '{"chat":{"enabled":true,"playground":true}}'
+    )
+    expect(config.chat.pelicanTest).toBe(true)
+    const visible = sidebarFor(config)
+    expect(
+      visible.result.current.flatMap((group) => group.items)
+    ).toContainEqual(
+      expect.objectContaining({ title: 'Pelican Test', url: '/pelican-test' })
+    )
+    config.chat.pelicanTest = false
+    const hidden = sidebarFor(
+      parseSidebarModulesAdmin(serializeSidebarModulesAdmin(config))
+    )
+    expect(
+      hidden.result.current
+        .flatMap((group) => group.items)
+        .some((item) => item.title === 'Pelican Test')
+    ).toBe(false)
+  })
+
+  it('用户隐藏鹈鹕测试时不影响游乐场', () => {
+    const { result } = sidebarFor(undefined, {
+      chat: { enabled: true, pelicanTest: false },
+    })
+    const titles = result.current
+      .flatMap((group) => group.items)
+      .map((item) => item.title)
+    expect(titles).not.toContain('Pelican Test')
+    expect(titles).toContain('Playground')
+  })
+})
+
 describe('security sidebar visibility', () => {
   it('old configurations show Security & Access immediately after Profile and keep API Keys', () => {
     const { result } = sidebarFor(
