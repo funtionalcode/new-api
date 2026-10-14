@@ -23,6 +23,67 @@ type fakeCliproxyAPICaller struct {
 	errors    map[string]error
 }
 
+func TestGetCliproxyRemoteAuthFilesIncludesBindingState(t *testing.T) {
+	originalDB := model.DB
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&model.CliproxyAuthFileBinding{}))
+	model.DB = db
+	t.Cleanup(func() { model.DB = originalDB })
+	require.NoError(t, db.Create(&model.CliproxyAuthFileBinding{UserId: 2, AuthIndex: "bound", Enabled: true}).Error)
+	require.Error(t, model.CreateCliproxyAuthFileBinding(&model.CliproxyAuthFileBinding{UserId: 3, AuthIndex: "bound", Enabled: true}))
+	require.NoError(t, db.Model(&model.CliproxyAuthFileBinding{}).Where("auth_index = ?", "bound").Update("enabled", false).Error)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, err := w.Write([]byte(`{"files":[{"auth_index":"bound","name":"bound.json","enabled":false},{"auth_index":"free","name":"free.json","bound":true,"enabled":true}]}`))
+		assert.NoError(t, err)
+	}))
+	t.Cleanup(upstream.Close)
+	common.OptionMapRWMutex.Lock()
+	originalOptions := common.OptionMap
+	common.OptionMap = map[string]string{"CliproxyAPIBaseURL": upstream.URL, "CliproxyAPIPassword": "test-only"}
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap = originalOptions
+		common.OptionMapRWMutex.Unlock()
+	})
+	router := gin.New()
+	router.GET("/remote", GetCliproxyRemoteAuthFiles)
+	for _, test := range []struct {
+		name          string
+		removeBinding bool
+		failLookup    bool
+		wantBound     bool
+	}{{name: "禁用的绑定仍然已绑定", wantBound: true}, {name: "解绑后恢复未绑定", removeBinding: true}, {name: "查询失败不返回未绑定状态", failLookup: true}} {
+		t.Run(test.name, func(t *testing.T) {
+			if test.removeBinding {
+				require.NoError(t, db.Where("auth_index = ?", "bound").Delete(&model.CliproxyAuthFileBinding{}).Error)
+			}
+			if test.failLookup {
+				require.NoError(t, db.Migrator().DropTable(&model.CliproxyAuthFileBinding{}))
+			}
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/remote?username=other&page_size=1", nil))
+			var body struct {
+				Success bool             `json:"success"`
+				Data    []map[string]any `json:"data"`
+			}
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &body))
+			if test.failLookup {
+				require.False(t, body.Success)
+				assert.Empty(t, body.Data)
+				return
+			}
+			require.True(t, body.Success)
+			require.Len(t, body.Data, 2)
+			assert.Equal(t, test.wantBound, body.Data[0]["bound"])
+			assert.Equal(t, false, body.Data[1]["bound"])
+			assert.NotContains(t, body.Data[0], "user_id")
+		})
+	}
+}
+
 func (f *fakeCliproxyAPICaller) CallAPI(_ context.Context, request service.CliproxyAPICallRequest) (*service.CliproxyAPICallResponse, error) {
 	return f.responses[request.URL], f.errors[request.URL]
 }

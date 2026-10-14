@@ -175,6 +175,12 @@ func GetCliproxyAuthFileBindingById(id int) (*CliproxyAuthFileBinding, error) {
 	return &binding, err
 }
 
+func GetBoundCliproxyAuthIndexes() ([]string, error) {
+	var indexes []string
+	err := DB.Model(&CliproxyAuthFileBinding{}).Pluck("auth_index", &indexes).Error
+	return indexes, err
+}
+
 func GetCliproxyAuthFileBindings(query CliproxyAuthFileBindingQuery, startIdx int, num int) ([]*CliproxyAuthFileBinding, int64, error) {
 	var bindings []*CliproxyAuthFileBinding
 	dbQuery := buildCliproxyAuthFileBindingQuery(query)

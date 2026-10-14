@@ -84,6 +84,11 @@ type cliproxyUsageRefreshBody struct {
 	XAIOnDemandUsedRefreshed bool
 }
 
+type cliproxyRemoteAuthFile struct {
+	service.CliproxyAuthFile
+	Bound bool `json:"bound"`
+}
+
 func GetCliproxyRemoteAuthFiles(c *gin.Context) {
 	client, err := newCliproxyClientFromOptions()
 	if err != nil {
@@ -95,7 +100,20 @@ func GetCliproxyRemoteAuthFiles(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, files)
+	boundIndexes, err := model.GetBoundCliproxyAuthIndexes()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	bound := make(map[string]bool, len(boundIndexes))
+	for _, authIndex := range boundIndexes {
+		bound[authIndex] = true
+	}
+	result := make([]cliproxyRemoteAuthFile, len(files))
+	for i := range files {
+		result[i] = cliproxyRemoteAuthFile{CliproxyAuthFile: files[i], Bound: bound[files[i].AuthIndex]}
+	}
+	common.ApiSuccess(c, result)
 }
 
 func GetCliproxyAuthFileBindings(c *gin.Context) {

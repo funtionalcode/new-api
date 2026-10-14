@@ -127,6 +127,7 @@ import type {
   CliproxyAuthFile,
   CliproxyAuthFileBinding,
   CliproxyAuthFileBindingFormData,
+  GetCliproxyRemoteAuthFilesResponse,
 } from './types'
 
 type BindingDialogState =
@@ -685,15 +686,30 @@ function BindingDialog({
       }
       return createCliproxyAuthFileBinding(data)
     },
-    onSuccess: (data) => {
+    onSuccess: (data, input) => {
       const errorMessage = getApiErrorMessage(data, t('Failed to save binding'))
       if (errorMessage) {
         toast.error(errorMessage)
         return
       }
       toast.success(t('Binding saved successfully'))
+      queryClient.setQueryData<GetCliproxyRemoteAuthFilesResponse>(
+        ['cliproxy-remote-auth-files'],
+        (current) =>
+          current && {
+            ...current,
+            data: current.data?.map((file) =>
+              file.authIndex === input.auth_index
+                ? { ...file, bound: true }
+                : file
+            ),
+          }
+      )
       queryClient.invalidateQueries({
         queryKey: ['cliproxy-auth-file-bindings'],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['cliproxy-remote-auth-files'],
       })
       onOpenChange(false)
     },
@@ -946,9 +962,16 @@ function RemoteAuthFilesTable({
                         size='sm'
                         variant='outline'
                         onClick={() => onCreate(authFile)}
+                        disabled={
+                          authFile.bound !== false ||
+                          !authFile.authIndex ||
+                          query.isFetching ||
+                          query.isError ||
+                          !query.data?.success
+                        }
                       >
-                        <Plus />
-                        {t('Bind User')}
+                        {authFile.bound ? <Check /> : <Plus />}
+                        {authFile.bound ? t('Bound') : t('Bind User')}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -1084,6 +1107,9 @@ function BindingTable({
       toast.success(t('Binding deleted successfully'))
       queryClient.invalidateQueries({
         queryKey: ['cliproxy-auth-file-bindings'],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['cliproxy-remote-auth-files'],
       })
       setDeleteTarget(null)
     },

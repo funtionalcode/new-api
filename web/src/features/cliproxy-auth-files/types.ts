@@ -39,6 +39,7 @@ export interface CliproxyAuthFile {
   provider?: string
   type?: string
   enabled: boolean
+  bound?: boolean
 }
 
 export interface CliproxyAuthFileBinding {
