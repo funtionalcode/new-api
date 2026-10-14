@@ -19,37 +19,65 @@ For commercial licensing, please contact support@quantumnous.com
 import { t } from 'i18next'
 
 import { sendChatCompletion } from '@/features/playground/api'
+import { parseThinkTags } from '@/features/playground/lib/message/message-reasoning-utils'
+import type { ChatCompletionResponse } from '@/features/playground/types'
 import { createServerError } from '@/lib/server-error-message'
 
-import { PELICAN_TEST_PROMPT, type PelicanTestRecord } from './lib'
+import {
+  pelicanGenerationOptionsSchema,
+  PELICAN_TEST_PROMPT,
+  type PelicanTestRecord,
+} from './lib'
+
+function readPelicanModelResponse(response: ChatCompletionResponse) {
+  const choice = response.choices?.[0]
+  const message = choice?.message
+  const rawContent = typeof message?.content === 'string' ? message.content : ''
+  // 只处理响应开头的思考标签，避免误拆 HTML 源码中的同名元素或字符串。
+  const parsed = rawContent.trimStart().startsWith('<think>')
+    ? parseThinkTags(rawContent)
+    : undefined
+  const content = (parsed?.visibleContent ?? rawContent).trim()
+  const reasoningContent =
+    (typeof message?.reasoning_content === 'string'
+      ? message.reasoning_content.trim()
+      : '') ||
+    parsed?.reasoning ||
+    ''
+  if (!content && !reasoningContent) {
+    throw createServerError(response, t('The model returned an empty result'))
+  }
+  return {
+    content,
+    reasoningContent,
+    truncated: choice?.finish_reason === 'length',
+    finishReason:
+      typeof choice?.finish_reason === 'string'
+        ? choice.finish_reason
+        : undefined,
+  }
+}
 
 export async function generatePelicanHtml(
   model: string,
   group: string,
+  maxTokens: number,
   signal: AbortSignal
 ) {
+  const options = pelicanGenerationOptionsSchema.safeParse({ maxTokens })
+  if (!options.success) throw new Error(t('Invalid output token limit'))
   const response = await sendChatCompletion(
     {
       model,
       group,
       messages: [{ role: 'user', content: PELICAN_TEST_PROMPT }],
       stream: false,
+      max_tokens: options.data.maxTokens,
     },
     {},
     signal
   )
-  const choice = response.data.choices?.[0]
-  const content = choice?.message?.content
-  if (typeof content !== 'string' || !content.trim()) {
-    throw createServerError(
-      response.data,
-      t('The model returned an empty result')
-    )
-  }
-  return {
-    content: content.trim(),
-    truncated: choice.finish_reason === 'length',
-  }
+  return readPelicanModelResponse(response.data)
 }
 
 export async function assessPelicanHtml(
@@ -82,16 +110,5 @@ export async function assessPelicanHtml(
     {},
     signal
   )
-  const choice = response.data.choices?.[0]
-  const content = choice?.message?.content
-  if (typeof content !== 'string' || !content.trim()) {
-    throw createServerError(
-      response.data,
-      t('The model returned an empty result')
-    )
-  }
-  if (choice.finish_reason === 'length') {
-    throw new Error(t('The model response was truncated'))
-  }
-  return content.trim()
+  return readPelicanModelResponse(response.data)
 }

@@ -24,7 +24,6 @@ import {
   WebPreview,
   WebPreviewBody,
 } from '@/components/ai-elements/web-preview'
-import { CopyButton } from '@/components/copy-button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -46,6 +45,7 @@ import {
   type PelicanTestRating,
   type PelicanTestRecord,
 } from '../lib'
+import { ModelResponse } from './model-response'
 
 export function ResultCard(props: {
   record: PelicanTestRecord
@@ -57,8 +57,8 @@ export function ResultCard(props: {
   const [previewEnabled, setPreviewEnabled] = useState(false)
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const preview = useMemo(
-    () => buildPreviewDocument(props.record.content),
-    [props.record.content]
+    () => (previewEnabled ? buildPreviewDocument(props.record.content) : ''),
+    [previewEnabled, props.record.content]
   )
   const hasSvg = hasSvgMarkup(props.record.content)
   const createdAt = new Intl.DateTimeFormat(locale, {
@@ -101,102 +101,112 @@ export function ResultCard(props: {
             })}
           </CardDescription>
         )}
+        {props.record.maxTokens !== undefined && (
+          <CardDescription>
+            {t('Output limit: {{tokens}} tokens', {
+              tokens: formatNumber(props.record.maxTokens, locale),
+            })}
+          </CardDescription>
+        )}
       </CardHeader>
       <CardContent className='space-y-3'>
         {props.record.errorMessage && (
           <Alert variant='destructive'>
-            <AlertDescription>{props.record.errorMessage}</AlertDescription>
+            <AlertDescription>
+              <div className='space-y-1'>
+                <p>{props.record.errorMessage}</p>
+                {props.record.finishReason === 'length' && (
+                  <p>
+                    {t(
+                      'Increase the output limit and test again. The upstream model or channel may impose a lower limit.'
+                    )}
+                  </p>
+                )}
+              </div>
+            </AlertDescription>
           </Alert>
         )}
         {props.record.status === 'success' && (
-          <>
-            <Badge variant={hasSvg ? 'outline' : 'warning'}>
-              {hasSvg ? t('SVG detected') : t('SVG not detected')}
-            </Badge>
-            <Tabs defaultValue='preview'>
-              <TabsList>
-                <TabsTrigger value='preview'>{t('Preview')}</TabsTrigger>
-                <TabsTrigger value='source'>
-                  {t('View generated HTML')}
-                </TabsTrigger>
-              </TabsList>
-              <TabsContent value='preview' className='min-w-0'>
-                {previewEnabled ? (
-                  <WebPreview className='h-80 overflow-hidden bg-white'>
-                    <WebPreviewBody
-                      srcDoc={preview}
-                      sandbox='allow-scripts'
-                      referrerPolicy='no-referrer'
-                      title={t('Pelican HTML preview')}
-                      className='h-80'
-                    />
-                  </WebPreview>
-                ) : (
-                  <div className='bg-muted/20 flex h-80 flex-col items-center justify-center gap-3 rounded-lg border px-4 text-center'>
-                    <p className='text-muted-foreground text-sm'>
-                      {t(
-                        'Preview runs generated code in an isolated frame with network access blocked.'
-                      )}
-                    </p>
-                    <Button
-                      onClick={() => setPreviewEnabled(true)}
-                      variant='outline'
-                    >
-                      {t('Load preview')}
-                    </Button>
-                  </div>
-                )}
-                {previewEnabled && (
-                  <Button
-                    className='mt-2'
-                    size='sm'
-                    variant='ghost'
-                    onClick={() => setPreviewEnabled(false)}
-                  >
-                    {t('Stop preview')}
-                  </Button>
-                )}
-              </TabsContent>
-              <TabsContent value='source'>
-                <CopyButton
-                  value={props.record.content}
-                  size='sm'
-                  variant='outline'
-                >
-                  {t('Copy')}
-                </CopyButton>
-                <pre className='bg-muted/30 mt-2 max-h-80 overflow-auto rounded-lg border p-3 text-xs leading-5 break-all whitespace-pre-wrap'>
-                  {props.record.content}
-                </pre>
-              </TabsContent>
-            </Tabs>
-            <ToggleGroup
-              aria-label={t('How is this result?')}
-              value={props.record.rating ? [props.record.rating] : []}
-              onValueChange={(values) => {
-                if (values[0] === 'good' || values[0] === 'needs_review') {
-                  props.onRatingChange(values[0])
-                }
-              }}
-              variant='outline'
-              className='max-w-full flex-wrap'
-              spacing={1}
-            >
-              <ToggleGroupItem value='good'>
-                <ThumbsUp />
-                {t('Good result')}
-              </ToggleGroupItem>
-              <ToggleGroupItem value='needs_review'>
-                <ThumbsDown />
-                {t('Needs review')}
-              </ToggleGroupItem>
-            </ToggleGroup>
-          </>
+          <Badge variant={hasSvg ? 'outline' : 'warning'}>
+            {hasSvg ? t('SVG detected') : t('SVG not detected')}
+          </Badge>
         )}
-        {props.record.status === 'error' && props.record.content && (
-          <pre className='max-h-40 overflow-auto text-xs whitespace-pre-wrap'>
-            {props.record.content}
-          </pre>
+        <Tabs defaultValue='output'>
+          <TabsList>
+            <TabsTrigger value='output'>{t('Output')}</TabsTrigger>
+            {props.record.status === 'success' && (
+              <TabsTrigger value='preview'>{t('Preview')}</TabsTrigger>
+            )}
+          </TabsList>
+          <TabsContent value='output' className='min-w-0'>
+            <ModelResponse
+              content={props.record.content}
+              reasoningContent={props.record.reasoningContent}
+              pending={props.record.status === 'running'}
+            />
+          </TabsContent>
+          {props.record.status === 'success' && (
+            <TabsContent value='preview' className='min-w-0'>
+              {previewEnabled ? (
+                <WebPreview className='h-80 overflow-hidden bg-white'>
+                  <WebPreviewBody
+                    srcDoc={preview}
+                    sandbox='allow-scripts'
+                    referrerPolicy='no-referrer'
+                    title={t('Pelican HTML preview')}
+                    className='h-80'
+                  />
+                </WebPreview>
+              ) : (
+                <div className='bg-muted/20 flex h-80 flex-col items-center justify-center gap-3 rounded-lg border px-4 text-center'>
+                  <p className='text-muted-foreground text-sm'>
+                    {t(
+                      'Preview runs generated code in an isolated frame with network access blocked.'
+                    )}
+                  </p>
+                  <Button
+                    onClick={() => setPreviewEnabled(true)}
+                    variant='outline'
+                  >
+                    {t('Load preview')}
+                  </Button>
+                </div>
+              )}
+              {previewEnabled && (
+                <Button
+                  className='mt-2'
+                  size='sm'
+                  variant='ghost'
+                  onClick={() => setPreviewEnabled(false)}
+                >
+                  {t('Stop preview')}
+                </Button>
+              )}
+            </TabsContent>
+          )}
+        </Tabs>
+        {props.record.status === 'success' && (
+          <ToggleGroup
+            aria-label={t('How is this result?')}
+            value={props.record.rating ? [props.record.rating] : []}
+            onValueChange={(values) => {
+              if (values[0] === 'good' || values[0] === 'needs_review') {
+                props.onRatingChange(values[0])
+              }
+            }}
+            variant='outline'
+            className='max-w-full flex-wrap'
+            spacing={1}
+          >
+            <ToggleGroupItem value='good'>
+              <ThumbsUp />
+              {t('Good result')}
+            </ToggleGroupItem>
+            <ToggleGroupItem value='needs_review'>
+              <ThumbsDown />
+              {t('Needs review')}
+            </ToggleGroupItem>
+          </ToggleGroup>
         )}
         {props.onRerun && (
           <Button
@@ -226,9 +236,19 @@ export function ResultCard(props: {
                     </Badge>
                   )}
                 </summary>
-                <p className='mt-3 text-sm leading-6 break-words whitespace-pre-wrap'>
-                  {assessment.content}
-                </p>
+                <div className='mt-3 space-y-3'>
+                  {assessment.errorMessage && (
+                    <Alert variant='destructive'>
+                      <AlertDescription>
+                        {assessment.errorMessage}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  <ModelResponse
+                    content={assessment.content}
+                    reasoningContent={assessment.reasoningContent}
+                  />
+                </div>
               </details>
             ))}
           </section>

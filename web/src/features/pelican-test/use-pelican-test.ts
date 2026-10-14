@@ -28,6 +28,7 @@ import { getServerErrorMessage } from '@/lib/server-error-message'
 import { assessPelicanHtml, generatePelicanHtml } from './api'
 import {
   historyStorageKey,
+  pelicanGenerationOptionsSchema,
   readPelicanTestHistory,
   writePelicanTestHistory,
   type PelicanTestAssessment,
@@ -91,10 +92,15 @@ export function usePelicanTest(userId: number) {
   const generation = useMutation({
     retry: false,
     meta: { errorToast: false },
-    mutationFn: async (input: { model: string; group: string }) => {
+    mutationFn: async (input: {
+      model: string
+      group: string
+      maxTokens: number
+    }) => {
       if (controllerRef.current || !ready || !input.model || !input.group) {
         return
       }
+      if (!pelicanGenerationOptionsSchema.safeParse(input).success) return
       const controller = new AbortController()
       controllerRef.current = controller
       const record: PelicanTestRecord = {
@@ -104,6 +110,7 @@ export function usePelicanTest(userId: number) {
         createdAt: Date.now(),
         status: 'running',
         content: '',
+        maxTokens: input.maxTokens,
         assessments: [],
       }
       currentRunRef.current = record.id
@@ -114,25 +121,32 @@ export function usePelicanTest(userId: number) {
         const result = await generatePelicanHtml(
           input.model,
           input.group,
+          input.maxTokens,
           controller.signal
         )
         if (!mountedRef.current || controller.signal.aborted) return
+        let errorMessage: string | undefined
+        if (result.truncated) {
+          errorMessage = t('The model response was truncated')
+        } else if (!result.content) {
+          errorMessage = t('The model returned an empty result')
+        }
         commit(
           historyRef.current.map((item) =>
             item.id === record.id
               ? {
                   ...item,
                   content: result.content,
-                  status: result.truncated ? 'error' : 'success',
+                  reasoningContent: result.reasoningContent,
+                  finishReason: result.finishReason,
+                  status: errorMessage ? 'error' : 'success',
                   durationMs: performance.now() - startedAt,
-                  errorMessage: result.truncated
-                    ? t('The model response was truncated')
-                    : undefined,
+                  errorMessage,
                 }
               : item
           )
         )
-        if (!result.truncated) toast.success(t('Pelican test completed'))
+        if (!errorMessage) toast.success(t('Pelican test completed'))
       } catch (error) {
         if (!mountedRef.current || controller.signal.aborted) return
         markServerErrorHandled(error)
@@ -192,17 +206,26 @@ export function usePelicanTest(userId: number) {
             content: '',
           }
           try {
-            result.content = await assessPelicanHtml(
+            const response = await assessPelicanHtml(
               input.model,
               input.group,
               record,
               controller.signal
             )
+            result.content = response.content
+            result.reasoningContent = response.reasoningContent
+            if (response.truncated) {
+              result.status = 'error'
+              result.errorMessage = t('The model response was truncated')
+            } else if (!response.content) {
+              result.status = 'error'
+              result.errorMessage = t('The model returned an empty result')
+            }
           } catch (error) {
             if (controller.signal.aborted) break
             markServerErrorHandled(error)
             result.status = 'error'
-            result.content = getServerErrorMessage(
+            result.errorMessage = getServerErrorMessage(
               error,
               t('Pelican assessment failed')
             )

@@ -17,7 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import i18next from 'i18next'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -25,6 +32,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
 
+import { generatePelicanHtml } from '../api'
 import { PelicanTest } from '../index'
 import {
   historyStorageKey,
@@ -60,9 +68,16 @@ function renderWorkspace() {
   )
 }
 
-function completion(content: string, finishReason = 'stop') {
+function completion(content: string, finishReason = 'stop', reasoning = '') {
   return {
-    data: { choices: [{ message: { content }, finish_reason: finishReason }] },
+    data: {
+      choices: [
+        {
+          message: { content, reasoning_content: reasoning },
+          finish_reason: finishReason,
+        },
+      ],
+    },
     headers: {},
   }
 }
@@ -82,6 +97,101 @@ beforeEach(() => {
   }))
 })
 
+it('生成响应的思考和完整输出默认可见，并且重新打开历史后仍分别保留', async () => {
+  const reasoning = '先用 SVG 绘制车架和鹈鹕，再给车轮添加循环动画。'
+  const content = `实现说明\n\n\`\`\`html\n${html}\n\`\`\``
+  const user = userEvent.setup()
+  vi.spyOn(api, 'post').mockResolvedValue(
+    completion(content, 'stop', reasoning)
+  )
+  const workspace = renderWorkspace()
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Generate and save result' })
+    ).toBeEnabled()
+  )
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Generate and save result' })
+  )
+  expect(await screen.findByText(reasoning)).toBeVisible()
+  expect(screen.getByRole('tab', { name: 'Output' })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
+  expect(screen.getByLabelText('Output content').textContent).toBe(content)
+  expect(
+    screen.getByRole('button', { name: 'Copy reasoning content' })
+  ).toBeEnabled()
+  expect(
+    screen.getByRole('button', { name: 'Copy output content' })
+  ).toBeEnabled()
+  await user.click(
+    screen.getByRole('button', { name: 'Copy reasoning content' })
+  )
+  expect(await navigator.clipboard.readText()).toBe(reasoning)
+  await user.click(screen.getByRole('button', { name: 'Copy output content' }))
+  expect(await navigator.clipboard.readText()).toBe(content)
+  expect(readPelicanTestHistory(historyStorageKey(17))[0]).toMatchObject({
+    reasoningContent: reasoning,
+    content,
+    status: 'success',
+  })
+  workspace.unmount()
+  renderWorkspace()
+  expect(await screen.findByText(reasoning)).toBeVisible()
+  expect(screen.getByLabelText('Output content').textContent).toBe(content)
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Reasoning process' })
+  )
+  expect(
+    screen.getByRole('button', { name: 'Reasoning process' })
+  ).toHaveAttribute('aria-expanded', 'false')
+})
+
+it('响应以 think 标签返回思考时，将思考与最终 HTML 分开保存', async () => {
+  vi.spyOn(api, 'post').mockResolvedValue(
+    completion(`<think>先画车轮。</think>\n${html}`)
+  )
+  renderWorkspace()
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Generate and save result' })
+    ).toBeEnabled()
+  )
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Generate and save result' })
+  )
+  expect(await screen.findByText('先画车轮。')).toBeVisible()
+  expect(readPelicanTestHistory(historyStorageKey(17))[0]).toMatchObject({
+    reasoningContent: '先画车轮。',
+    content: html,
+  })
+})
+
+it('模型只返回思考而没有最终输出时仍保留思考，并明确标记生成失败', async () => {
+  vi.spyOn(api, 'post').mockResolvedValue(
+    completion('', 'stop', '正在构思车架。')
+  )
+  renderWorkspace()
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Generate and save result' })
+    ).toBeEnabled()
+  )
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Generate and save result' })
+  )
+  expect(await screen.findByText('正在构思车架。')).toBeVisible()
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'The model returned an empty result'
+  )
+  expect(readPelicanTestHistory(historyStorageKey(17))[0]).toMatchObject({
+    reasoningContent: '正在构思车架。',
+    content: '',
+    status: 'error',
+  })
+})
+
 afterEach(async () => {
   useAuthStore.getState().auth.reset()
   await i18next.changeLanguage('en')
@@ -94,6 +204,9 @@ it('选择生成模型后发送原始固定提示词，成功结果持久化并�
     name: 'Generate and save result',
   })
   await waitFor(() => expect(submit).toBeEnabled())
+  expect(
+    screen.getByRole('spinbutton', { name: 'Generation output limit (tokens)' })
+  ).toHaveValue(16384)
   const generation = screen.getByRole('region', { name: 'Generation model' })
   await userEvent.click(within(generation).getAllByRole('combobox')[0])
   await userEvent.click(screen.getByRole('option', { name: 'model-b' }))
@@ -106,6 +219,7 @@ it('选择生成模型后发送原始固定提示词，成功结果持久化并�
       group: 'default',
       messages: [{ role: 'user', content: PELICAN_TEST_PROMPT }],
       stream: false,
+      max_tokens: 16384,
     },
     expect.objectContaining({ signal: expect.any(AbortSignal) })
   )
@@ -113,8 +227,10 @@ it('选择生成模型后发送原始固定提示词，成功结果持久化并�
     model: 'model-b',
     status: 'success',
     content: html,
+    maxTokens: 16384,
   })
   expect(screen.queryByTitle('Pelican HTML preview')).not.toBeInTheDocument()
+  await userEvent.click(screen.getByRole('tab', { name: 'Preview' }))
   await userEvent.click(screen.getByRole('button', { name: 'Load preview' }))
   const frame = screen.getByTitle('Pelican HTML preview')
   expect(frame).toHaveAttribute('sandbox', 'allow-scripts')
@@ -170,6 +286,9 @@ it('停止在途生成后保留取消历史，晚到的成功响应不会覆盖�
   await userEvent.click(
     screen.getByRole('button', { name: 'Generate and save result' })
   )
+  expect(
+    screen.getByRole('spinbutton', { name: 'Generation output limit (tokens)' })
+  ).toBeDisabled()
   await userEvent.click(await screen.findByRole('button', { name: 'Stop' }))
   await act(async () => resolveResponse(completion(html)))
   await waitFor(() =>
@@ -188,7 +307,11 @@ it('选择评审模型后对当前结果生成评审，保存评审模型和历�
   const post = vi
     .spyOn(api, 'post')
     .mockResolvedValue(
-      completion('鹈鹕 8/10；代码包含循环 SVG 动画；实际流畅性未验证')
+      completion(
+        '鹈鹕 8/10；代码包含循环 SVG 动画；实际流畅性未验证',
+        'stop',
+        '先检查 SVG 结构与动画属性。'
+      )
     )
   renderWorkspace()
   await waitFor(() =>
@@ -230,7 +353,15 @@ it('选择评审模型后对当前结果生成评审，保存评审模型和历�
   expect(saved.assessments[0]).toMatchObject({
     model: 'model-b',
     status: 'success',
+    reasoningContent: '先检查 SVG 结构与动画属性。',
+    content: '鹈鹕 8/10；代码包含循环 SVG 动画；实际流畅性未验证',
   })
+  const history = screen.getByRole('region', { name: 'Assessment history' })
+  await userEvent.click(within(history).getByText(/model-b/))
+  expect(within(history).getByText('先检查 SVG 结构与动画属性。')).toBeVisible()
+  expect(within(history).getByLabelText('Output content')).toHaveTextContent(
+    '鹈鹕 8/10'
+  )
 })
 
 it('勾选多条历史后只评审成功结果，并允许标记质量和对比选中结果', async () => {
@@ -342,9 +473,13 @@ it('模型返回截断 HTML 时保留原始内容但标记失败，不提供成�
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'The model response was truncated'
   )
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'Increase the output limit and test again'
+  )
   expect(readPelicanTestHistory(historyStorageKey(17))[0]).toMatchObject({
     status: 'error',
     content: '<html><svg>',
+    finishReason: 'length',
   })
   expect(
     screen.queryByRole('button', { name: 'Load preview' })
@@ -402,6 +537,7 @@ it('查看不同历史结果时不会沿用之前的预览执行状态', async (
     savedRecord('b', 'model-b'),
   ])
   renderWorkspace()
+  await userEvent.click(await screen.findByRole('tab', { name: 'Preview' }))
   await userEvent.click(
     await screen.findByRole('button', { name: 'Load preview' })
   )
@@ -410,5 +546,151 @@ it('查看不同历史结果时不会沿用之前的预览执行状态', async (
     screen.getByRole('button', { name: /model-b.*Completed/ })
   )
   expect(screen.queryByTitle('Pelican HTML preview')).not.toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: 'Output' })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
+  await userEvent.click(screen.getByRole('tab', { name: 'Preview' }))
   expect(screen.getByRole('button', { name: 'Load preview' })).toBeEnabled()
+})
+
+it('旧历史没有思考字段时明确提示内容不可用，并保持原有输出可读', async () => {
+  writePelicanTestHistory(historyStorageKey(17), [savedRecord('legacy')])
+  renderWorkspace()
+  expect(
+    await screen.findByText('No reasoning content is available')
+  ).toBeVisible()
+  expect(screen.getByLabelText('Output content').textContent).toBe(html)
+})
+
+it('HTML 内部的 think 文本保留在输出里且默认按文本展示，不自动运行代码', async () => {
+  const content =
+    '<html><body><svg></svg><script>const value="<think>HTML 内的文本</think>";</script></body></html>'
+  vi.spyOn(api, 'post').mockResolvedValue(
+    completion(content, 'stop', '这是接口返回的思考。')
+  )
+  renderWorkspace()
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Generate and save result' })
+    ).toBeEnabled()
+  )
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Generate and save result' })
+  )
+  expect(await screen.findByText('这是接口返回的思考。')).toBeVisible()
+  expect(screen.getByLabelText('Output content').textContent).toBe(content)
+  expect(
+    screen.getByLabelText('Output content').querySelector('script')
+  ).toBeNull()
+  expect(readPelicanTestHistory(historyStorageKey(17))[0].content).toBe(content)
+  expect(screen.queryByTitle('Pelican HTML preview')).not.toBeInTheDocument()
+})
+
+it('配置输出上限后请求和历史保留该值，固定提示词不变', async () => {
+  const post = vi.spyOn(api, 'post').mockResolvedValue(completion(html))
+  renderWorkspace()
+  const limit = await screen.findByRole('spinbutton', {
+    name: 'Generation output limit (tokens)',
+  })
+  fireEvent.change(limit, { target: { value: '32768' } })
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Generate and save result' })
+    ).toBeEnabled()
+  )
+  await userEvent.type(limit, '{enter}')
+  await screen.findByText('SVG detected')
+  expect(post).toHaveBeenCalledWith(
+    '/pg/chat/completions',
+    expect.objectContaining({
+      max_tokens: 32768,
+      messages: [{ role: 'user', content: PELICAN_TEST_PROMPT }],
+    }),
+    expect.any(Object)
+  )
+  expect(readPelicanTestHistory(historyStorageKey(17))[0].maxTokens).toBe(32768)
+  expect(screen.getByText('Output limit: 32,768 tokens')).toBeVisible()
+})
+
+it.each(['', '0', '-1', '1.5', '200001'])(
+  '输出上限为 %s 时阻止生成，修正为有效整数后可提交',
+  async (value) => {
+    const post = vi.spyOn(api, 'post').mockResolvedValue(completion(html))
+    renderWorkspace()
+    const limit = await screen.findByRole('spinbutton', {
+      name: 'Generation output limit (tokens)',
+    })
+    fireEvent.change(limit, { target: { value } })
+    await waitFor(() => expect(limit).toHaveAttribute('aria-invalid', 'true'))
+    expect(
+      screen.getByRole('button', { name: 'Generate and save result' })
+    ).toBeDisabled()
+    expect(post).not.toHaveBeenCalled()
+    fireEvent.change(limit, { target: { value: '2048' } })
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Generate and save result' })
+      ).toBeEnabled()
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Generate and save result' })
+    )
+    await screen.findByText('SVG detected')
+    expect(post).toHaveBeenCalledWith(
+      '/pg/chat/completions',
+      expect.objectContaining({ max_tokens: 2048 }),
+      expect.any(Object)
+    )
+  }
+)
+
+it('绕过页面校验时也不向计费接口发送无效输出上限', async () => {
+  const post = vi.spyOn(api, 'post')
+  for (const maxTokens of [Number.NaN, 1073741824]) {
+    await expect(
+      generatePelicanHtml(
+        'model-a',
+        'default',
+        maxTokens,
+        new AbortController().signal
+      )
+    ).rejects.toThrow('Invalid output token limit')
+  }
+  expect(post).not.toHaveBeenCalled()
+})
+
+it('评审被截断时保留思考与部分输出，并显示失败原因而不是当作完整评审', async () => {
+  writePelicanTestHistory(historyStorageKey(17), [savedRecord('existing')])
+  vi.spyOn(api, 'post').mockResolvedValue(
+    completion('部分评审结论', 'length', '检查动画循环。')
+  )
+  renderWorkspace()
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Assess current result' })
+    ).toBeEnabled()
+  )
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Assess current result' })
+  )
+  const history = await screen.findByRole('region', {
+    name: 'Assessment history',
+  })
+  await userEvent.click(within(history).getByText(/model-a/))
+  expect(within(history).getByRole('alert')).toHaveTextContent(
+    'The model response was truncated'
+  )
+  expect(within(history).getByText('检查动画循环。')).toBeVisible()
+  expect(within(history).getByLabelText('Output content')).toHaveTextContent(
+    '部分评审结论'
+  )
+  expect(
+    readPelicanTestHistory(historyStorageKey(17))[0].assessments[0]
+  ).toMatchObject({
+    status: 'error',
+    content: '部分评审结论',
+    reasoningContent: '检查动画循环。',
+    errorMessage: 'The model response was truncated',
+  })
 })

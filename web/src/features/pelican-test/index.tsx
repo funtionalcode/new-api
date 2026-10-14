@@ -16,9 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
 import { Bird, Play, Square } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { Controller, useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
 import { ErrorState } from '@/components/error-state'
@@ -32,14 +34,29 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
 import { getUserGroups, getUserModels } from '@/features/playground/api'
 import { getPlaygroundGenerationMode } from '@/features/playground/lib/task/playground-task-models'
+import { toIntlLocale } from '@/i18n/languages'
+import { formatNumber } from '@/lib/format'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { AssessmentControls } from './components/assessment-controls'
 import { ResultCard } from './components/result-card'
 import { TestHistory } from './components/test-history'
-import { PELICAN_TEST_PROMPT } from './lib'
+import {
+  pelicanGenerationOptionsSchema,
+  PELICAN_DEFAULT_OUTPUT_TOKENS,
+  PELICAN_MAX_OUTPUT_TOKENS,
+  PELICAN_TEST_PROMPT,
+} from './lib'
 import { usePelicanTest } from './use-pelican-test'
 
 export function PelicanTest() {
@@ -49,7 +66,14 @@ export function PelicanTest() {
 }
 
 function PelicanTestWorkspace(props: { userId: number }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
+  const form = useForm<{ maxTokens: number }>({
+    resolver: zodResolver(pelicanGenerationOptionsSchema),
+    defaultValues: { maxTokens: PELICAN_DEFAULT_OUTPUT_TOKENS },
+    mode: 'onChange',
+  })
+  const outputLimitValid = form.formState.isValid
   const test = usePelicanTest(props.userId)
   const [group, setGroup] = useState('')
   const [model, setModel] = useState('')
@@ -105,10 +129,14 @@ function PelicanTestWorkspace(props: { userId: number }) {
     groups.some((option) => option.value === group)
   const canGenerate =
     test.ready &&
+    outputLimitValid &&
     selectableModels &&
     models.some((option) => option.value === model)
   const busy = test.generation.isPending || test.assessment.isPending
-  const rerun = () => test.generation.mutate({ model, group })
+  const rerun = form.handleSubmit((values) => {
+    if (!canGenerate || busy) return
+    test.generation.mutate({ model, group, maxTokens: values.maxTokens })
+  })
   const toggleSelection = (id: string) =>
     setSelectedIds((previous) => {
       if (previous.includes(id)) return previous.filter((value) => value !== id)
@@ -144,78 +172,142 @@ function PelicanTestWorkspace(props: { userId: number }) {
               )}
             </CardDescription>
           </CardHeader>
-          <CardContent className='space-y-4'>
-            <section aria-label={t('Generation model')}>
-              <h2 className='mb-2 text-sm font-medium'>
-                {t('Generation model')}
-              </h2>
-              <ModelGroupSelector
-                disabled={busy || groupsQuery.isFetching || groups.length === 0}
-                groups={groups}
-                models={models}
-                onGroupChange={(value) => {
-                  setGroup(value)
-                  setModel('')
-                  setReviewModel('')
-                }}
-                onModelChange={setModel}
-                selectedGroup={group}
-                selectedModel={model}
-              />
-              {model && (
-                <p
-                  className='text-muted-foreground mt-2 text-xs break-all sm:hidden'
-                  aria-live='polite'
+          <CardContent>
+            <form
+              onSubmit={rerun}
+              className='space-y-4'
+              aria-label={t('Run a Pelican test')}
+            >
+              <section aria-label={t('Generation model')}>
+                <h2 className='mb-2 text-sm font-medium'>
+                  {t('Generation model')}
+                </h2>
+                <ModelGroupSelector
+                  disabled={
+                    busy || groupsQuery.isFetching || groups.length === 0
+                  }
+                  groups={groups}
+                  models={models}
+                  onGroupChange={(value) => {
+                    setGroup(value)
+                    setModel('')
+                    setReviewModel('')
+                  }}
+                  onModelChange={setModel}
+                  selectedGroup={group}
+                  selectedModel={model}
+                />
+                {model && (
+                  <p
+                    className='text-muted-foreground mt-2 text-xs break-all sm:hidden'
+                    aria-live='polite'
+                  >
+                    {model} · {group}
+                  </p>
+                )}
+              </section>
+              {(modelsQuery.isError || groupsQuery.isError) && (
+                <ErrorState
+                  title={t('Failed to load models')}
+                  className='min-h-24'
+                  onRetry={() => {
+                    void groupsQuery.refetch()
+                    if (group) void modelsQuery.refetch()
+                  }}
+                />
+              )}
+              <FieldGroup>
+                <Field
+                  data-invalid={Boolean(form.formState.errors.maxTokens)}
+                  data-disabled={busy}
                 >
-                  {model} · {group}
-                </p>
-              )}
-            </section>
-            {(modelsQuery.isError || groupsQuery.isError) && (
-              <ErrorState
-                title={t('Failed to load models')}
-                className='min-h-24'
-                onRetry={() => {
-                  void groupsQuery.refetch()
-                  if (group) void modelsQuery.refetch()
-                }}
-              />
-            )}
-            <div className='bg-muted/40 rounded-lg border p-3'>
-              <h2 className='mb-1 text-xs font-medium'>
-                {t('Fixed test prompt')}
-              </h2>
-              <p className='text-sm leading-6'>{PELICAN_TEST_PROMPT}</p>
-            </div>
-            <div className='flex flex-wrap items-center gap-3'>
-              {(modelsQuery.isFetching || groupsQuery.isFetching) && (
-                <span className='text-muted-foreground text-sm' role='status'>
-                  {t('Loading models...')}
-                </span>
-              )}
-              <Button disabled={!canGenerate || busy} onClick={rerun}>
-                <Play />
-                {test.generation.isPending
-                  ? t('Generating...')
-                  : t('Generate and save result')}
-              </Button>
-              {test.generation.isPending && (
-                <Button variant='outline' onClick={test.stopGeneration}>
-                  <Square />
-                  {t('Stop')}
+                  <FieldLabel htmlFor='pelican-output-limit'>
+                    {t('Generation output limit (tokens)')}
+                  </FieldLabel>
+                  <Controller
+                    name='maxTokens'
+                    control={form.control}
+                    render={(controller) => (
+                      <Input
+                        {...controller.field}
+                        id='pelican-output-limit'
+                        type='number'
+                        inputMode='numeric'
+                        min={1}
+                        max={PELICAN_MAX_OUTPUT_TOKENS}
+                        step={1}
+                        disabled={busy}
+                        value={
+                          Number.isFinite(controller.field.value)
+                            ? controller.field.value
+                            : ''
+                        }
+                        onChange={(event) =>
+                          controller.field.onChange(
+                            event.target.value === ''
+                              ? Number.NaN
+                              : Number(event.target.value)
+                          )
+                        }
+                        aria-invalid={Boolean(form.formState.errors.maxTokens)}
+                        aria-describedby={
+                          form.formState.errors.maxTokens
+                            ? 'pelican-output-limit-description pelican-output-limit-error'
+                            : 'pelican-output-limit-description'
+                        }
+                      />
+                    )}
+                  />
+                  <FieldDescription id='pelican-output-limit-description'>
+                    {t(
+                      'Set a model-supported output limit. Increase it if the result is truncated; higher limits can increase cost.'
+                    )}
+                  </FieldDescription>
+                  {form.formState.errors.maxTokens && (
+                    <FieldError id='pelican-output-limit-error'>
+                      {t('Use a positive integer no greater than {{max}}.', {
+                        max: formatNumber(PELICAN_MAX_OUTPUT_TOKENS, locale),
+                      })}
+                    </FieldError>
+                  )}
+                </Field>
+              </FieldGroup>
+              <div className='bg-muted/40 rounded-lg border p-3'>
+                <h2 className='mb-1 text-xs font-medium'>
+                  {t('Fixed test prompt')}
+                </h2>
+                <p className='text-sm leading-6'>{PELICAN_TEST_PROMPT}</p>
+              </div>
+              <div className='flex flex-wrap items-center gap-3'>
+                {(modelsQuery.isFetching || groupsQuery.isFetching) && (
+                  <span className='text-muted-foreground text-sm' role='status'>
+                    {t('Loading...')}
+                  </span>
+                )}
+                <Button type='submit' disabled={!canGenerate || busy}>
+                  <Play />
+                  {test.generation.isPending
+                    ? t('Generating...')
+                    : t('Generate and save result')}
                 </Button>
-              )}
-              {!model && modelsQuery.isSuccess && (
-                <span className='text-muted-foreground text-sm'>
-                  {t('No model found.')}
-                </span>
-              )}
-            </div>
-            <p className='text-muted-foreground text-xs'>
-              {t(
-                'History is saved only in this browser for the current user, not synchronized between devices.'
-              )}
-            </p>
+                {test.generation.isPending && (
+                  <Button variant='outline' onClick={test.stopGeneration}>
+                    <Square />
+                    {t('Stop')}
+                  </Button>
+                )}
+                {!model && modelsQuery.isSuccess && (
+                  <span className='text-muted-foreground text-sm'>
+                    {t('No model found.')}
+                  </span>
+                )}
+              </div>
+              <p className='text-muted-foreground text-xs'>
+                {t(
+                  'History is saved only in this browser for the current user, not synchronized between devices.'
+                )}
+              </p>
+            </form>
           </CardContent>
         </Card>
 

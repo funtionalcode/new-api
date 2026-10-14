@@ -18,8 +18,26 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
 
+import { PLAYGROUND_PARAMETER_CONTROLS } from '@/features/playground/lib/parameters/playground-parameters'
+
 export const PELICAN_TEST_PROMPT =
   '创建一个HTML，内容是SVG绘制一个鹈鹕骑自行车的2D动画'
+
+const outputTokenControl = PLAYGROUND_PARAMETER_CONTROLS.find(
+  (control) => control.key === 'max_tokens'
+)
+if (!outputTokenControl) throw new Error('未配置输出 Token 参数范围')
+
+export const PELICAN_DEFAULT_OUTPUT_TOKENS = 16384
+export const PELICAN_MAX_OUTPUT_TOKENS = outputTokenControl.max
+const outputTokenLimitSchema = z
+  .number()
+  .int()
+  .min(1)
+  .max(PELICAN_MAX_OUTPUT_TOKENS)
+export const pelicanGenerationOptionsSchema = z.object({
+  maxTokens: outputTokenLimitSchema,
+})
 
 export type PelicanTestRating = 'good' | 'needs_review'
 const assessmentSchema = z.object({
@@ -29,6 +47,8 @@ const assessmentSchema = z.object({
   createdAt: z.number().finite(),
   status: z.enum(['success', 'error']),
   content: z.string(),
+  reasoningContent: z.string().optional(),
+  errorMessage: z.string().optional(),
 })
 
 const recordSchema = z.object({
@@ -38,7 +58,10 @@ const recordSchema = z.object({
   createdAt: z.number().finite(),
   status: z.enum(['running', 'success', 'error', 'cancelled']),
   content: z.string(),
+  reasoningContent: z.string().optional(),
   durationMs: z.number().nonnegative().optional(),
+  maxTokens: outputTokenLimitSchema.optional(),
+  finishReason: z.string().optional(),
   errorMessage: z.string().optional(),
   rating: z.enum(['good', 'needs_review']).optional(),
   assessments: z.array(assessmentSchema).default([]),
