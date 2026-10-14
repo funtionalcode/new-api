@@ -854,6 +854,76 @@ func TestResponsesWebSocketCancelErrorDoesNotFinishActiveRequest(t *testing.T) {
 	assertResponsesWSAccounting(t, fixture, []int{1000})
 }
 
+func TestResponsesWebSocketInterruptPreservesPayloadAndReusesConnection(t *testing.T) {
+	for _, tc := range []struct {
+		name, interrupt string
+		beforeAccepted  bool
+	}{
+		{name: "中断在响应接受前排队", beforeAccepted: true, interrupt: `{"type":"response.interrupt","event_id":"interrupt-first","stream_id":"first","response_id":"resp_first","discard_partial_items":true}`},
+		{name: "Codex 中断已接受的响应并保留部分输出", interrupt: `{"type":"response.interrupt","response_id":"resp_first","discard_partial_items":false}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			receivedCreate := make(chan struct{}, 1)
+			allowCreated := make(chan struct{}, 1)
+			defer close(allowCreated)
+			fixture := newResponsesWSBillingTest(t, `tier("base", p * 2 + c * 10)`, func(ws *websocket.Conn, _ *http.Request) {
+				if _, _, err := ws.ReadMessage(); !assert.NoError(t, err) {
+					return
+				}
+				receivedCreate <- struct{}{}
+				<-allowCreated
+				if !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.created","stream_id":"first","response":{"id":"resp_first","status":"in_progress"}}`))) {
+					return
+				}
+				if !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.output_text.delta","stream_id":"first","delta":"partial output"}`))) {
+					return
+				}
+				_, control, err := ws.ReadMessage()
+				if !assert.NoError(t, err) || !assert.Equal(t, tc.interrupt, string(control), "中断消息及显式 false 必须原样转发") {
+					return
+				}
+				if !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.completed","stream_id":"first","response":{"id":"resp_first","status":"completed","usage":{"input_tokens":1000,"output_tokens":10,"total_tokens":1010}}}`))) {
+					return
+				}
+				_, nextCreate, err := ws.ReadMessage()
+				if !assert.NoError(t, err) || !assert.Contains(t, string(nextCreate), `"type":"response.create"`) || !assert.Contains(t, string(nextCreate), `"previous_response_id":"resp_first"`) {
+					return
+				}
+				if !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.completed","stream_id":"second","response":{"id":"resp_second","status":"completed","usage":{"input_tokens":500,"output_tokens":20,"total_tokens":520}}}`))) {
+					return
+				}
+				_, _, _ = ws.ReadMessage()
+			})
+			require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","input":"first","stream_id":"first"}`)))
+			select {
+			case <-receivedCreate:
+			case <-time.After(3 * time.Second):
+				t.Fatal("上游未收到初始请求")
+			}
+			if tc.beforeAccepted {
+				require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(tc.interrupt)))
+				// 冲突响应确认读取循环已经处理了前面的中断消息。
+				require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","input":"overlapping"}`)))
+				require.Equal(t, float64(http.StatusConflict), readResponsesWSTestEvent(t, fixture.client)["status"])
+			}
+			allowCreated <- struct{}{}
+			require.Equal(t, "response.created", readResponsesWSTestEvent(t, fixture.client)["type"])
+			delta := readResponsesWSTestEvent(t, fixture.client)
+			require.Equal(t, "response.output_text.delta", delta["type"])
+			assert.Equal(t, "partial output", delta["delta"])
+			if !tc.beforeAccepted {
+				require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(tc.interrupt)))
+			}
+			require.Equal(t, "response.completed", readResponsesWSTestEvent(t, fixture.client)["type"])
+			require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","input":"second","previous_response_id":"resp_first","stream_id":"second"}`)))
+			require.Equal(t, "response.completed", readResponsesWSTestEvent(t, fixture.client)["type"])
+			fixture.closeAndWait(t)
+			assert.Equal(t, int32(1), fixture.connections.Load(), "中断后继续复用同一条上游 WebSocket")
+			assertResponsesWSAccounting(t, fixture, []int{1050, 600})
+		})
+	}
+}
+
 func TestResponsesWebSocketInitialUpstreamRejectionRefundsReservation(t *testing.T) {
 	for _, tc := range []struct {
 		name, upstream, wantType, wantMessage string
@@ -1189,7 +1259,7 @@ func TestResponsesWebSocketRejectsSecondControlWhileOnePending(t *testing.T) {
 	})
 	require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","input":"hi"}`)))
 	assert.Equal(t, "response.created", readResponsesWSTestEvent(t, fixture.client)["type"])
-	require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.cancel","event_id":"first-cancel","response_id":"active"}`)))
+	require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.interrupt","event_id":"first-cancel","response_id":"active","discard_partial_items":true}`)))
 	select {
 	case <-receivedCancel:
 	case <-time.After(3 * time.Second):
@@ -1208,9 +1278,8 @@ func TestResponsesWebSocketRejectsSecondControlWhileOnePending(t *testing.T) {
 	assertResponsesWSAccounting(t, fixture, []int{1000})
 }
 
-// A control error resolves the outstanding control, so a corrected cancel is
-// forwarded instead of being rejected as still pending.
-func TestResponsesWebSocketAcceptsCancelAfterControlError(t *testing.T) {
+// 中断错误释放待处理控制事件，之后仍可取消当前响应。
+func TestResponsesWebSocketAcceptsCancelAfterInterruptError(t *testing.T) {
 	fixture := newResponsesWSBillingTest(t, `tier("request", fixed(0.002))`, func(ws *websocket.Conn, _ *http.Request) {
 		if _, _, err := ws.ReadMessage(); !assert.NoError(t, err) {
 			return
@@ -1219,7 +1288,7 @@ func TestResponsesWebSocketAcceptsCancelAfterControlError(t *testing.T) {
 			return
 		}
 		_, cancel, err := ws.ReadMessage()
-		if !assert.NoError(t, err) || !assert.JSONEq(t, `{"type":"response.cancel","response_id":"wrong"}`, string(cancel)) {
+		if !assert.NoError(t, err) || !assert.JSONEq(t, `{"type":"response.interrupt","response_id":"wrong","discard_partial_items":false}`, string(cancel)) {
 			return
 		}
 		if !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"error","status":400,"error":{"type":"invalid_request_error","code":"response_not_found","message":"No such response"}}`))) {
@@ -1236,7 +1305,7 @@ func TestResponsesWebSocketAcceptsCancelAfterControlError(t *testing.T) {
 	})
 	require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","input":"hi"}`)))
 	assert.Equal(t, "response.created", readResponsesWSTestEvent(t, fixture.client)["type"])
-	require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.cancel","response_id":"wrong"}`)))
+	require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.interrupt","response_id":"wrong","discard_partial_items":false}`)))
 	cancelError := readResponsesWSTestEvent(t, fixture.client)
 	assert.Equal(t, "error", cancelError["type"])
 	assert.Equal(t, float64(http.StatusBadRequest), cancelError["status"])

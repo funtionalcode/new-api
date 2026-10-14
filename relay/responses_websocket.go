@@ -71,8 +71,7 @@ type responsesWSMessage struct {
 	err  error
 }
 
-// responsesWSControl is a client control event (response.cancel) whose
-// envelope the read loop already parsed.
+// responsesWSControl 保存读取循环已解析信封的取消或中断事件。
 type responsesWSControl struct {
 	body              []byte
 	eventID, streamID string
@@ -147,10 +146,10 @@ func ResponsesWebSocketHelper(c *gin.Context, client *websocket.Conn, runner Res
 			continue
 		}
 		if eventType != responsesWSEventTypeResponseCreate {
-			// Controls are owned by the active request too. In particular a cancel
-			// arriving during authentication must not precede its upstream create.
+			// 控制事件由当前请求处理；鉴权期间到达的取消或中断不能先于
+			// 上游的 response.create。保留原始事件及 discard_partial_items 等字段。
 			state := s.getCurrent()
-			if eventType != "response.cancel" || state == nil {
+			if (eventType != "response.cancel" && eventType != "response.interrupt") || state == nil {
 				s.sendError(envelope.EventID, streamID, newResponsesWSInvalidRequestError(fmt.Errorf("unsupported websocket event %q", eventType)))
 				continue
 			}
