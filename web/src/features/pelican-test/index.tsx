@@ -277,6 +277,11 @@ function PelicanTestWorkspace(props: { userId: number }) {
                   {t('Fixed test prompt')}
                 </h2>
                 <p className='text-sm leading-6'>{PELICAN_TEST_PROMPT}</p>
+                <p className='text-muted-foreground mt-1 text-xs leading-5'>
+                  {t(
+                    'All generation models are instructed to return complete HTML source directly, not a Canvas link.'
+                  )}
+                </p>
               </div>
               <div className='flex flex-wrap items-center gap-3'>
                 {(modelsQuery.isFetching || groupsQuery.isFetching) && (

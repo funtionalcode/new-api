@@ -44,6 +44,10 @@ import {
 
 const html =
   '<!doctype html><html><body><svg viewBox="0 0 200 100"><circle r="10"/><animate attributeName="cx" values="0;100" dur="2s" repeatCount="indefinite"/></svg></body></html>'
+const canvasResponse =
+  '现在开始创建 HTML 动画：http://googleusercontent.com/immersive_entry_chip/0'
+const canvasGuidance =
+  'This response contains only a Canvas entry link, not HTML source. Test again with the source-only instructions; if it persists, use another model or an upstream that returns source.'
 
 function savedRecord(id: string, model = 'model-a'): PelicanTestRecord {
   return {
@@ -246,6 +250,130 @@ it('流以 stop 结束但只返回说明文字时标记失败并保留输出，�
     reasoningContent: '正在设计动画。',
   })
   expect(screen.queryByRole('tab', { name: 'Preview' })).not.toBeInTheDocument()
+})
+
+it.each(['gemini-web-4-argon', 'model-a'])(
+  '生成模型 %s 使用统一源码输出约束，原始提示词和流式参数保持不变',
+  async (model) => {
+    const post = vi
+      .spyOn(TestXMLHttpRequest, 'respond')
+      .mockResolvedValue(completion(html))
+    await generatePelicanHtml(
+      model,
+      'default',
+      16384,
+      new AbortController().signal
+    )
+    expect(post).toHaveBeenCalledExactlyOnceWith(
+      '/pg/chat/completions',
+      {
+        model,
+        group: 'default',
+        messages: [
+          {
+            role: 'system',
+            content: expect.stringMatching(
+              /<!DOCTYPE html>[\s\S]*<\/html>[\s\S]*Canvas[\s\S]*immersive_entry_chip/
+            ),
+          },
+          { role: 'user', content: PELICAN_TEST_PROMPT },
+        ],
+        stream: true,
+        max_tokens: 16384,
+      },
+      expect.any(Object)
+    )
+  }
+)
+
+it('只返回 Canvas 入口链接时明确原因，保留输出和思考且不自动重试', async () => {
+  const post = vi
+    .spyOn(TestXMLHttpRequest, 'respond')
+    .mockResolvedValue(completion(canvasResponse, 'stop', '正在设计动画。'))
+  renderWorkspace()
+  const submit = screen.getByRole('button', {
+    name: 'Generate and save result',
+  })
+  await waitFor(() => expect(submit).toBeEnabled())
+  await userEvent.click(submit)
+  const alert = await screen.findByRole('alert')
+  expect(alert).toHaveTextContent(
+    'The model returned a Canvas link instead of HTML source'
+  )
+  expect(alert).toHaveTextContent(canvasGuidance)
+  expect(readPelicanTestHistory(historyStorageKey(17))[0]).toMatchObject({
+    status: 'error',
+    content: canvasResponse,
+    reasoningContent: '正在设计动画。',
+    finishReason: 'stop',
+  })
+  expect(screen.getByLabelText('Output content')).toHaveTextContent(
+    canvasResponse
+  )
+  expect(screen.queryByRole('tab', { name: 'Preview' })).not.toBeInTheDocument()
+  expect(post).toHaveBeenCalledTimes(1)
+})
+
+it('旧的 Canvas 链接失败历史也展示原因说明，不覆盖原记录或发起请求', async () => {
+  const record: PelicanTestRecord = {
+    ...savedRecord('canvas-old', 'gemini-web-4-argon'),
+    status: 'error',
+    content: canvasResponse,
+    errorMessage: 'The model did not return a complete HTML or SVG document',
+  }
+  writePelicanTestHistory(historyStorageKey(17), [record])
+  const stored = localStorage.getItem(historyStorageKey(17))
+  const post = vi.spyOn(TestXMLHttpRequest, 'respond')
+  renderWorkspace()
+  expect(await screen.findByRole('alert')).toHaveTextContent(canvasGuidance)
+  expect(localStorage.getItem(historyStorageKey(17))).toBe(stored)
+  expect(post).not.toHaveBeenCalled()
+})
+
+it('手动重测 Canvas 链接失败后保存新源码结果，保留旧失败历史', async () => {
+  const record: PelicanTestRecord = {
+    ...savedRecord('canvas-old'),
+    status: 'error',
+    content: canvasResponse,
+    errorMessage: 'The model did not return a complete HTML or SVG document',
+  }
+  writePelicanTestHistory(historyStorageKey(17), [record])
+  const post = vi
+    .spyOn(TestXMLHttpRequest, 'respond')
+    .mockResolvedValue(completion(html))
+  renderWorkspace()
+  const rerun = await screen.findByRole('button', {
+    name: 'Test again with selected model',
+  })
+  await waitFor(() => expect(rerun).toBeEnabled())
+  await userEvent.click(rerun)
+  await screen.findByText('SVG detected')
+  expect(readPelicanTestHistory(historyStorageKey(17))).toEqual([
+    expect.objectContaining({ status: 'success', content: html }),
+    record,
+  ])
+  expect(post).toHaveBeenCalledTimes(1)
+})
+
+it('完整源码内包含 Canvas 链接时仍可预览，不误报为仅返回链接', async () => {
+  const content = html.replace(
+    '<body>',
+    '<body><!-- http://googleusercontent.com/immersive_entry_chip/0 -->'
+  )
+  vi.spyOn(TestXMLHttpRequest, 'respond').mockResolvedValue(completion(content))
+  renderWorkspace()
+  const submit = screen.getByRole('button', {
+    name: 'Generate and save result',
+  })
+  await waitFor(() => expect(submit).toBeEnabled())
+  await userEvent.click(submit)
+  await screen.findByText('SVG detected')
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: 'Preview' })).toBeEnabled()
+  expect(readPelicanTestHistory(historyStorageKey(17))[0]).toMatchObject({
+    status: 'success',
+    content,
+  })
 })
 
 it.each(['eof', 'upstream-error'] as const)(
@@ -544,7 +672,10 @@ it('选择生成模型后发送原始固定提示词，成功结果持久化并�
     {
       model: 'model-b',
       group: 'default',
-      messages: [{ role: 'user', content: PELICAN_TEST_PROMPT }],
+      messages: [
+        { role: 'system', content: expect.stringContaining('<!DOCTYPE html>') },
+        { role: 'user', content: PELICAN_TEST_PROMPT },
+      ],
       stream: true,
       max_tokens: 16384,
     },
@@ -786,37 +917,44 @@ it('切换用户时不会显示或写入另一位用户的测试历史', async (
   expect(readPelicanTestHistory(historyStorageKey(17))[0].id).toBe('alice')
 })
 
-it('模型返回截断 HTML 时保留原始内容但标记失败，不提供成功预览或评审', async () => {
-  vi.spyOn(TestXMLHttpRequest, 'respond').mockResolvedValue(
-    completion('<html><svg>', 'length')
-  )
-  renderWorkspace()
-  await waitFor(() =>
-    expect(
+it.each([
+  ['HTML', '<html><svg>'],
+  ['Canvas 链接', canvasResponse],
+])(
+  '模型返回截断 %s 时优先提示截断，保留内容且不提供预览或评审',
+  async (_name, content) => {
+    vi.spyOn(TestXMLHttpRequest, 'respond').mockResolvedValue(
+      completion(content, 'length')
+    )
+    renderWorkspace()
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Generate and save result' })
+      ).toBeEnabled()
+    )
+    await userEvent.click(
       screen.getByRole('button', { name: 'Generate and save result' })
-    ).toBeEnabled()
-  )
-  await userEvent.click(
-    screen.getByRole('button', { name: 'Generate and save result' })
-  )
-  expect(await screen.findByRole('alert')).toHaveTextContent(
-    'The model response was truncated'
-  )
-  expect(screen.getByRole('alert')).toHaveTextContent(
-    'Increase the output limit and test again'
-  )
-  expect(readPelicanTestHistory(historyStorageKey(17))[0]).toMatchObject({
-    status: 'error',
-    content: '<html><svg>',
-    finishReason: 'length',
-  })
-  expect(
-    screen.queryByRole('button', { name: 'Load preview' })
-  ).not.toBeInTheDocument()
-  expect(
-    screen.getByRole('button', { name: 'Assess current result' })
-  ).toBeDisabled()
-})
+    )
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The model response was truncated'
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Increase the output limit and test again'
+    )
+    expect(screen.getByRole('alert')).not.toHaveTextContent(canvasGuidance)
+    expect(readPelicanTestHistory(historyStorageKey(17))[0]).toMatchObject({
+      status: 'error',
+      content,
+      finishReason: 'length',
+    })
+    expect(
+      screen.queryByRole('button', { name: 'Load preview' })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Assess current result' })
+    ).toBeDisabled()
+  }
+)
 
 it('模型列表获取失败时禁止提交，并允许重试获取列表', async () => {
   const get = vi.spyOn(api, 'get').mockImplementation(async (url) => {
@@ -936,7 +1074,10 @@ it('配置输出上限后请求和历史保留该值，固定提示词不变', a
     '/pg/chat/completions',
     expect.objectContaining({
       max_tokens: 32768,
-      messages: [{ role: 'user', content: PELICAN_TEST_PROMPT }],
+      messages: [
+        { role: 'system', content: expect.stringContaining('<!DOCTYPE html>') },
+        { role: 'user', content: PELICAN_TEST_PROMPT },
+      ],
     }),
     expect.any(Object)
   )

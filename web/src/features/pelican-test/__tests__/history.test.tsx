@@ -25,6 +25,7 @@ import {
   buildPreviewDocument,
   extractHtmlDocument,
   historyStorageKey,
+  isPelicanArtifactOnlyResponse,
   readPelicanTestHistory,
   writePelicanTestHistory,
   type PelicanTestRecord,
@@ -114,6 +115,40 @@ it('HTML 代码块优先于前面的说明文字，裸 SVG 也可预览', () => 
     '<svg viewBox="0 0 20 20"></svg>'
   )
 })
+
+it.each([
+  [
+    '只有作品链接',
+    '说明 http://googleusercontent.com/immersive_entry_chip/0',
+    true,
+  ],
+  [
+    'HTTPS 作品链接',
+    'https://googleusercontent.com/immersive_entry_chip/1',
+    true,
+  ],
+  [
+    '完整源码',
+    '<html><svg></svg></html> http://googleusercontent.com/immersive_entry_chip/0',
+    false,
+  ],
+  [
+    '不完整源码',
+    '<html><body> http://googleusercontent.com/immersive_entry_chip/0',
+    false,
+  ],
+  ['普通链接', 'https://example.com/immersive_entry_chip/0', false],
+  [
+    '相似域名',
+    'https://googleusercontent.com.example.com/immersive_entry_chip/0',
+    false,
+  ],
+])(
+  '检测 %s 时只将已知入口链接且没有源码的响应判为作品链接',
+  (_name, content, expected) => {
+    expect(isPelicanArtifactOnlyResponse(content)).toBe(expected)
+  }
+)
 
 it('预览策略放在所有生成内容之前，移除跳转和嵌套页面但保留动画脚本', () => {
   const source =

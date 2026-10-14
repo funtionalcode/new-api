@@ -22,6 +22,9 @@ import { PLAYGROUND_PARAMETER_CONTROLS } from '@/features/playground/lib/paramet
 
 export const PELICAN_TEST_PROMPT =
   '创建一个HTML，内容是SVG绘制一个鹈鹕骑自行车的2D动画'
+export const PELICAN_SOURCE_INSTRUCTIONS =
+  '请完成用户要求的动画。最终响应正文必须直接包含完整、可独立运行的单文件 HTML 源码，从 <!DOCTYPE html> 开始，到 </html> 结束，包含内联 SVG、CSS 和所需 JavaScript。' +
+  '不要输出介绍、设计说明、摘要、Markdown 代码围栏或省略任何源码。不要创建 Canvas、Immersive 或其他独立作品，不要使用 immersive_entry_chip 链接或任何作品链接代替源码。源码必须直接放在本次响应正文中。'
 
 const outputTokenControl = PLAYGROUND_PARAMETER_CONTROLS.find(
   (control) => control.key === 'max_tokens'
@@ -95,6 +98,15 @@ export function hasCompletePelicanDocument(content: string): boolean {
   return (
     /<svg\b[\s\S]*<\/svg\s*>/i.test(document) &&
     (!/<html\b/i.test(content) || /<\/html\s*>/i.test(content))
+  )
+}
+
+export function isPelicanArtifactOnlyResponse(content: string): boolean {
+  return (
+    !/<(?:html|svg)\b/i.test(content) &&
+    /\bhttps?:\/\/googleusercontent\.com\/immersive_entry_chip\/[^\s<>"')]+/i.test(
+      content
+    )
   )
 }
 

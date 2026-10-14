@@ -29,6 +29,7 @@ import { assessPelicanHtml, generatePelicanHtml } from './api'
 import {
   hasCompletePelicanDocument,
   historyStorageKey,
+  isPelicanArtifactOnlyResponse,
   pelicanGenerationOptionsSchema,
   readPelicanTestHistory,
   writePelicanTestHistory,
@@ -173,6 +174,10 @@ export function usePelicanTest(userId: number) {
           errorMessage = t('The model response was truncated')
         } else if (!result.content) {
           errorMessage = t('The model returned an empty result')
+        } else if (isPelicanArtifactOnlyResponse(result.content)) {
+          errorMessage = t(
+            'The model returned a Canvas link instead of HTML source'
+          )
         } else if (!hasCompletePelicanDocument(result.content)) {
           errorMessage = t(
             'The model did not return a complete HTML or SVG document'

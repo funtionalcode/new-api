@@ -27,6 +27,7 @@ import { getFreshAuthHeaders } from '@/lib/api'
 
 import {
   pelicanGenerationOptionsSchema,
+  PELICAN_SOURCE_INSTRUCTIONS,
   PELICAN_TEST_PROMPT,
   type PelicanTestRecord,
 } from './lib'
@@ -165,7 +166,10 @@ export async function generatePelicanHtml(
     {
       model,
       group,
-      messages: [{ role: 'user', content: PELICAN_TEST_PROMPT }],
+      messages: [
+        { role: 'system', content: PELICAN_SOURCE_INSTRUCTIONS },
+        { role: 'user', content: PELICAN_TEST_PROMPT },
+      ],
       stream: true,
       max_tokens: options.data.maxTokens,
     },

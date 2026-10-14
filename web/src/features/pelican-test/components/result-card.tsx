@@ -38,6 +38,7 @@ import { formatNumber } from '@/lib/format'
 import {
   buildPreviewDocument,
   hasSvgMarkup,
+  isPelicanArtifactOnlyResponse,
   type PelicanTestAssessment,
   type PelicanTestRating,
   type PelicanTestRecord,
@@ -59,6 +60,10 @@ export function ResultCard(props: {
     [previewEnabled, props.record.content]
   )
   const hasSvg = hasSvgMarkup(props.record.content)
+  const artifactOnly =
+    props.record.status === 'error' &&
+    props.record.finishReason !== 'length' &&
+    isPelicanArtifactOnlyResponse(props.record.content)
   const createdAt = new Intl.DateTimeFormat(locale, {
     dateStyle: 'short',
     timeStyle: 'short',
@@ -113,6 +118,13 @@ export function ResultCard(props: {
             <AlertDescription>
               <div className='space-y-1'>
                 <p>{props.record.errorMessage}</p>
+                {artifactOnly && (
+                  <p>
+                    {t(
+                      'This response contains only a Canvas entry link, not HTML source. Test again with the source-only instructions; if it persists, use another model or an upstream that returns source.'
+                    )}
+                  </p>
+                )}
                 {props.record.finishReason === 'length' && (
                   <p>
                     {t(
