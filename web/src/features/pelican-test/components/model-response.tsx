@@ -21,6 +21,11 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
+  Conversation,
+  ConversationContent,
+  ConversationScrollButton,
+} from '@/components/ai-elements/conversation'
+import {
   Reasoning,
   ReasoningContent,
   ReasoningTrigger,
@@ -38,12 +43,18 @@ export function ModelResponse(props: {
 
   return (
     <section className='min-w-0 space-y-4' aria-label={t('Model response')}>
+      {props.pending && (
+        <p role='status' className='text-muted-foreground text-sm'>
+          {t('Receiving model response in real time...')}
+        </p>
+      )}
       {props.reasoningContent ? (
         <Reasoning
           className='mb-0 min-w-0'
           defaultOpen={false}
           open={reasoningOpen}
           onOpenChange={setReasoningOpen}
+          isStreaming={props.pending}
         >
           <div className='flex flex-wrap items-center justify-between gap-2'>
             <ReasoningTrigger>
@@ -92,12 +103,26 @@ export function ModelResponse(props: {
           )}
         </div>
         {props.content ? (
-          <pre
-            aria-label={t('Output content')}
-            className='bg-muted/30 max-h-80 overflow-auto rounded-lg border p-3 text-xs leading-5 break-all whitespace-pre-wrap'
+          <Conversation
+            className='bg-muted/30 rounded-lg border'
+            initial={Boolean(props.pending) && 'instant'}
+            resize='instant'
+            aria-live='off'
           >
-            {props.content}
-          </pre>
+            <ConversationContent
+              className='p-3'
+              scrollClassName='max-h-80 overflow-auto'
+            >
+              <pre
+                aria-label={t('Output content')}
+                aria-busy={props.pending}
+                className='text-xs leading-5 break-all whitespace-pre-wrap'
+              >
+                {props.content}
+              </pre>
+            </ConversationContent>
+            <ConversationScrollButton aria-label={t('Scroll to bottom')} />
+          </Conversation>
         ) : (
           <p className='text-muted-foreground text-sm'>
             {props.pending

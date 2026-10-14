@@ -45,7 +45,7 @@ const assessmentSchema = z.object({
   model: z.string(),
   group: z.string(),
   createdAt: z.number().finite(),
-  status: z.enum(['success', 'error']),
+  status: z.enum(['running', 'success', 'error', 'cancelled']),
   content: z.string(),
   reasoningContent: z.string().optional(),
   errorMessage: z.string().optional(),
@@ -87,6 +87,15 @@ export function extractHtmlDocument(content: string): string {
 
 export function hasSvgMarkup(content: string): boolean {
   return /<svg\b/i.test(extractHtmlDocument(content))
+}
+
+export function hasCompletePelicanDocument(content: string): boolean {
+  // 检查原始输出，避免 DOMParser 自动补齐缺失标签，把不完整响应当成完成。
+  const document = extractHtmlDocument(content)
+  return (
+    /<svg\b[\s\S]*<\/svg\s*>/i.test(document) &&
+    (!/<html\b/i.test(content) || /<\/html\s*>/i.test(content))
+  )
 }
 
 export function readPelicanTestHistory(

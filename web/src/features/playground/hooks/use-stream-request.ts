@@ -29,7 +29,7 @@ import {
   parseStreamErrorDetails,
   parseStreamMessageUpdates,
 } from '../lib'
-import type { ChatCompletionRequest } from '../types'
+import type { ChatCompletionChunk, ChatCompletionRequest } from '../types'
 
 interface StreamEventSource {
   readyState?: number
@@ -50,6 +50,7 @@ interface StreamEventSource {
 interface StreamRequestCallbacks {
   onOpen?: (headers: Record<string, string[]>) => void
   onUpdate: (type: 'reasoning' | 'content', chunk: string) => void
+  onFinishReason?: (reason: string) => void
   onComplete: () => void
   onError: (error: string, errorCode?: string) => void
 }
@@ -137,10 +138,22 @@ export function createStreamRequestController(
       }
 
       try {
+        const chunk = JSON.parse(data) as ChatCompletionChunk & {
+          error?: unknown
+        }
+        if (chunk.error) {
+          const details = parseStreamErrorDetails(data)
+          handleError(details.errorMessage, details.errorCode)
+          return
+        }
         const updates = parseStreamMessageUpdates(data)
 
         for (const update of updates) {
           callbacks.onUpdate(update.type, update.chunk)
+        }
+        const finishReason = chunk.choices?.[0]?.finish_reason
+        if (typeof finishReason === 'string') {
+          callbacks.onFinishReason?.(finishReason)
         }
       } catch (error) {
         // eslint-disable-next-line no-console

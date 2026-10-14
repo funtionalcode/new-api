@@ -27,6 +27,7 @@ import { getServerErrorMessage } from '@/lib/server-error-message'
 
 import { assessPelicanHtml, generatePelicanHtml } from './api'
 import {
+  hasCompletePelicanDocument,
   historyStorageKey,
   pelicanGenerationOptionsSchema,
   readPelicanTestHistory,
@@ -48,31 +49,52 @@ export function usePelicanTest(userId: number) {
   const assessmentControllerRef = useRef<AbortController | null>(null)
   const currentRunRef = useRef<string | null>(null)
   const [currentRecordId, setCurrentRecordId] = useState<string | null>(null)
+  const storageTimerRef = useRef<number | null>(null)
 
-  const commit = useCallback(
-    (next: PelicanTestRecord[]) => {
-      historyRef.current = next
-      setHistory(next)
-      try {
-        writePelicanTestHistory(storageKey, next)
-        setStorageError('')
-      } catch {
+  const persistHistory = useCallback(() => {
+    storageTimerRef.current = null
+    try {
+      writePelicanTestHistory(storageKey, historyRef.current)
+      if (mountedRef.current) setStorageError('')
+    } catch {
+      if (mountedRef.current) {
         setStorageError(
           'History could not be saved. Keep this page open and copy the results before leaving.'
         )
       }
+    }
+  }, [storageKey])
+
+  const commit = useCallback(
+    (next: PelicanTestRecord[], persist = true) => {
+      historyRef.current = next
+      if (mountedRef.current) setHistory(next)
+      if (persist) {
+        if (storageTimerRef.current !== null) {
+          window.clearTimeout(storageTimerRef.current)
+        }
+        persistHistory()
+      } else if (storageTimerRef.current === null) {
+        // 流式渲染与存储分开，避免每个 Token 都同步序列化全部历史。
+        storageTimerRef.current = window.setTimeout(persistHistory, 500)
+      }
     },
-    [storageKey]
+    [persistHistory]
   )
 
   useEffect(() => {
     mountedRef.current = true
     try {
-      const saved = readPelicanTestHistory(storageKey).map((record) =>
-        record.status === 'running'
-          ? { ...record, status: 'cancelled' as const }
-          : record
-      )
+      const saved = readPelicanTestHistory(storageKey).map((record) => ({
+        ...record,
+        status:
+          record.status === 'running' ? ('cancelled' as const) : record.status,
+        assessments: record.assessments.map((item) =>
+          item.status === 'running'
+            ? { ...item, status: 'cancelled' as const }
+            : item
+        ),
+      }))
       historyRef.current = saved
       setHistory(saved)
       setCurrentRecordId(saved[0]?.id ?? null)
@@ -83,11 +105,15 @@ export function usePelicanTest(userId: number) {
       )
     }
     return () => {
-      mountedRef.current = false
       controllerRef.current?.abort()
       assessmentControllerRef.current?.abort()
+      mountedRef.current = false
+      if (storageTimerRef.current !== null) {
+        window.clearTimeout(storageTimerRef.current)
+        persistHistory()
+      }
     }
-  }, [storageKey])
+  }, [storageKey, persistHistory])
 
   const generation = useMutation({
     retry: false,
@@ -122,7 +148,24 @@ export function usePelicanTest(userId: number) {
           input.model,
           input.group,
           input.maxTokens,
-          controller.signal
+          controller.signal,
+          (response) => {
+            if (!mountedRef.current || currentRunRef.current !== record.id) {
+              return
+            }
+            commit(
+              historyRef.current.map((item) =>
+                item.id === record.id && item.status === 'running'
+                  ? {
+                      ...item,
+                      content: response.content,
+                      reasoningContent: response.reasoningContent,
+                    }
+                  : item
+              ),
+              false
+            )
+          }
         )
         if (!mountedRef.current || controller.signal.aborted) return
         let errorMessage: string | undefined
@@ -130,6 +173,10 @@ export function usePelicanTest(userId: number) {
           errorMessage = t('The model response was truncated')
         } else if (!result.content) {
           errorMessage = t('The model returned an empty result')
+        } else if (!hasCompletePelicanDocument(result.content)) {
+          errorMessage = t(
+            'The model did not return a complete HTML or SVG document'
+          )
         }
         commit(
           historyRef.current.map((item) =>
@@ -202,18 +249,49 @@ export function usePelicanTest(userId: number) {
             model: input.model,
             group: input.group,
             createdAt: Date.now(),
-            status: 'success',
+            status: 'running',
             content: '',
           }
+          commit(
+            historyRef.current.map((item) =>
+              item.id === record.id
+                ? { ...item, assessments: [result, ...item.assessments] }
+                : item
+            )
+          )
           try {
             const response = await assessPelicanHtml(
               input.model,
               input.group,
               record,
-              controller.signal
+              controller.signal,
+              (response) => {
+                if (!mountedRef.current) return
+                commit(
+                  historyRef.current.map((item) =>
+                    item.id === record.id
+                      ? {
+                          ...item,
+                          assessments: item.assessments.map((assessment) =>
+                            assessment.id === result.id &&
+                            assessment.status === 'running'
+                              ? {
+                                  ...assessment,
+                                  content: response.content,
+                                  reasoningContent: response.reasoningContent,
+                                }
+                              : assessment
+                          ),
+                        }
+                      : item
+                  ),
+                  false
+                )
+              }
             )
             result.content = response.content
             result.reasoningContent = response.reasoningContent
+            result.status = 'success'
             if (response.truncated) {
               result.status = 'error'
               result.errorMessage = t('The model response was truncated')
@@ -222,22 +300,31 @@ export function usePelicanTest(userId: number) {
               result.errorMessage = t('The model returned an empty result')
             }
           } catch (error) {
-            if (controller.signal.aborted) break
-            markServerErrorHandled(error)
-            result.status = 'error'
-            result.errorMessage = getServerErrorMessage(
-              error,
-              t('Pelican assessment failed')
-            )
+            const partial = historyRef.current
+              .find((item) => item.id === record.id)
+              ?.assessments.find((item) => item.id === result.id)
+            result.content = partial?.content ?? ''
+            result.reasoningContent = partial?.reasoningContent
+            result.status = controller.signal.aborted ? 'cancelled' : 'error'
+            if (!controller.signal.aborted) markServerErrorHandled(error)
+            result.errorMessage = controller.signal.aborted
+              ? t('Generation was interrupted')
+              : getServerErrorMessage(error, t('Pelican assessment failed'))
           }
-          if (!mountedRef.current || controller.signal.aborted) break
+          if (!mountedRef.current) break
           commit(
             historyRef.current.map((item) =>
               item.id === record.id
-                ? { ...item, assessments: [result, ...item.assessments] }
+                ? {
+                    ...item,
+                    assessments: item.assessments.map((assessment) =>
+                      assessment.id === result.id ? result : assessment
+                    ),
+                  }
                 : item
             )
           )
+          if (controller.signal.aborted) break
         }
       } finally {
         assessmentControllerRef.current = null

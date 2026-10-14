@@ -17,11 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { t } from 'i18next'
+import { SSE } from 'sse.js'
 
-import { sendChatCompletion } from '@/features/playground/api'
+import { API_ENDPOINTS, ERROR_MESSAGES } from '@/features/playground/constants'
+import { createStreamRequestController } from '@/features/playground/hooks/use-stream-request'
 import { parseThinkTags } from '@/features/playground/lib/message/message-reasoning-utils'
-import type { ChatCompletionResponse } from '@/features/playground/types'
-import { createServerError } from '@/lib/server-error-message'
+import type { ChatCompletionRequest } from '@/features/playground/types'
+import { getFreshAuthHeaders } from '@/lib/api'
 
 import {
   pelicanGenerationOptionsSchema,
@@ -29,68 +31,161 @@ import {
   type PelicanTestRecord,
 } from './lib'
 
-function readPelicanModelResponse(response: ChatCompletionResponse) {
-  const choice = response.choices?.[0]
-  const message = choice?.message
-  const rawContent = typeof message?.content === 'string' ? message.content : ''
+export type PelicanModelResponse = {
+  content: string
+  reasoningContent: string
+  truncated: boolean
+  finishReason?: string
+}
+
+function readPelicanModelResponse(
+  rawContent: string,
+  rawReasoning: string,
+  finishReason?: string
+): PelicanModelResponse {
   // 只处理响应开头的思考标签，避免误拆 HTML 源码中的同名元素或字符串。
-  const parsed = rawContent.trimStart().startsWith('<think>')
-    ? parseThinkTags(rawContent)
-    : undefined
-  const content = (parsed?.visibleContent ?? rawContent).trim()
-  const reasoningContent =
-    (typeof message?.reasoning_content === 'string'
-      ? message.reasoning_content.trim()
-      : '') ||
-    parsed?.reasoning ||
-    ''
-  if (!content && !reasoningContent) {
-    throw createServerError(response, t('The model returned an empty result'))
+  const trimmed = rawContent.trimStart()
+  let content = rawContent
+  let reasoning = ''
+  if (trimmed && '<think>'.startsWith(trimmed)) {
+    content = ''
+  } else if (trimmed.startsWith('<think>')) {
+    const end = rawContent.indexOf('</think>')
+    const prefix = end === -1 ? rawContent : rawContent.slice(0, end + 8)
+    reasoning = parseThinkTags(prefix).reasoning
+    content = end === -1 ? '' : rawContent.slice(end + 8)
   }
   return {
-    content,
-    reasoningContent,
-    truncated: choice?.finish_reason === 'length',
-    finishReason:
-      typeof choice?.finish_reason === 'string'
-        ? choice.finish_reason
-        : undefined,
+    content: content.trim(),
+    reasoningContent: rawReasoning.trim() || reasoning,
+    truncated: finishReason === 'length',
+    finishReason,
   }
+}
+
+function streamPelicanResponse(
+  payload: ChatCompletionRequest,
+  signal: AbortSignal,
+  onUpdate?: (response: PelicanModelResponse) => void
+): Promise<PelicanModelResponse> {
+  return new Promise((resolve, reject) => {
+    let rawContent = ''
+    let rawReasoning = ''
+    let finishReason: string | undefined
+    let updateTimer: number | null = null
+    const flush = () => {
+      if (updateTimer !== null) window.clearTimeout(updateTimer)
+      updateTimer = null
+      onUpdate?.(
+        readPelicanModelResponse(rawContent, rawReasoning, finishReason)
+      )
+    }
+    const controller = createStreamRequestController({
+      getHeaders: getFreshAuthHeaders,
+      createSource: (request, headers) =>
+        new SSE(API_ENDPOINTS.CHAT_COMPLETIONS, {
+          headers,
+          method: 'POST',
+          payload: JSON.stringify(request),
+          start: false,
+          autoReconnect: false,
+          withCredentials: true,
+        }),
+      setStreaming: () => {},
+    })
+    const abort = () => {
+      flush()
+      controller.stop()
+      signal.removeEventListener('abort', abort)
+      reject(new DOMException('Generation was interrupted', 'AbortError'))
+    }
+    if (signal.aborted) {
+      abort()
+      return
+    }
+    signal.addEventListener('abort', abort, { once: true })
+    void controller
+      .send(
+        payload,
+        {},
+        {
+          onUpdate: (type, chunk) => {
+            if (type === 'reasoning') rawReasoning += chunk
+            else rawContent += chunk
+            if (onUpdate && updateTimer === null) {
+              updateTimer = window.setTimeout(flush, 50)
+            }
+          },
+          onFinishReason: (reason) => {
+            finishReason = reason
+          },
+          onComplete: () => {
+            flush()
+            signal.removeEventListener('abort', abort)
+            const result = readPelicanModelResponse(
+              rawContent,
+              rawReasoning,
+              finishReason
+            )
+            if (!result.content && !result.reasoningContent) {
+              reject(new Error(t('The model returned an empty result')))
+              return
+            }
+            resolve(result)
+          },
+          onError: (message) => {
+            flush()
+            signal.removeEventListener('abort', abort)
+            const known = Object.values(ERROR_MESSAGES).some(
+              (value) => value === message
+            )
+            reject(new Error(known ? t(message) : message))
+          },
+        }
+      )
+      .catch((error: unknown) => {
+        flush()
+        signal.removeEventListener('abort', abort)
+        controller.dispose()
+        reject(error)
+      })
+  })
 }
 
 export async function generatePelicanHtml(
   model: string,
   group: string,
   maxTokens: number,
-  signal: AbortSignal
+  signal: AbortSignal,
+  onUpdate?: (response: PelicanModelResponse) => void
 ) {
   const options = pelicanGenerationOptionsSchema.safeParse({ maxTokens })
   if (!options.success) throw new Error(t('Invalid output token limit'))
-  const response = await sendChatCompletion(
+  return streamPelicanResponse(
     {
       model,
       group,
       messages: [{ role: 'user', content: PELICAN_TEST_PROMPT }],
-      stream: false,
+      stream: true,
       max_tokens: options.data.maxTokens,
     },
-    {},
-    signal
+    signal,
+    onUpdate
   )
-  return readPelicanModelResponse(response.data)
 }
 
 export async function assessPelicanHtml(
   model: string,
   group: string,
   record: PelicanTestRecord,
-  signal: AbortSignal
+  signal: AbortSignal,
+  onUpdate?: (response: PelicanModelResponse) => void
 ) {
-  const response = await sendChatCompletion(
+  return streamPelicanResponse(
     {
       model,
       group,
-      stream: false,
+      stream: true,
       messages: [
         {
           role: 'system',
@@ -107,8 +202,7 @@ export async function assessPelicanHtml(
         },
       ],
     },
-    {},
-    signal
+    signal,
+    onUpdate
   )
-  return readPelicanModelResponse(response.data)
 }

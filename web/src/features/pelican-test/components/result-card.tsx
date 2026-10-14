@@ -42,6 +42,7 @@ import { formatNumber } from '@/lib/format'
 import {
   buildPreviewDocument,
   hasSvgMarkup,
+  type PelicanTestAssessment,
   type PelicanTestRating,
   type PelicanTestRecord,
 } from '../lib'
@@ -223,37 +224,61 @@ export function ResultCard(props: {
           <section className='space-y-2' aria-label={t('Assessment history')}>
             <h3 className='text-sm font-semibold'>{t('Assessment history')}</h3>
             {props.record.assessments.map((assessment) => (
-              <details key={assessment.id} className='rounded-lg border p-3'>
-                <summary className='cursor-pointer text-sm'>
-                  {assessment.model} ·{' '}
-                  {new Intl.DateTimeFormat(locale, {
-                    dateStyle: 'short',
-                    timeStyle: 'short',
-                  }).format(assessment.createdAt)}
-                  {assessment.status === 'error' && (
-                    <Badge className='ml-2' variant='destructive'>
-                      {t('Failed')}
-                    </Badge>
-                  )}
-                </summary>
-                <div className='mt-3 space-y-3'>
-                  {assessment.errorMessage && (
-                    <Alert variant='destructive'>
-                      <AlertDescription>
-                        {assessment.errorMessage}
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                  <ModelResponse
-                    content={assessment.content}
-                    reasoningContent={assessment.reasoningContent}
-                  />
-                </div>
-              </details>
+              <AssessmentResult key={assessment.id} assessment={assessment} />
             ))}
           </section>
         )}
       </CardContent>
     </Card>
+  )
+}
+
+function AssessmentResult(props: { assessment: PelicanTestAssessment }) {
+  const { t, i18n } = useTranslation()
+  const assessment = props.assessment
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
+  // 在途评审默认展开，完成时保留展开状态；已保存的评审仍按历史折叠展示。
+  const [open, setOpen] = useState(assessment.status === 'running')
+  return (
+    <details
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+      className='rounded-lg border p-3'
+    >
+      <summary className='cursor-pointer text-sm'>
+        {assessment.model} ·{' '}
+        {new Intl.DateTimeFormat(locale, {
+          dateStyle: 'short',
+          timeStyle: 'short',
+        }).format(assessment.createdAt)}
+        {assessment.status === 'error' && (
+          <Badge className='ml-2' variant='destructive'>
+            {t('Failed')}
+          </Badge>
+        )}
+        {assessment.status === 'running' && (
+          <Badge className='ml-2' variant='outline'>
+            {t('Generating...')}
+          </Badge>
+        )}
+        {assessment.status === 'cancelled' && (
+          <Badge className='ml-2' variant='outline'>
+            {t('Generation was interrupted')}
+          </Badge>
+        )}
+      </summary>
+      <div className='mt-3 space-y-3'>
+        {assessment.errorMessage && (
+          <Alert variant='destructive'>
+            <AlertDescription>{assessment.errorMessage}</AlertDescription>
+          </Alert>
+        )}
+        <ModelResponse
+          content={assessment.content}
+          reasoningContent={assessment.reasoningContent}
+          pending={assessment.status === 'running'}
+        />
+      </div>
+    </details>
   )
 }
