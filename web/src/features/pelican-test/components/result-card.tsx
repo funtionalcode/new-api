@@ -20,10 +20,6 @@ import { RotateCcw, ThumbsDown, ThumbsUp } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import {
-  WebPreview,
-  WebPreviewBody,
-} from '@/components/ai-elements/web-preview'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -47,6 +43,7 @@ import {
   type PelicanTestRecord,
 } from '../lib'
 import { ModelResponse } from './model-response'
+import { PelicanPreview } from './pelican-preview'
 
 export function ResultCard(props: {
   record: PelicanTestRecord
@@ -149,17 +146,12 @@ export function ResultCard(props: {
           {props.record.status === 'success' && (
             <TabsContent value='preview' className='min-w-0'>
               {previewEnabled ? (
-                <WebPreview className='h-80 overflow-hidden bg-white'>
-                  <WebPreviewBody
-                    srcDoc={preview}
-                    sandbox='allow-scripts'
-                    referrerPolicy='no-referrer'
-                    title={t('Pelican HTML preview')}
-                    className='h-80'
-                  />
-                </WebPreview>
+                <PelicanPreview
+                  document={preview}
+                  onStop={() => setPreviewEnabled(false)}
+                />
               ) : (
-                <div className='bg-muted/20 flex h-80 flex-col items-center justify-center gap-3 rounded-lg border px-4 text-center'>
+                <div className='bg-muted/20 flex h-[780px] flex-col items-center justify-center gap-3 rounded-lg border px-4 text-center'>
                   <p className='text-muted-foreground text-sm'>
                     {t(
                       'Preview runs generated code in an isolated frame with network access blocked.'
@@ -172,16 +164,6 @@ export function ResultCard(props: {
                     {t('Load preview')}
                   </Button>
                 </div>
-              )}
-              {previewEnabled && (
-                <Button
-                  className='mt-2'
-                  size='sm'
-                  variant='ghost'
-                  onClick={() => setPreviewEnabled(false)}
-                >
-                  {t('Stop preview')}
-                </Button>
               )}
             </TabsContent>
           )}
