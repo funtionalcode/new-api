@@ -16,7 +16,9 @@ type ModelStatusFamilyKey =
   | 'cohere'
   | 'bedrock'
   | 'image'
+  | 'typesafe'
   | 'other'
+  | `vendor:${string}`
 
 type ModelStatusFamily = {
   key: ModelStatusFamilyKey
@@ -59,6 +61,7 @@ const MODEL_STATUS_FAMILIES: ModelStatusFamily[] = [
   { key: 'cohere', label: 'Cohere', iconKey: 'Cohere.Avatar' },
   { key: 'bedrock', label: 'Bedrock', iconKey: 'Bedrock.Avatar' },
   { key: 'image', label: 'Image models', iconKey: 'Stability.Avatar' },
+  { key: 'typesafe', label: 'TypeSafe', iconKey: 'LlmApi.Avatar' },
   OTHER_MODEL_STATUS_FAMILY,
 ]
 
@@ -66,9 +69,43 @@ const MODEL_STATUS_FAMILY_BY_KEY = new Map(
   MODEL_STATUS_FAMILIES.map((family) => [family.key, family])
 )
 
+const MODEL_STATUS_VENDOR_ALIASES: Record<string, ModelStatusFamilyKey> = {
+  anthropic: 'claude',
+  google: 'gemini',
+  alibaba: 'qwen',
+  阿里巴巴: 'qwen',
+  智谱: 'zhipu',
+  字节跳动: 'doubao',
+}
+
 export function getModelStatusModelMeta(
-  modelName: string
+  modelName: string,
+  metadata?: Pick<ModelStatusModel, 'icon' | 'vendor_name' | 'vendor_icon'>
 ): ModelStatusModelMeta {
+  const vendorName = metadata?.vendor_name?.trim()
+  if (vendorName) {
+    const vendorKey = vendorName.toLowerCase()
+    const family = MODEL_STATUS_FAMILY_BY_KEY.get(
+      MODEL_STATUS_VENDOR_ALIASES[vendorKey] ??
+        (vendorKey as ModelStatusFamilyKey)
+    ) ?? {
+      key: `vendor:${vendorKey}` as const,
+      label: vendorName,
+      iconKey: metadata?.vendor_icon?.trim() || 'LlmApi.Avatar',
+    }
+    return {
+      family,
+      iconKey:
+        metadata?.icon?.trim() ||
+        metadata?.vendor_icon?.trim() ||
+        family.iconKey,
+    }
+  }
+  const inferred = inferModelStatusModelMeta(modelName)
+  return { ...inferred, iconKey: metadata?.icon?.trim() || inferred.iconKey }
+}
+
+function inferModelStatusModelMeta(modelName: string): ModelStatusModelMeta {
   const normalizedName = modelName.trim().toLowerCase()
 
   if (
@@ -146,6 +183,13 @@ export function getModelStatusModelMeta(
     return buildModelStatusMeta('bedrock', 'Bedrock.Avatar')
   }
 
+  if (
+    /(?:^|\/)jev(?:[-_.:]|$)/.test(normalizedName) ||
+    normalizedName.startsWith('typesafe/')
+  ) {
+    return buildModelStatusMeta('typesafe', 'LlmApi.Avatar')
+  }
+
   const imageIconKey = getImageModelIconKey(normalizedName)
   if (imageIconKey) {
     return buildModelStatusMeta('image', imageIconKey)
@@ -160,7 +204,7 @@ export function getModelStatusGroups(
   const groupsByKey = new Map<ModelStatusFamilyKey, ModelStatusModelGroup>()
 
   for (const model of models) {
-    const meta = getModelStatusModelMeta(model.model_name)
+    const meta = getModelStatusModelMeta(model.model_name, model)
     let group = groupsByKey.get(meta.family.key)
 
     if (!group) {
@@ -171,10 +215,17 @@ export function getModelStatusGroups(
     group.models.push(model)
   }
 
-  return MODEL_STATUS_FAMILIES.flatMap((family) => {
+  const knownGroups = MODEL_STATUS_FAMILIES.filter(
+    (family) => family.key !== 'other'
+  ).flatMap((family) => {
     const group = groupsByKey.get(family.key)
     return group ? [group] : []
   })
+  const customGroups = [...groupsByKey.values()].filter((group) =>
+    group.key.startsWith('vendor:')
+  )
+  const other = groupsByKey.get('other')
+  return [...knownGroups, ...customGroups, ...(other ? [other] : [])]
 }
 
 function buildModelStatusMeta(
@@ -215,6 +266,14 @@ function getOpenAIModelIconKey(normalizedName: string): string | null {
 
   if (/^o3(?:[-_.:]|$)/.test(normalizedName)) {
     return "OpenAI.Avatar.type={'o3'}"
+  }
+
+  if (
+    /(?:^|\/)(?:gpt-(?:\d|image(?:-|$))|o\d+(?:[-_.:]|$)|codex(?:[-_.:]|$))/.test(
+      normalizedName
+    )
+  ) {
+    return 'OpenAI.Avatar'
   }
 
   if (

@@ -53,6 +53,9 @@ type ModelStatusToday struct {
 
 type ModelStatusModel struct {
 	ModelName              string                    `json:"model_name"`
+	Icon                   string                    `json:"icon,omitempty"`
+	VendorName             string                    `json:"vendor_name,omitempty"`
+	VendorIcon             string                    `json:"vendor_icon,omitempty"`
 	RequestCount           int64                     `json:"request_count"`
 	TokenCount             int64                     `json:"token_count"`
 	Quota                  int64                     `json:"quota"`
@@ -135,6 +138,10 @@ func buildModelStatusSnapshot(now time.Time) (*ModelStatusSnapshot, error) {
 	for _, summary := range summaries {
 		modelNames = append(modelNames, summary.ModelName)
 	}
+	displayMetadata, err := model.GetModelDisplayMetadata(modelNames)
+	if err != nil {
+		return nil, err
+	}
 
 	buckets, err := model.GetModelStatusLogBuckets(windowStart, windowEnd, modelStatusBucketSeconds, modelNames)
 	if err != nil {
@@ -169,6 +176,7 @@ func buildModelStatusSnapshot(now time.Time) (*ModelStatusSnapshot, error) {
 
 	var successCount int64
 	for _, summary := range summaries {
+		metadata := displayMetadata[summary.ModelName]
 		successRate := modelStatusSuccessRate(summary.SuccessCount, summary.RequestCount)
 		status := modelStatusState(summary.RequestCount, successRate)
 		switch status {
@@ -184,6 +192,9 @@ func buildModelStatusSnapshot(now time.Time) (*ModelStatusSnapshot, error) {
 
 		modelRows = append(modelRows, ModelStatusModel{
 			ModelName:              summary.ModelName,
+			Icon:                   metadata.Icon,
+			VendorName:             metadata.VendorName,
+			VendorIcon:             metadata.VendorIcon,
 			RequestCount:           summary.RequestCount,
 			TokenCount:             summary.TokenCount,
 			Quota:                  summary.Quota,

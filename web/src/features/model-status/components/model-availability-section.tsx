@@ -157,7 +157,7 @@ function ModelAvailabilityCard(props: { model: ModelStatusModel }) {
   const [errorDialog, setErrorDialog] =
     useState<ModelStatusErrorDialogState | null>(null)
   const visual = modelStatusVisual(props.model.status)
-  const meta = getModelStatusModelMeta(props.model.model_name)
+  const meta = getModelStatusModelMeta(props.model.model_name, props.model)
   const canInspectModelErrors = canInspectModelStatusErrors(props.model.status)
   const modelErrorDetails = props.model.error_details ?? []
 
@@ -373,10 +373,7 @@ function ModelStatusErrorDetailsDialog(props: {
   const modelName = props.selection?.modelName?.trim() ?? ''
 
   return (
-    <Dialog
-      open={props.selection !== null}
-      onOpenChange={props.onOpenChange}
-    >
+    <Dialog open={props.selection !== null} onOpenChange={props.onOpenChange}>
       <DialogContent className='max-h-[calc(100vh-2rem)] overflow-hidden sm:max-w-2xl'>
         <DialogHeader>
           <DialogTitle>
@@ -452,7 +449,7 @@ function ModelStatusErrorDetailItem(props: {
           </span>
         ))}
       </div>
-      <p className='mt-2 whitespace-pre-wrap break-words text-sm leading-6'>
+      <p className='mt-2 text-sm leading-6 break-words whitespace-pre-wrap'>
         {props.detail.message || t('Request error occurred')}
       </p>
       {canOpenUsageLog ? (

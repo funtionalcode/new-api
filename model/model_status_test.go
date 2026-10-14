@@ -4,9 +4,41 @@ import (
 	"testing"
 	"time"
 
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
+
+func TestGetModelDisplayMetadataUsesCatalogRulePrecedence(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	previous := DB
+	DB = db
+	t.Cleanup(func() { DB = previous; assert.NoError(t, sqlDB.Close()) })
+	require.NoError(t, DB.AutoMigrate(&Model{}, &Vendor{}))
+	require.NoError(t, DB.Create(&[]Vendor{{Id: 1, Name: "OpenAI", Icon: "OpenAI"}, {Id: 2, Name: "Custom Labs", Icon: "DeepSeek"}}).Error)
+	require.NoError(t, DB.Create(&[]Model{
+		{ModelName: "gpt-", NameRule: NameRulePrefix, VendorID: 1},
+		{ModelName: "gpt-6-astra", VendorID: 2, Icon: "DeepSeek.Color"},
+		{ModelName: "jev-latest", Icon: "LlmApi.Avatar"},
+	}).Error)
+
+	metadata, err := GetModelDisplayMetadata([]string{"gpt-6-astra", "gpt-6-sol", "jev-latest", "missing"})
+	require.NoError(t, err)
+	assert.Equal(t, "Custom Labs", metadata["gpt-6-astra"].VendorName)
+	assert.Equal(t, "DeepSeek.Color", metadata["gpt-6-astra"].Icon)
+	assert.Equal(t, "DeepSeek", metadata["gpt-6-astra"].VendorIcon)
+	assert.Equal(t, "OpenAI", metadata["gpt-6-sol"].VendorName)
+	assert.Empty(t, metadata["jev-latest"].VendorName)
+	assert.Equal(t, "LlmApi.Avatar", metadata["jev-latest"].Icon)
+	assert.NotContains(t, metadata, "missing")
+	metadata, err = GetModelDisplayMetadata(nil)
+	require.NoError(t, err)
+	assert.Empty(t, metadata)
+}
 
 func TestGetModelStatusLogSummariesAggregatesConsumeAndErrorLogs(t *testing.T) {
 	truncateTables(t)

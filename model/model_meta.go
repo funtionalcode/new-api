@@ -99,6 +99,40 @@ func resolveModelMetadata(records []Model, names []string) map[string]*Model {
 	return resolved
 }
 
+type ModelDisplayMetadata struct {
+	Icon       string
+	VendorName string
+	VendorIcon string
+}
+
+// GetModelDisplayMetadata 复用模型广场的匹配优先级，只返回公开展示信息。
+func GetModelDisplayMetadata(names []string) (map[string]ModelDisplayMetadata, error) {
+	result := make(map[string]ModelDisplayMetadata, len(names))
+	if len(names) == 0 {
+		return result, nil
+	}
+	var records []Model
+	if err := DB.Select("model_name", "name_rule", "icon", "vendor_id").Find(&records).Error; err != nil {
+		return nil, err
+	}
+	var vendors []Vendor
+	if err := DB.Select("id", "name", "icon").Find(&vendors).Error; err != nil {
+		return nil, err
+	}
+	vendorByID := make(map[int]Vendor, len(vendors))
+	for _, vendor := range vendors {
+		vendorByID[vendor.Id] = vendor
+	}
+	resolved := resolveModelMetadata(records, names)
+	for _, name := range names {
+		if metadata := resolved[name]; metadata != nil {
+			vendor := vendorByID[metadata.VendorID]
+			result[name] = ModelDisplayMetadata{Icon: metadata.Icon, VendorName: vendor.Name, VendorIcon: vendor.Icon}
+		}
+	}
+	return result, nil
+}
+
 // FillModelSquareStates applies the same metadata policy as the public catalog
 // to live routes, then aggregates concrete models for metadata rule rows.
 func FillModelSquareStates(rows []*Model, configured map[string][]int, connections []ModelConnection) error {

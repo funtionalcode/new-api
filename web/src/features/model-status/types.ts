@@ -1,4 +1,8 @@
-export type ModelAvailabilityStatus = 'normal' | 'warning' | 'error' | 'no_request'
+export type ModelAvailabilityStatus =
+  | 'normal'
+  | 'warning'
+  | 'error'
+  | 'no_request'
 
 export type ModelStatusOverview = {
   normal_count: number
@@ -41,6 +45,9 @@ export type ModelStatusErrorDetail = {
 
 export type ModelStatusModel = {
   model_name: string
+  icon?: string
+  vendor_name?: string
+  vendor_icon?: string
   request_count: number
   token_count: number
   quota: number
