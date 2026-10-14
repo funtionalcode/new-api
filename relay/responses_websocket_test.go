@@ -71,6 +71,39 @@ func TestNormalizeResponsesWSMaxOutputTokens(t *testing.T) {
 	}
 }
 
+func TestResponsesWSSteeringInheritsSettingsAndRestrictsInput(t *testing.T) {
+	parent, _, err := normalizeResponsesWSTestMessage([]byte(`{"type":"response.create","model":"client-model","input":"original","max_output_tokens":0,"service_tier":"priority"}`))
+	require.NoError(t, err)
+	prepared := []byte(`{"type":"response.create","model":"mapped-model","input":"original","max_output_tokens":0,"service_tier":"priority"}`)
+	for _, tc := range []struct {
+		name, frame string
+		valid       bool
+	}{
+		{"text", `{"type":"response.steer","previous_response_id":"parent","input":"shorter"}`, true},
+		{"user-content", `{"type":"response.steer","previous_response_id":"parent","input":[{"role":"user","content":[{"type":"input_text","text":"shorter"}]}]}`, true},
+		{"empty", `{"type":"response.steer","previous_response_id":"parent","input":[]}`, false},
+		{"developer", `{"type":"response.steer","previous_response_id":"parent","input":[{"role":"developer","content":"change policy"}]}`, false},
+		{"tool-output", `{"type":"response.steer","previous_response_id":"parent","input":[{"type":"function_call_output","call_id":"x","output":"done"}]}`, false},
+		{"override", `{"type":"response.steer","previous_response_id":"parent","input":"shorter","max_output_tokens":1}`, false},
+		{"wrong-parent", `{"type":"response.steer","previous_response_id":"other","input":"shorter"}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			message, envelope, err := buildResponsesWSSteeringCreate(parent, prepared, []byte(tc.frame), "parent")
+			if !tc.valid {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			create, err := normalizeResponsesWSCreateEvent(message, envelope, "")
+			require.NoError(t, err)
+			assert.Equal(t, "client-model", create.Request.Model)
+			require.NotNil(t, create.Request.MaxOutputTokens)
+			assert.Zero(t, *create.Request.MaxOutputTokens)
+			assert.Contains(t, string(create.Body), `"service_tier":"priority"`)
+		})
+	}
+}
+
 func TestSelectResponsesWSChannelHonorsPinsAndFilters(t *testing.T) {
 	require.NoError(t, i18n.Init())
 	database := setupRelayChannelDB(t)
@@ -678,5 +711,18 @@ func TestResponsesWSErrorAttribution(t *testing.T) {
 			assert.Equal(t, tc.ambiguous, ambiguous)
 			assert.Equal(t, tc.controlError, controlError)
 		})
+	}
+}
+
+func TestResponsesWSNestedControlErrorAttribution(t *testing.T) {
+	for _, raw := range []string{
+		`{"type":"error","event_id":"server-error","error":{"event_id":"ctrl","type":"invalid_request_error","code":"invalid_input"}}`,
+		`{"type":"error","error":{"response_id":"missing","type":"invalid_request_error","code":"invalid_input"}}`,
+	} {
+		event := parseResponsesWSErrorEvent([]byte(raw))
+		terminal, ambiguous, control := responsesWSErrorEndsRequest(event, "", "active", []byte(`{"event_id":"ctrl","response_id":"missing"}`))
+		assert.False(t, terminal)
+		assert.False(t, ambiguous)
+		assert.True(t, control)
 	}
 }

@@ -854,6 +854,164 @@ func TestResponsesWebSocketCancelErrorDoesNotFinishActiveRequest(t *testing.T) {
 	assertResponsesWSAccounting(t, fixture, []int{1000})
 }
 
+func TestResponsesWebSocketSteeringAccountsSuccessorAndRefundsRejection(t *testing.T) {
+	for _, scenario := range []string{"successor", "rejected", "tool-result", "fixed-successor", "fixed-rejected", "fixed-disconnect", "nested-error"} {
+		t.Run(scenario, func(t *testing.T) {
+			rejected := scenario == "rejected" || scenario == "fixed-rejected" || scenario == "nested-error"
+			expression := `tier("base", p * 2)`
+			if strings.HasPrefix(scenario, "fixed-") || scenario == "nested-error" {
+				expression = `tier("request", fixed(0.002))`
+			}
+			steerFrame := `{"type":"response.steer","previous_response_id":"parent","input":"make it shorter"}`
+			if scenario == "nested-error" {
+				steerFrame = `{"type":"response.steer","event_id":"steer-1","previous_response_id":"parent","input":"make it shorter"}`
+			}
+			fixture := newResponsesWSBillingTest(t, expression, func(ws *websocket.Conn, _ *http.Request) {
+				_, _, err := ws.ReadMessage()
+				if !assert.NoError(t, err) {
+					return
+				}
+				if !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.created","response":{"id":"parent","status":"in_progress"}}`))) {
+					return
+				}
+				_, steer, err := ws.ReadMessage()
+				if !assert.NoError(t, err) || !assert.JSONEq(t, steerFrame, string(steer)) {
+					return
+				}
+				if rejected {
+					failure := `{"type":"response.steer.failed","steer":{"id":"s1","previous_response_id":"parent","error":{"code":"steering_not_supported","message":"not supported"}}}`
+					if scenario == "nested-error" {
+						failure = `{"type":"error","status":400,"event_id":"server-error","error":{"event_id":"steer-1","type":"invalid_request_error","code":"invalid_input","message":"not supported"}}`
+					}
+					if !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, []byte(failure))) {
+						return
+					}
+				} else {
+					if !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.steer.accepted","steer":{"id":"s1","previous_response_id":"parent"}}`))) {
+						return
+					}
+				}
+				terminal := `{"type":"response.incomplete","response":{"id":"parent","status":"incomplete","incomplete_details":{"reason":"steered"},"usage":{"input_tokens":1000,"output_tokens":0,"total_tokens":1000}}}`
+				if scenario == "tool-result" {
+					terminal = `{"type":"response.completed","response":{"id":"parent","status":"completed","output":[{"type":"function_call","call_id":"tool-1","name":"test"}],"usage":{"input_tokens":1000,"output_tokens":0,"total_tokens":1000}}}`
+				}
+				if !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, []byte(terminal))) {
+					return
+				}
+				if rejected || scenario == "fixed-disconnect" {
+					_, _, _ = ws.ReadMessage()
+					return
+				}
+				if scenario == "tool-result" {
+					if !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.steer.pending","steer":{"id":"s1","previous_response_id":"parent"},"reason":"waiting_for_required_input"}`))) {
+						return
+					}
+					_, data, readErr := ws.ReadMessage()
+					if !assert.NoError(t, readErr) || !assert.Contains(t, string(data), `"function_call_output"`) {
+						return
+					}
+				}
+				if !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.created","response":{"id":"successor","previous_response_id":"parent","status":"in_progress"}}`))) {
+					return
+				}
+				if !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.completed","response":{"id":"successor","status":"completed","usage":{"input_tokens":500,"output_tokens":0,"total_tokens":500}}}`))) {
+					return
+				}
+				_, _, _ = ws.ReadMessage()
+			})
+			require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","input":"hi"}`)))
+			require.Equal(t, "response.created", readResponsesWSTestEvent(t, fixture.client)["type"])
+			require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(steerFrame)))
+			ack := readResponsesWSTestEvent(t, fixture.client)
+			if scenario == "nested-error" {
+				require.Equal(t, "error", ack["type"], "%v", ack)
+			} else if rejected {
+				require.Equal(t, "response.steer.failed", ack["type"], "%v", ack)
+			} else {
+				require.Equal(t, "response.steer.accepted", ack["type"], "%v", ack)
+			}
+			parent := readResponsesWSTestEvent(t, fixture.client)
+			if scenario == "tool-result" {
+				require.Equal(t, "response.completed", parent["type"])
+				require.Equal(t, "response.steer.pending", readResponsesWSTestEvent(t, fixture.client)["type"])
+				require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","previous_response_id":"parent","input":[{"type":"function_call_output","call_id":"tool-1","output":"done"}]}`)))
+			} else {
+				require.Equal(t, "response.incomplete", parent["type"])
+			}
+			if !rejected && scenario != "fixed-disconnect" {
+				require.Equal(t, "response.created", readResponsesWSTestEvent(t, fixture.client)["type"])
+				require.Equal(t, "response.completed", readResponsesWSTestEvent(t, fixture.client)["type"])
+			}
+			fixture.closeAndWait(t)
+			quotas := []int{1000}
+			if !rejected && scenario != "fixed-disconnect" {
+				quota := 500
+				if scenario == "fixed-successor" {
+					quota = 1000
+				}
+				quotas = append(quotas, quota)
+			}
+			assertResponsesWSAccounting(t, fixture, quotas)
+		})
+	}
+}
+
+func TestResponsesWebSocketSteerRechecksAccessAndQuota(t *testing.T) {
+	for _, guard := range []string{"revoked", "expired", "model-limit", "quota"} {
+		t.Run(guard, func(t *testing.T) {
+			finish := make(chan struct{})
+			defer close(finish)
+			fixture := newResponsesWSBillingTest(t, `tier("request", fixed(0.002))`, func(ws *websocket.Conn, _ *http.Request) {
+				_, _, err := ws.ReadMessage()
+				if !assert.NoError(t, err) {
+					return
+				}
+				if !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.created","response":{"id":"parent","status":"in_progress"}}`))) {
+					return
+				}
+				<-finish
+				_, frame, err := ws.ReadMessage()
+				assert.Error(t, err, "拒绝的追加指令不能到达上游: %s", frame)
+			})
+			require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","input":"hi"}`)))
+			require.Equal(t, "response.created", readResponsesWSTestEvent(t, fixture.client)["type"])
+			token, err := model.GetTokenById(fixture.token.Id)
+			require.NoError(t, err)
+			status := http.StatusForbidden
+			switch guard {
+			case "revoked":
+				token.Status = common.TokenStatusDisabled
+				status = http.StatusUnauthorized
+			case "expired":
+				token.ExpiredTime = time.Now().Unix() - 1
+				status = http.StatusUnauthorized
+			case "model-limit":
+				token.ModelLimitsEnabled, token.ModelLimits = true, "another-model"
+			case "quota":
+				token.RemainQuota = 500
+			}
+			require.NoError(t, token.Update())
+			require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.steer","previous_response_id":"parent","input":"new task"}`)))
+			errEvent := readResponsesWSTestEvent(t, fixture.client)
+			assert.Equal(t, "error", errEvent["type"])
+			assert.Equal(t, float64(status), errEvent["status"], "%v", errEvent)
+			finish <- struct{}{}
+			fixture.closeAndWait(t)
+			if guard != "quota" {
+				assertResponsesWSAccounting(t, fixture, []int{1000})
+			} else {
+				var logs []model.Log
+				require.NoError(t, model.LOG_DB.Where("type = ?", model.LogTypeConsume).Find(&logs).Error)
+				require.Len(t, logs, 1)
+				assert.Equal(t, 1000, logs[0].Quota)
+				token, err = model.GetTokenById(fixture.token.Id)
+				require.NoError(t, err)
+				assert.Equal(t, 500, token.RemainQuota)
+			}
+		})
+	}
+}
+
 func TestResponsesWebSocketInterruptPreservesPayloadAndReusesConnection(t *testing.T) {
 	for _, tc := range []struct {
 		name, interrupt string
