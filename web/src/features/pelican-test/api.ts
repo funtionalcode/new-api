@@ -74,6 +74,11 @@ function streamPelicanResponse(
     let rawReasoning = ''
     let finishReason: string | undefined
     let updateTimer: number | null = null
+    let idleTimer: number | null = null
+    const clearIdleTimeout = () => {
+      if (idleTimer !== null) window.clearTimeout(idleTimer)
+      idleTimer = null
+    }
     const flush = () => {
       if (updateTimer !== null) window.clearTimeout(updateTimer)
       updateTimer = null
@@ -94,7 +99,25 @@ function streamPelicanResponse(
         }),
       setStreaming: () => {},
     })
+    const resetIdleTimeout = () => {
+      clearIdleTimeout()
+      // 上游心跳只能证明连接存活；仅正文或思考增量才代表生成有进展。
+      idleTimer = window.setTimeout(() => {
+        idleTimer = null
+        flush()
+        controller.stop()
+        signal.removeEventListener('abort', abort)
+        reject(
+          new Error(
+            t(
+              'No new output or reasoning received for 5 minutes. Partial results were preserved. Retry manually.'
+            )
+          )
+        )
+      }, 300_000)
+    }
     const abort = () => {
+      clearIdleTimeout()
       flush()
       controller.stop()
       signal.removeEventListener('abort', abort)
@@ -105,12 +128,14 @@ function streamPelicanResponse(
       return
     }
     signal.addEventListener('abort', abort, { once: true })
+    resetIdleTimeout()
     void controller
       .send(
         payload,
         {},
         {
           onUpdate: (type, chunk) => {
+            resetIdleTimeout()
             if (type === 'reasoning') rawReasoning += chunk
             else rawContent += chunk
             if (onUpdate && updateTimer === null) {
@@ -121,6 +146,7 @@ function streamPelicanResponse(
             finishReason = reason
           },
           onComplete: () => {
+            clearIdleTimeout()
             flush()
             signal.removeEventListener('abort', abort)
             const result = readPelicanModelResponse(
@@ -135,6 +161,7 @@ function streamPelicanResponse(
             resolve(result)
           },
           onError: (message) => {
+            clearIdleTimeout()
             flush()
             signal.removeEventListener('abort', abort)
             const known = Object.values(ERROR_MESSAGES).some(
@@ -145,6 +172,7 @@ function streamPelicanResponse(
         }
       )
       .catch((error: unknown) => {
+        clearIdleTimeout()
         flush()
         signal.removeEventListener('abort', abort)
         controller.dispose()

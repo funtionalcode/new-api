@@ -4136,6 +4136,7 @@
     "No models with unset prices": "Нет моделей без цены",
     "No new models to add": "Нет новых моделей для добавления",
     "No new models yet": "Новых моделей пока нет",
+    "No new output or reasoning received for 5 minutes. Partial results were preserved. Retry manually.": "В течение 5 минут не поступали новые данные ответа или рассуждения. Частичные результаты сохранены. Повторите попытку вручную.",
     "No newer version available.": "Более новой версии нет.",
     "No nodes": "Нет узлов",
     "No notable climbers right now": "Сейчас нет значимых поднявшихся моделей",

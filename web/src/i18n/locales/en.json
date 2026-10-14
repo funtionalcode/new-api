@@ -4136,6 +4136,7 @@
     "No models with unset prices": "No models with unset prices",
     "No new models to add": "No new models to add",
     "No new models yet": "No new models yet",
+    "No new output or reasoning received for 5 minutes. Partial results were preserved. Retry manually.": "No new output or reasoning received for 5 minutes. Partial results were preserved. Retry manually.",
     "No newer version available.": "No newer version available.",
     "No nodes": "No nodes",
     "No notable climbers right now": "No notable climbers right now",

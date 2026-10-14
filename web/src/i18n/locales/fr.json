@@ -4136,6 +4136,7 @@
     "No models with unset prices": "Aucun modèle sans prix",
     "No new models to add": "Aucun nouveau modèle à ajouter",
     "No new models yet": "Pas encore de nouveaux modèles",
+    "No new output or reasoning received for 5 minutes. Partial results were preserved. Retry manually.": "Aucune nouvelle sortie ni réflexion reçue depuis 5 minutes. Les résultats partiels ont été conservés. Réessayez manuellement.",
     "No newer version available.": "Aucune version plus récente disponible.",
     "No nodes": "Aucun nœud",
     "No notable climbers right now": "Aucune progression notable pour le moment",

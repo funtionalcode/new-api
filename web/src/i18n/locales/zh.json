@@ -4136,6 +4136,7 @@
     "No models with unset prices": "没有未设置定价的模型",
     "No new models to add": "没有新模型可添加",
     "No new models yet": "暂无新模型",
+    "No new output or reasoning received for 5 minutes. Partial results were preserved. Retry manually.": "连续 5 分钟未收到新的正文或思考内容，已停止等待并保留已有结果，请手动重试。",
     "No newer version available.": "暂无更新版本。",
     "No nodes": "无节点",
     "No notable climbers right now": "当前没有显著上升的模型",

@@ -417,6 +417,97 @@ it.each(['eof', 'upstream-error'] as const)(
   }
 )
 
+it('只收到思考后空心跳不延长五分钟停流期限，保留结果且不自动重试', async () => {
+  const transport = vi
+    .spyOn(TestXMLHttpRequest, 'respond')
+    .mockImplementation(() => new Promise(() => {}))
+  renderWorkspace()
+  const submit = screen.getByRole('button', {
+    name: 'Generate and save result',
+  })
+  await waitFor(() => expect(submit).toBeEnabled())
+  vi.useFakeTimers()
+  try {
+    await act(async () => fireEvent.click(submit))
+    expect(TestXMLHttpRequest.instances).toHaveLength(1)
+    act(() => {
+      TestXMLHttpRequest.instances[0].append({
+        choices: [{ delta: { reasoning_content: '正在规划动画。' } }],
+      })
+    })
+    await act(async () => vi.advanceTimersByTimeAsync(240000))
+    act(() => {
+      const xhr = TestXMLHttpRequest.instances[0]
+      xhr.responseText += ': keepalive\n\n'
+      xhr.dispatchEvent(new Event('progress'))
+      xhr.append({ choices: [{ delta: {} }] })
+    })
+    await act(async () => vi.advanceTimersByTimeAsync(59999))
+    expect(screen.getByRole('button', { name: 'Generating...' })).toBeDisabled()
+    await act(async () => vi.advanceTimersByTimeAsync(1))
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'No new output or reasoning received for 5 minutes. Partial results were preserved. Retry manually.'
+    )
+    expect(readPelicanTestHistory(historyStorageKey(17))[0]).toMatchObject({
+      status: 'error',
+      content: '',
+      reasoningContent: '正在规划动画。',
+    })
+    expect(submit).toBeEnabled()
+    expect(transport).toHaveBeenCalledTimes(1)
+    act(() => {
+      TestXMLHttpRequest.instances[0].append({
+        choices: [{ delta: { content: html } }],
+      })
+    })
+    await act(async () => vi.advanceTimersByTimeAsync(50))
+    expect(readPelicanTestHistory(historyStorageKey(17))[0]).toMatchObject({
+      status: 'error',
+      content: '',
+    })
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('持续收到新的思考或正文时重新计时，允许总生成时间超过五分钟', async () => {
+  vi.spyOn(TestXMLHttpRequest, 'respond').mockImplementation(
+    () => new Promise(() => {})
+  )
+  renderWorkspace()
+  const submit = screen.getByRole('button', {
+    name: 'Generate and save result',
+  })
+  await waitFor(() => expect(submit).toBeEnabled())
+  vi.useFakeTimers()
+  try {
+    await act(async () => fireEvent.click(submit))
+    const xhr = TestXMLHttpRequest.instances[0]
+    await act(async () => vi.advanceTimersByTimeAsync(240000))
+    act(() => {
+      xhr.append({ choices: [{ delta: { reasoning_content: '规划完成。' } }] })
+    })
+    await act(async () => vi.advanceTimersByTimeAsync(240000))
+    expect(screen.getByRole('button', { name: 'Generating...' })).toBeDisabled()
+    act(() => {
+      xhr.append({ choices: [{ delta: { content: html } }] })
+      xhr.append('[DONE]')
+      xhr.finish()
+    })
+    await act(async () => vi.advanceTimersByTimeAsync(0))
+    expect(readPelicanTestHistory(historyStorageKey(17))[0]).toMatchObject({
+      status: 'success',
+      content: html,
+      reasoningContent: '规划完成。',
+    })
+    // 已结束的请求不能被遗留的超时回调改写为失败。
+    await act(async () => vi.advanceTimersByTimeAsync(300000))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
 it('think 标签跨分段返回时实时分离思考，正文内同名字符串保持不变', async () => {
   vi.spyOn(TestXMLHttpRequest, 'respond').mockImplementation(
     () => new Promise(() => {})

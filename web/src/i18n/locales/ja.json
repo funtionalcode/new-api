@@ -4136,6 +4136,7 @@
     "No models with unset prices": "価格未設定のモデルはありません",
     "No new models to add": "追加する新しいモデルはありません",
     "No new models yet": "新しいモデルはまだありません",
+    "No new output or reasoning received for 5 minutes. Partial results were preserved. Retry manually.": "5 分間、新しい出力や思考内容を受信していません。途中の結果は保存されています。手動で再試行してください。",
     "No newer version available.": "より新しいバージョンはありません。",
     "No nodes": "ノードなし",
     "No notable climbers right now": "現在、目立った上昇はありません",

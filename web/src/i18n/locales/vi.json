@@ -4136,6 +4136,7 @@
     "No models with unset prices": "Không có mô hình chưa thiết lập giá",
     "No new models to add": "Không có mô hình mới để thêm",
     "No new models yet": "Chưa có mô hình mới",
+    "No new output or reasoning received for 5 minutes. Partial results were preserved. Retry manually.": "Không nhận được nội dung đầu ra hoặc suy luận mới trong 5 phút. Kết quả một phần đã được giữ lại. Vui lòng thử lại thủ công.",
     "No newer version available.": "Không có phiên bản mới hơn.",
     "No nodes": "Không có nút",
     "No notable climbers right now": "Hiện chưa có mô hình nào tăng đáng kể",
