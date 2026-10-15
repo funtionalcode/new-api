@@ -3,6 +3,7 @@ package xai
 import (
 	"bytes"
 	"io"
+	"math"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
@@ -50,6 +52,108 @@ func TestGetRequestURLForcesSTTEndpoint(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, "https://example.com/v1/stt", requestURL)
+}
+
+func TestSpeechRequestAndAudioResponse(t *testing.T) {
+	for _, model := range []string{"grok-tts", "grok-voice-tts-1.0"} {
+		for _, format := range []string{"", "mp3", "wav", "pcm"} {
+			t.Run(model+"/"+format, func(t *testing.T) {
+				const text = " 你好，Grok 😀! "
+				var received map[string]any
+				audio := []byte{'I', 'D', '3', 0, 0xff, 0x01, 0x02}
+				upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					assert.Equal(t, "/v1/tts", r.URL.Path)
+					assert.Equal(t, "Bearer upstream-secret", r.Header.Get("Authorization"))
+					assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+					assert.Equal(t, "audio/*", r.Header.Get("Accept"))
+					assert.NoError(t, common.DecodeJson(r.Body, &received))
+					if format == "wav" || format == "pcm" {
+						w.Header().Set("Content-Type", "application/octet-stream")
+					} else {
+						w.Header().Set("Content-Type", "audio/mpeg")
+					}
+					w.Header().Set("X-CPA-TRACE-ID", "speech-trace")
+					_, _ = w.Write(audio)
+				}))
+				defer upstream.Close()
+				response := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(response)
+				c.Request = httptest.NewRequest(http.MethodPost, "/pg/audio/speech", nil)
+				c.Request.Header.Set("Content-Type", "application/json")
+				request := dto.AudioRequest{Model: model, Input: text, Voice: "alloy", ResponseFormat: format, Speed: common.GetPointer(1.2), Language: []byte(`"zh"`)}
+				info := &relaycommon.RelayInfo{RelayMode: relayconstant.RelayModeAudioSpeech, Request: &request, RequestURLPath: "/pg/audio/speech", ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeXai, ApiType: constant.APITypeXai, ChannelBaseUrl: upstream.URL, ApiKey: "upstream-secret"}}
+				info.SetEstimatePromptTokens(0)
+				adaptor := &Adaptor{}
+				adaptor.Init(info)
+				body, err := adaptor.ConvertAudioRequest(c, info, request)
+				require.NoError(t, err)
+				result, err := adaptor.DoRequest(c, info, body)
+				require.NoError(t, err)
+				usage, apiErr := adaptor.DoResponse(c, result.(*http.Response), info)
+				require.Nil(t, apiErr)
+				assert.Equal(t, text, received["text"])
+				assert.Equal(t, "ara", received["voice_id"])
+				assert.Equal(t, "zh", received["language"])
+				assert.Equal(t, 1.2, received["speed"])
+				assert.NotContains(t, received, "model")
+				assert.NotContains(t, received, "input")
+				if format == "pcm" || format == "wav" {
+					assert.Equal(t, map[string]any{"codec": format, "sample_rate": float64(24000)}, received["output_format"])
+				}
+				assert.Equal(t, http.StatusOK, response.Code)
+				assert.Equal(t, audio, response.Body.Bytes())
+				contentType := "audio/mpeg"
+				if format == "wav" || format == "pcm" {
+					contentType = "audio/" + format
+				}
+				assert.Equal(t, contentType, response.Header().Get("Content-Type"))
+				assert.Equal(t, "speech-trace", c.GetString(common.UpstreamRequestIdKey))
+				actual := usage.(*dto.Usage)
+				assert.Equal(t, 12, actual.PromptTokens)
+				assert.Equal(t, 12, actual.TotalTokens)
+				assert.Zero(t, actual.CompletionTokens)
+				assert.Zero(t, actual.CompletionTokenDetails.AudioTokens)
+			})
+		}
+	}
+}
+
+func TestSpeechRequestValidationAndDefaults(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		input dto.AudioRequest
+		valid bool
+	}{
+		{name: "默认参数", input: dto.AudioRequest{Input: "你好"}, valid: true},
+		{name: "字符上限", input: dto.AudioRequest{Input: strings.Repeat("你", 60000)}, valid: true},
+		{name: "空文本"},
+		{name: "空白文本", input: dto.AudioRequest{Input: "  "}},
+		{name: "超出字符上限", input: dto.AudioRequest{Input: strings.Repeat("你", 60001)}},
+		{name: "非法编码", input: dto.AudioRequest{Input: string([]byte{0xff})}},
+		{name: "速度为零", input: dto.AudioRequest{Input: "hello", Speed: common.GetPointer(0.0)}},
+		{name: "速度超出范围", input: dto.AudioRequest{Input: "hello", Speed: common.GetPointer(1.6)}},
+		{name: "速度非有限值", input: dto.AudioRequest{Input: "hello", Speed: common.GetPointer(math.Inf(1))}},
+		{name: "非法语言", input: dto.AudioRequest{Input: "hello", Language: []byte(`{"name":"zh"}`)}},
+		{name: "不支持的格式", input: dto.AudioRequest{Input: "hello", ResponseFormat: "opus"}},
+		{name: "不支持的流模式", input: dto.AudioRequest{Input: "hello", StreamFormat: "sse"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			info := &relaycommon.RelayInfo{RelayMode: relayconstant.RelayModeAudioSpeech}
+			body, err := (&Adaptor{}).ConvertAudioRequest(nil, info, tc.input)
+			if !tc.valid {
+				require.Error(t, err)
+				assert.Equal(t, http.StatusBadRequest, types.NewError(err, types.ErrorCodeConvertRequestFailed).StatusCode)
+				return
+			}
+			require.NoError(t, err)
+			var payload map[string]any
+			require.NoError(t, common.DecodeJson(body, &payload))
+			assert.Equal(t, "eve", payload["voice_id"])
+			assert.Equal(t, "auto", payload["language"])
+			assert.NotContains(t, payload, "speed")
+			assert.NotContains(t, payload, "output_format")
+		})
+	}
 }
 
 func TestDoRequestUsesWebsocketForResponses(t *testing.T) {

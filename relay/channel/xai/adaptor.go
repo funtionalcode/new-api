@@ -23,7 +23,9 @@ import (
 )
 
 type Adaptor struct {
-	openaiAdaptor openai.Adaptor
+	openaiAdaptor     openai.Adaptor
+	speechCharacters  int
+	speechContentType string
 }
 
 func (a *Adaptor) ConvertGeminiRequest(*gin.Context, *relaycommon.RelayInfo, *dto.GeminiChatRequest) (any, error) {
@@ -38,6 +40,13 @@ func (a *Adaptor) ConvertClaudeRequest(*gin.Context, *relaycommon.RelayInfo, *dt
 }
 
 func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.AudioRequest) (io.Reader, error) {
+	if info.RelayMode == constant.RelayModeAudioSpeech {
+		body, err := a.convertSpeechRequest(request)
+		if err != nil {
+			return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+		return body, nil
+	}
 	if info.RelayMode != constant.RelayModeAudioTranscription {
 		return nil, errors.New("not available")
 	}
@@ -123,6 +132,8 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 		requestURLPath = "/v1/images/edits"
 	case constant.RelayModeAudioTranscription:
 		requestURLPath = "/v1/stt"
+	case constant.RelayModeAudioSpeech:
+		requestURLPath = "/v1/tts"
 	}
 	return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, requestURLPath, info.ChannelType), nil
 }
@@ -130,6 +141,10 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *relaycommon.RelayInfo) error {
 	channel.SetupApiRequestHeader(info, c, req)
 	req.Set("Authorization", "Bearer "+info.ApiKey)
+	if info.RelayMode == constant.RelayModeAudioSpeech {
+		req.Set("Content-Type", "application/json")
+		req.Set("Accept", "audio/*")
+	}
 	return nil
 }
 
@@ -289,6 +304,8 @@ func xaiImageEditIsJSON(c *gin.Context) bool {
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
 	switch info.RelayMode {
+	case constant.RelayModeAudioSpeech:
+		usage, err = a.speechResponse(c, resp)
 	case constant.RelayModeAudioTranscription:
 		err, usage = openai.OpenaiSTTHandler(c, resp, info, "")
 	case constant.RelayModeImagesGenerations, constant.RelayModeImagesEdits:
