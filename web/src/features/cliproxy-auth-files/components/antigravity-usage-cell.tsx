@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import {
@@ -21,10 +22,30 @@ export function AntigravityUsageCell(props: {
     CliproxyAuthFileBinding,
     'last_antigravity_quota' | 'last_error'
   > &
-    Partial<Pick<CliproxyAuthFileBinding, 'last_plan_type'>>
+    Partial<
+      Pick<CliproxyAuthFileBinding, 'last_plan_type' | 'last_refreshed_at'>
+    >
 }) {
   const { t, i18n } = useTranslation()
   const buckets = parseAntigravityQuota(props.binding.last_antigravity_quota)
+  const error = props.binding.last_error.trim()
+  if (
+    error ||
+    buckets === null ||
+    (buckets.length === 0 && props.binding.last_refreshed_at)
+  ) {
+    return (
+      <Alert variant='destructive' className='max-w-[460px]'>
+        <AlertTitle>{t('Error')}</AlertTitle>
+        <AlertDescription className='text-xs break-words whitespace-pre-wrap'>
+          {error ||
+            t(
+              'Invalid or incomplete Antigravity quota data. Refresh to view the upstream error.'
+            )}
+        </AlertDescription>
+      </Alert>
+    )
+  }
   const plan = getCliproxyPlanLabelConfig(
     'antigravity',
     props.binding.last_plan_type
@@ -40,31 +61,27 @@ export function AntigravityUsageCell(props: {
     { prefix: '3p-', label: t('Claude and GPT models') },
   ].map((group) => ({
     ...group,
-    windows: ['5h', 'weekly'].map((window) => {
-      const bucket = buckets.find(
-        (item) => item.bucket_id === group.prefix + window
-      )
-      const remaining = bucket?.remaining_fraction
-      const available = !!bucket && !bucket.disabled && remaining !== undefined
-      const percent = available ? (1 - remaining) * 100 : 0
-      let progressColor = '[&_[data-slot=progress-indicator]]:bg-emerald-500'
-      if (percent >= 90) {
-        progressColor = '[&_[data-slot=progress-indicator]]:bg-rose-500'
-      } else if (percent >= 70) {
-        progressColor = '[&_[data-slot=progress-indicator]]:bg-amber-500'
-      }
-      return {
-        key: window,
-        label: window === '5h' ? t('5-Hour Window') : t('Weekly Window'),
-        available,
-        percent,
-        progressColor,
-        value: available
-          ? `${numberFormat.format(percent)}%`
-          : t('Unavailable'),
-        resetAt: bucket?.reset_at || 0,
-      }
-    }),
+    windows: buckets
+      .filter((bucket) => bucket.bucket_id.startsWith(group.prefix))
+      .map((bucket) => {
+        const percent = (1 - bucket.remaining_fraction) * 100
+        let progressColor = '[&_[data-slot=progress-indicator]]:bg-emerald-500'
+        if (percent >= 90) {
+          progressColor = '[&_[data-slot=progress-indicator]]:bg-rose-500'
+        } else if (percent >= 70) {
+          progressColor = '[&_[data-slot=progress-indicator]]:bg-amber-500'
+        }
+        return {
+          key: bucket.bucket_id,
+          label: bucket.bucket_id.endsWith('-5h')
+            ? t('5-Hour Window')
+            : t('Weekly Window'),
+          percent,
+          progressColor,
+          value: `${numberFormat.format(percent)}%`,
+          resetAt: bucket.reset_at,
+        }
+      }),
   }))
 
   return (
@@ -96,36 +113,25 @@ export function AntigravityUsageCell(props: {
                       {window.value}
                     </span>
                   </div>
-                  {window.available ? (
-                    <Progress
-                      aria-label={`${groups[0].label} ${window.label} ${t('Used')}`}
-                      value={window.percent}
-                      className={cn('h-1.5', window.progressColor)}
-                    />
-                  ) : null}
+                  <Progress
+                    aria-label={`${groups[0].label} ${window.label} ${t('Used')}`}
+                    value={window.percent}
+                    className={cn('h-1.5', window.progressColor)}
+                  />
                 </div>
               ))}
             </div>
           )}
-          {plan || props.binding.last_error ? (
-            <div className='flex items-center gap-2'>
-              {plan ? (
-                <Badge
-                  variant='outline'
-                  className={cn(
-                    'inline-flex h-6 items-center gap-1 rounded-md px-2 font-mono text-[11px] font-semibold tracking-normal',
-                    plan.className
-                  )}
-                >
-                  {plan.label}
-                </Badge>
-              ) : null}
-              {props.binding.last_error ? (
-                <Badge variant='destructive' className='h-5 px-1.5 text-[11px]'>
-                  {t('Error')}
-                </Badge>
-              ) : null}
-            </div>
+          {plan ? (
+            <Badge
+              variant='outline'
+              className={cn(
+                'inline-flex h-6 items-center gap-1 rounded-md px-2 font-mono text-[11px] font-semibold tracking-normal',
+                plan.className
+              )}
+            >
+              {plan.label}
+            </Badge>
           ) : null}
         </TooltipTrigger>
         <TooltipContent
@@ -136,40 +142,37 @@ export function AntigravityUsageCell(props: {
         >
           <div className='grid gap-3'>
             {buckets.length > 0 ? (
-              groups.map((group) => (
-                <section
-                  key={group.prefix}
-                  aria-label={group.label}
-                  className='space-y-2'
-                >
-                  <div className='font-semibold'>{group.label}</div>
-                  {group.windows.map((window) => (
-                    <div
-                      key={window.key}
-                      className='grid grid-cols-[minmax(8rem,1fr)_auto] gap-x-4 gap-y-0.5'
-                    >
-                      <span>{window.label}</span>
-                      <span className='font-mono font-semibold'>
-                        {window.value}
-                      </span>
-                      <span className='text-background/70 col-span-2'>
-                        {t('Reset')}:{' '}
-                        {window.resetAt > 0
-                          ? formatTimestampToDate(window.resetAt)
-                          : '-'}
-                      </span>
-                    </div>
-                  ))}
-                </section>
-              ))
+              groups
+                .filter((group) => group.windows.length > 0)
+                .map((group) => (
+                  <section
+                    key={group.prefix}
+                    aria-label={group.label}
+                    className='space-y-2'
+                  >
+                    <div className='font-semibold'>{group.label}</div>
+                    {group.windows.map((window) => (
+                      <div
+                        key={window.key}
+                        className='grid grid-cols-[minmax(8rem,1fr)_auto] gap-x-4 gap-y-0.5'
+                      >
+                        <span>{window.label}</span>
+                        <span className='font-mono font-semibold'>
+                          {window.value}
+                        </span>
+                        <span className='text-background/70 col-span-2'>
+                          {t('Reset')}:{' '}
+                          {window.resetAt > 0
+                            ? formatTimestampToDate(window.resetAt)
+                            : '-'}
+                        </span>
+                      </div>
+                    ))}
+                  </section>
+                ))
             ) : (
               <span>{t('No quota data')}</span>
             )}
-            {props.binding.last_error ? (
-              <div className='border-background/15 text-background/80 border-t pt-2 break-words whitespace-pre-wrap'>
-                {props.binding.last_error}
-              </div>
-            ) : null}
           </div>
         </TooltipContent>
       </Tooltip>

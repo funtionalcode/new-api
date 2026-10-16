@@ -19,7 +19,7 @@ type cliproxyAntigravityQuotaBucket struct {
 	Disabled          bool     `json:"disabled,omitempty"`
 }
 
-func fetchCliproxyAntigravityPlan(ctx context.Context, caller cliproxyAPICaller, authIndex string) string {
+func fetchCliproxyAntigravityPlan(ctx context.Context, caller cliproxyAPICaller, authIndex string) (string, error) {
 	result, err := caller.CallAPI(ctx, service.CliproxyAPICallRequest{
 		AuthIndex: authIndex,
 		Method:    http.MethodPost,
@@ -31,8 +31,14 @@ func fetchCliproxyAntigravityPlan(ctx context.Context, caller cliproxyAPICaller,
 		},
 		Data: `{"metadata":{"ideType":"ANTIGRAVITY"}}`,
 	})
-	if err != nil || result == nil || result.Status >= http.StatusBadRequest || result.StatusCode >= http.StatusBadRequest {
-		return ""
+	if err != nil {
+		return "", fmt.Errorf("Antigravity 套餐查询失败: %w", err)
+	}
+	if result == nil {
+		return "", fmt.Errorf("Antigravity 套餐查询结果为空")
+	}
+	if status := max(result.Status, result.StatusCode); status >= http.StatusBadRequest {
+		return "", fmt.Errorf("Antigravity 套餐查询失败，上游状态码: %d", status)
 	}
 	body := result.Body
 	if len(body) == 0 {
@@ -43,13 +49,36 @@ func fetchCliproxyAntigravityPlan(ctx context.Context, caller cliproxyAPICaller,
 		tier := mapFromMap(body, key)
 		id := stringFromMap(tier, "id")
 		if id == "free-tier" {
-			return "Free"
+			return "Free", nil
 		}
 		if plan := firstNonEmpty(stringFromMap(tier, "name"), id); plan != "" {
-			return plan
+			return plan, nil
 		}
 	}
-	return ""
+	return "", fmt.Errorf("Antigravity 查询结果缺少套餐信息")
+}
+
+func refreshCliproxyAntigravityUsage(ctx context.Context, caller cliproxyAPICaller, binding *model.CliproxyAuthFileBinding) (cliproxyUsageRefreshBody, error) {
+	result, err := caller.CallAPI(ctx, buildCliproxyUsageRefreshRequest(binding))
+	if err != nil {
+		return cliproxyUsageRefreshBody{}, err
+	}
+	if result == nil {
+		return cliproxyUsageRefreshBody{}, fmt.Errorf("Antigravity 额度查询结果为空")
+	}
+	body := result.Body
+	if len(body) == 0 {
+		body = result.Data
+	}
+	usage, err := extractCliproxyAntigravityUsage(body)
+	if err != nil {
+		return cliproxyUsageRefreshBody{}, err
+	}
+	usage.PlanType, err = fetchCliproxyAntigravityPlan(ctx, caller, binding.AuthIndex)
+	if err != nil {
+		return cliproxyUsageRefreshBody{}, err
+	}
+	return usage, nil
 }
 
 func isCliproxyAntigravityAuthFile(binding *model.CliproxyAuthFileBinding) bool {
@@ -96,11 +125,17 @@ func extractCliproxyAntigravityUsage(body map[string]any) (cliproxyUsageRefreshB
 			if _, exists := buckets[bucket.BucketID]; exists {
 				return cliproxyUsageRefreshBody{}, fmt.Errorf("Antigravity 额度窗口重复: %s", bucket.BucketID)
 			}
+			if bucket.Disabled {
+				return cliproxyUsageRefreshBody{}, fmt.Errorf("Antigravity 额度窗口已禁用: %s", bucket.BucketID)
+			}
 			fraction := bucket.RemainingFraction
 			if fraction == nil && bucket.Remaining != nil {
 				fraction = bucket.Remaining.Fraction
 			}
-			if fraction != nil && (math.IsNaN(*fraction) || math.IsInf(*fraction, 0) || *fraction < 0 || *fraction > 1) {
+			if fraction == nil {
+				return cliproxyUsageRefreshBody{}, fmt.Errorf("Antigravity 额度窗口缺少剩余额度: %s", bucket.BucketID)
+			}
+			if math.IsNaN(*fraction) || math.IsInf(*fraction, 0) || *fraction < 0 || *fraction > 1 {
 				return cliproxyUsageRefreshBody{}, fmt.Errorf("Antigravity 剩余额度超出范围: %s", bucket.BucketID)
 			}
 			var resetAt int64
@@ -114,8 +149,10 @@ func extractCliproxyAntigravityUsage(body map[string]any) (cliproxyUsageRefreshB
 			buckets[bucket.BucketID] = cliproxyAntigravityQuotaBucket{BucketID: bucket.BucketID, RemainingFraction: fraction, ResetAt: resetAt, Disabled: bucket.Disabled}
 		}
 	}
-	if len(buckets) == 0 {
-		return cliproxyUsageRefreshBody{}, fmt.Errorf("Antigravity 刷新结果缺少额度窗口")
+	for _, id := range []string{"gemini-5h", "gemini-weekly"} {
+		if _, ok := buckets[id]; !ok {
+			return cliproxyUsageRefreshBody{}, fmt.Errorf("Antigravity 刷新结果缺少额度窗口: %s", id)
+		}
 	}
 	ordered := make([]cliproxyAntigravityQuotaBucket, 0, len(buckets))
 	for _, id := range []string{"gemini-5h", "gemini-weekly", "3p-5h", "3p-weekly"} {

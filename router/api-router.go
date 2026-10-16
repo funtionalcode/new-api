@@ -377,6 +377,7 @@ func SetApiRouter(router *gin.Engine) {
 			cliproxyAdminRoute := cliproxyRoute.Group("")
 			cliproxyAdminRoute.Use(middleware.AdminAuth())
 			{
+				cliproxyAdminRoute.GET("/jev-daily-usage", controller.GetJevDailyUsage)
 				cliproxyAdminRoute.GET("/auth-files/remote", controller.GetCliproxyRemoteAuthFiles)
 				cliproxyAdminRoute.POST("/auth-files/bindings", controller.CreateCliproxyAuthFileBinding)
 				cliproxyAdminRoute.PUT("/auth-files/bindings/:id", controller.UpdateCliproxyAuthFileBinding)

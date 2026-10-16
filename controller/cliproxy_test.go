@@ -23,6 +23,33 @@ type fakeCliproxyAPICaller struct {
 	errors    map[string]error
 }
 
+func TestJevDailyUsageRejectsUnauthorizedAndInvalidRanges(t *testing.T) {
+	for _, tc := range []struct {
+		name, query  string
+		role, status int
+	}{
+		{name: "普通用户不能读取管理员日报", role: common.RoleCommonUser, query: "?start_timestamp=100&end_timestamp=86500", status: http.StatusForbidden},
+		{name: "缺少日期", role: common.RoleAdminUser, status: http.StatusBadRequest},
+		{name: "非法日期", role: common.RoleAdminUser, query: "?start_timestamp=bad&end_timestamp=86500", status: http.StatusBadRequest},
+		{name: "跨度过长", role: common.RoleAdminUser, query: "?start_timestamp=100&end_timestamp=172900", status: http.StatusBadRequest},
+		{name: "结束时间早于开始", role: common.RoleAdminUser, query: "?start_timestamp=100&end_timestamp=99", status: http.StatusBadRequest},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			ctx, _ := gin.CreateTestContext(response)
+			ctx.Set("role", tc.role)
+			ctx.Request = httptest.NewRequest(http.MethodGet, "/api/cliproxy/jev-daily-usage"+tc.query, nil)
+			GetJevDailyUsage(ctx)
+			assert.Equal(t, tc.status, response.Code)
+			var body struct {
+				Success bool `json:"success"`
+			}
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &body))
+			assert.False(t, body.Success)
+		})
+	}
+}
+
 func TestGetCliproxyRemoteAuthFilesIncludesBindingState(t *testing.T) {
 	originalDB := model.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})

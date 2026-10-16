@@ -61,3 +61,42 @@ export interface GetUserConsumptionParams {
 export type GetUserConsumptionResponse = ApiResponse<
   PageResponse<UserConsumptionSummary>
 >
+
+export type JevUsageStatus =
+  | 'used'
+  | 'not_used'
+  | 'not_applied'
+  | 'unknown'
+  | 'evaluation_only'
+  | 'no_activity'
+
+export interface JevUsageMetrics {
+  request_count: number
+  prompt_tokens: number
+  completion_tokens: number
+  quota: number
+  use_time_seconds: number
+  cached_decisions: number
+  evaluation_requests: number
+  evaluation_prompt_tokens: number
+  evaluation_completion_tokens: number
+  evaluation_quota: number
+}
+
+export interface JevDailyUsageRow extends JevUsageMetrics {
+  user_id: number
+  username: string
+  auth_index: string
+  auth_name: string
+  provider: string
+  bound: boolean
+  model_name: string
+  jev_status: JevUsageStatus
+}
+
+export interface JevDailyReport {
+  start_timestamp: number
+  end_timestamp: number
+  log_count: number
+  rows: JevDailyUsageRow[]
+}

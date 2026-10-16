@@ -16,12 +16,35 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { t } from 'i18next'
+
 import { api } from '@/lib/api'
-import type { GetUserConsumptionParams, GetUserConsumptionResponse } from './types'
+import { createServerError } from '@/lib/server-error-message'
+
+import type {
+  GetUserConsumptionParams,
+  GetUserConsumptionResponse,
+  ApiResponse,
+  JevDailyReport,
+} from './types'
 
 export async function getUserConsumption(
   params: GetUserConsumptionParams = {}
 ): Promise<GetUserConsumptionResponse> {
   const res = await api.get('/api/cliproxy/user-consumption', { params })
   return res.data
+}
+
+export async function getJevDailyUsage(
+  params: { start_timestamp: number; end_timestamp: number },
+  signal?: AbortSignal
+): Promise<JevDailyReport> {
+  const response = await api.get<ApiResponse<JevDailyReport>>(
+    '/api/cliproxy/jev-daily-usage',
+    { params, signal }
+  )
+  if (!response.data.success || !response.data.data) {
+    throw createServerError(response.data, t('Failed to load Jev daily usage'))
+  }
+  return response.data.data
 }

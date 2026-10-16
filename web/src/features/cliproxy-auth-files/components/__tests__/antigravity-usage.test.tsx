@@ -12,7 +12,7 @@ describe('Antigravity 额度展示', () => {
           last_plan_type: 'Google AI Pro',
           last_error: '',
           last_antigravity_quota:
-            '[{"bucket_id":"gemini-5h","remaining_fraction":0.9804,"reset_at":0}]',
+            '[{"bucket_id":"gemini-5h","remaining_fraction":0.9804,"reset_at":0},{"bucket_id":"gemini-weekly","remaining_fraction":1,"reset_at":0}]',
         }}
       />
     )
@@ -93,6 +93,11 @@ describe('Antigravity 额度展示', () => {
                 remaining_fraction: remaining,
                 reset_at: 0,
               },
+              {
+                bucket_id: 'gemini-weekly',
+                remaining_fraction: 0.65,
+                reset_at: 0,
+              },
             ]),
           }}
         />
@@ -108,29 +113,63 @@ describe('Antigravity 额度展示', () => {
     }
   )
 
-  test('缺失和禁用窗口显示不可用，不伪造满额', () => {
+  test.each([
+    '[{"bucket_id":"gemini-5h","disabled":true,"remaining_fraction":1,"reset_at":0}]',
+    '[{"bucket_id":"gemini-5h","reset_at":0}]',
+    '[{"bucket_id":"gemini-5h","remaining_fraction":1,"reset_at":0}]',
+    '[{"bucket_id":"gemini-5h","remaining_fraction":2,"reset_at":0}]',
+    'invalid JSON',
+    '[]',
+  ])(
+    '额度窗口无效或缺失时直接显示错误，不保留套餐或不可用占位: %s',
+    (quota) => {
+      render(
+        <AntigravityUsageCell
+          binding={{
+            last_error: '',
+            last_plan_type: 'Google AI Pro',
+            last_antigravity_quota: quota,
+          }}
+        />
+      )
+      expect(screen.getByRole('alert')).toHaveTextContent('Error')
+      expect(screen.queryByText('Unavailable')).not.toBeInTheDocument()
+      expect(screen.queryByText('Pro')).not.toBeInTheDocument()
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+    }
+  )
+
+  test('刷新失败直接显示具体原因，不显示上次成功的额度和套餐', () => {
+    const error =
+      '刷新额度失败，上游状态码: 403; PERMISSION_DENIED; VALIDATION_REQUIRED; Verify your account to continue.'
     render(
       <AntigravityUsageCell
         binding={{
-          last_error: '',
+          last_error: error,
+          last_plan_type: 'Google AI Pro',
           last_antigravity_quota:
-            '[{"bucket_id":"gemini-5h","disabled":true,"remaining_fraction":1,"reset_at":0}]',
+            '[{"bucket_id":"gemini-5h","remaining_fraction":0.9804,"reset_at":0},{"bucket_id":"gemini-weekly","remaining_fraction":1,"reset_at":0}]',
         }}
       />
     )
-    expect(screen.getAllByText('Unavailable')).toHaveLength(2)
+    expect(screen.getByRole('alert')).toHaveTextContent(error)
+    expect(screen.queryByText('No quota data')).not.toBeInTheDocument()
+    expect(screen.queryByText('Pro')).not.toBeInTheDocument()
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
   })
 
-  test('首次刷新失败显示错误标记，键盘聚焦后显示错误详情', async () => {
-    const user = userEvent.setup()
-    const error =
-      '刷新额度失败，上游状态码: 403; PERMISSION_DENIED; VALIDATION_REQUIRED; Verify your account to continue.'
-    render(<AntigravityUsageCell binding={{ last_error: error }} />)
+  test('有成功刷新时间却没有额度时显示错误，未刷新时保持空状态', () => {
+    const { rerender } = render(
+      <AntigravityUsageCell binding={{ last_error: '' }} />
+    )
     expect(screen.getByText('No quota data')).toBeInTheDocument()
-    expect(screen.getByText('Error')).toBeInTheDocument()
-    expect(screen.queryByText(error)).not.toBeInTheDocument()
-    await user.tab()
-    expect(await screen.findByRole('tooltip')).toHaveTextContent(error)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    rerender(
+      <AntigravityUsageCell
+        binding={{ last_error: '', last_refreshed_at: 1 }}
+      />
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent('Error')
+    expect(screen.queryByText('No quota data')).not.toBeInTheDocument()
   })
 })

@@ -220,6 +220,12 @@ func RefreshCliproxyAuthFileBindingUsage(c *gin.Context) {
 	}
 	client, err := newCliproxyClientFromOptions()
 	if err != nil {
+		if isCliproxyAntigravityAuthFile(binding) {
+			_, updateErr := model.UpdateCliproxyAuthFileBindingUsage(id, model.CliproxyUsageRefreshUpdate{Provider: "antigravity", LastError: err.Error()})
+			if updateErr != nil {
+				err = fmt.Errorf("刷新额度失败: %s；保存错误失败: %w", err.Error(), updateErr)
+			}
+		}
 		common.ApiError(c, err)
 		return
 	}
@@ -259,6 +265,31 @@ func RefreshCliproxyAuthFileBindingUsage(c *gin.Context) {
 		common.ApiSuccess(c, updatedBinding)
 		return
 	}
+	if isCliproxyAntigravityAuthFile(binding) {
+		usage, refreshErr := refreshCliproxyAntigravityUsage(c.Request.Context(), client, binding)
+		update := model.CliproxyUsageRefreshUpdate{
+			Provider:             "antigravity",
+			LastPlanType:         usage.PlanType,
+			LastAntigravityQuota: usage.AntigravityQuota,
+		}
+		if refreshErr != nil {
+			update.LastError = refreshErr.Error()
+		}
+		updatedBinding, updateErr := model.UpdateCliproxyAuthFileBindingUsage(id, update)
+		if updateErr != nil {
+			if refreshErr != nil {
+				updateErr = fmt.Errorf("刷新额度失败: %s；保存错误失败: %w", refreshErr.Error(), updateErr)
+			}
+			common.ApiError(c, updateErr)
+			return
+		}
+		if refreshErr != nil {
+			common.ApiError(c, refreshErr)
+			return
+		}
+		common.ApiSuccess(c, updatedBinding)
+		return
+	}
 	result, err := client.CallAPI(c.Request.Context(), buildCliproxyUsageRefreshRequest(binding))
 	if err != nil {
 		updatedBinding, updateErr := model.UpdateCliproxyAuthFileBindingUsage(id, model.CliproxyUsageRefreshUpdate{LastError: err.Error()})
@@ -282,13 +313,8 @@ func RefreshCliproxyAuthFileBindingUsage(c *gin.Context) {
 	if isCliproxyClaudeAuthFile(binding) {
 		usage.PlanType = firstNonEmpty(fetchCliproxyClaudeProfilePlan(c.Request.Context(), client, binding.AuthIndex), binding.LastPlanType, usage.PlanType)
 	}
-	usageProvider := binding.Provider
-	if isCliproxyAntigravityAuthFile(binding) {
-		usage.PlanType = firstNonEmpty(fetchCliproxyAntigravityPlan(c.Request.Context(), client, binding.AuthIndex), binding.LastPlanType, usage.PlanType)
-		usageProvider = "antigravity"
-	}
 	updatedBinding, err := model.UpdateCliproxyAuthFileBindingUsage(id, model.CliproxyUsageRefreshUpdate{
-		Provider:                  usageProvider,
+		Provider:                  binding.Provider,
 		LastUsageTokens:           usage.UsedTokens,
 		LastUsageQuota:            usage.Quota,
 		LastPlanType:              usage.PlanType,

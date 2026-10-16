@@ -16,10 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { CalendarRange, RefreshCw } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+
 import { DateTimePicker } from '@/components/datetime-picker'
 import { SectionPageLayout } from '@/components/layout'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -32,10 +33,11 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { TIME_RANGE_PRESETS } from '@/features/dashboard/constants'
 import { formatTimestampToDate } from '@/lib/format'
 import { getRollingDateRange } from '@/lib/time'
+
 import { getUserConsumption } from './api'
 import {
   TokenStatCards,
@@ -43,6 +45,7 @@ import {
   TokenQuotaCharts,
   UserQuotaCharts,
 } from './components'
+import { JevDailyComparison } from './components/jev-daily-comparison'
 
 const defaultRangeDays = 29
 
@@ -51,6 +54,32 @@ function toUnixSeconds(date: Date | undefined): number | undefined {
 }
 
 export function UserConsumption() {
+  const { t } = useTranslation()
+  return (
+    <Tabs defaultValue='overview' className='min-h-0 flex-1'>
+      <div className='shrink-0 overflow-x-auto px-4 pt-4'>
+        <TabsList>
+          <TabsTrigger value='overview'>
+            {t('Consumption overview')}
+          </TabsTrigger>
+          <TabsTrigger value='jev'>{t('Jev daily comparison')}</TabsTrigger>
+        </TabsList>
+      </div>
+      <TabsContent value='overview' className='min-h-0 flex-1 overflow-hidden'>
+        <div className='flex h-full min-h-0 flex-col'>
+          <ConsumptionOverview />
+        </div>
+      </TabsContent>
+      <TabsContent value='jev' className='min-h-0 flex-1 overflow-hidden'>
+        <div className='flex h-full min-h-0 flex-col'>
+          <JevDailyComparison />
+        </div>
+      </TabsContent>
+    </Tabs>
+  )
+}
+
+function ConsumptionOverview() {
   const { t } = useTranslation()
   const [selectedRange, setSelectedRange] = useState<number | null>(
     defaultRangeDays

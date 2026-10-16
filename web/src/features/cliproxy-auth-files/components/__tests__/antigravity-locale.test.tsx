@@ -25,7 +25,7 @@ test.each(['zhCN', 'zhTW'])(
           binding={{
             last_error: '',
             last_antigravity_quota:
-              '[{"bucket_id":"gemini-5h","remaining_fraction":0.9917125,"reset_at":0}]',
+              '[{"bucket_id":"gemini-5h","remaining_fraction":0.9917125,"reset_at":0},{"bucket_id":"gemini-weekly","remaining_fraction":1,"reset_at":0}]',
           }}
         />
       </I18nextProvider>
@@ -33,7 +33,13 @@ test.each(['zhCN', 'zhTW'])(
 
     expect(screen.getByText('0.83%')).toBeInTheDocument()
     expect(
-      Number(screen.getByRole('progressbar').getAttribute('aria-valuenow'))
+      Number(
+        screen
+          .getByRole('progressbar', {
+            name: 'Gemini Models 5-Hour Window Used',
+          })
+          .getAttribute('aria-valuenow')
+      )
     ).toBeCloseTo(0.82875)
   }
 )

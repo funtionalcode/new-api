@@ -310,7 +310,10 @@ func UpdateCliproxyAuthFileBindingUsage(id int, update CliproxyUsageRefreshUpdat
 	if err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(update.LastError) != "" && !update.AllowPartialUsage {
+	if strings.TrimSpace(update.LastError) != "" && strings.EqualFold(firstNonEmpty(update.Provider, binding.Provider), "antigravity") {
+		// Antigravity 刷新失败只保存错误，避免旧套餐和额度被当成本次结果。
+		update = CliproxyUsageRefreshUpdate{Provider: "antigravity", LastError: update.LastError, PreserveLastRefreshedAt: true}
+	} else if strings.TrimSpace(update.LastError) != "" && !update.AllowPartialUsage {
 		update.LastUsageTokens = binding.LastUsageTokens
 		update.LastUsageQuota = binding.LastUsageQuota
 		update.LastPlanType = binding.LastPlanType

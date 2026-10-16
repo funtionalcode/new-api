@@ -57,9 +57,12 @@ func TestExtractAntigravityUsageHandlesUnavailableAndInvalidBuckets(t *testing.T
 		name, body string
 		wantError  bool
 	}{
-		{"disabled", `{"groups":[{"buckets":[{"bucketId":"gemini-5h","disabled":true}]}]}`, false},
-		{"unknown remaining", `{"groups":[{"buckets":[{"bucketId":"gemini-5h"}]}]}`, false},
-		{"nested fraction", `{"groups":[{"buckets":[{"bucketId":"gemini-5h","remaining":{"remainingFraction":0.5}}]}]}`, false},
+		{"disabled", `{"groups":[{"buckets":[{"bucketId":"gemini-5h","disabled":true}]}]}`, true},
+		{"unknown remaining", `{"groups":[{"buckets":[{"bucketId":"gemini-5h"}]}]}`, true},
+		{"nested fraction", `{"groups":[{"buckets":[{"bucketId":"gemini-5h","remaining":{"remainingFraction":0.5}},{"bucketId":"gemini-weekly","remainingFraction":1}]}]}`, false},
+		{"missing weekly window", `{"groups":[{"buckets":[{"bucketId":"gemini-5h","remainingFraction":0.5}]}]}`, true},
+		{"missing Gemini windows", `{"groups":[{"buckets":[{"bucketId":"3p-5h","remainingFraction":0.5}]}]}`, true},
+		{"duplicate window", `{"groups":[{"buckets":[{"bucketId":"gemini-5h","remainingFraction":0.5},{"bucketId":"gemini-5h","remainingFraction":0.4}]}]}`, true},
 		{"empty", `{"groups":[]}`, true},
 		{"invalid fraction", `{"groups":[{"buckets":[{"bucketId":"gemini-5h","remainingFraction":2}]}]}`, true},
 		{"invalid date", `{"groups":[{"buckets":[{"bucketId":"gemini-5h","remainingFraction":1,"resetTime":"invalid"}]}]}`, true},
@@ -75,14 +78,9 @@ func TestExtractAntigravityUsageHandlesUnavailableAndInvalidBuckets(t *testing.T
 			require.NoError(t, err)
 			var buckets []cliproxyAntigravityQuotaBucket
 			require.NoError(t, common.UnmarshalJsonStr(usage.AntigravityQuota, &buckets))
-			require.Len(t, buckets, 1)
-			if tt.name == "nested fraction" {
-				require.NotNil(t, buckets[0].RemainingFraction)
-				assert.Equal(t, 0.5, *buckets[0].RemainingFraction)
-			} else {
-				assert.Nil(t, buckets[0].RemainingFraction)
-			}
-			assert.Equal(t, tt.name == "disabled", buckets[0].Disabled)
+			require.Len(t, buckets, 2)
+			require.NotNil(t, buckets[0].RemainingFraction)
+			assert.Equal(t, 0.5, *buckets[0].RemainingFraction)
 		})
 	}
 }

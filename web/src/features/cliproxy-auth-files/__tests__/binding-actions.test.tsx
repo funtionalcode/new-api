@@ -206,3 +206,50 @@ it('保存绑定失败时保留未绑定状态，取消后仍可重新绑定', a
   ).getByRole('button', { name: 'Bind User' })
   expect(button).toBeEnabled()
 })
+
+it.each([false, true])(
+  '额度刷新失败后重新读取绑定并展示错误，请求拒绝=%s',
+  async (rejected) => {
+    let binding = {
+      id: 1,
+      user_id: 1,
+      username: 'admin',
+      auth_index: 'ag',
+      auth_name: 'antigravity-user@example.com.json',
+      provider: 'antigravity',
+      enabled: true,
+      last_plan_type: 'Google AI Pro',
+      last_refreshed_at: 123,
+      last_antigravity_quota:
+        '[{"bucket_id":"gemini-5h","remaining_fraction":0.9804,"reset_at":0},{"bucket_id":"gemini-weekly","remaining_fraction":1,"reset_at":0}]',
+      last_error: '',
+    }
+    vi.spyOn(api, 'get').mockImplementation(async (url) => ({
+      data: {
+        success: true,
+        data: String(url).endsWith('/bindings')
+          ? { items: [binding], total: 1 }
+          : [],
+      },
+    }))
+    vi.spyOn(api, 'post').mockImplementation(async () => {
+      binding = {
+        ...binding,
+        last_plan_type: '',
+        last_antigravity_quota: '',
+        last_error: 'Antigravity 额度查询失败: 403',
+      }
+      if (rejected) throw new Error(binding.last_error)
+      return { data: { success: false, message: binding.last_error } }
+    })
+    renderPage()
+    expect(await screen.findByText('Pro')).toBeInTheDocument()
+    const row = screen.getByRole('row', { name: /user@example\.com/ })
+    await userEvent.click(within(row).getByRole('button', { name: 'Refresh' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      binding.last_error
+    )
+    expect(screen.queryByText('Pro')).not.toBeInTheDocument()
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+  }
+)

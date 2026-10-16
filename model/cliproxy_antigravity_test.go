@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestCliproxyAntigravitySnapshotSurvivesEditAndFailedRefresh(t *testing.T) {
+func TestCliproxyAntigravitySnapshotSurvivesEditButNotFailedRefresh(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	originalDB := DB
@@ -25,11 +25,17 @@ func TestCliproxyAntigravitySnapshotSurvivesEditAndFailedRefresh(t *testing.T) {
 	require.NoError(t, err)
 	_, err = UpdateCliproxyAuthFileBinding(1, CliproxyAuthFileBindingUpdate{UserId: 1, AuthIndex: "ag", AuthName: "account.json", Note: "已更新备注", Enabled: true})
 	require.NoError(t, err)
-	_, err = UpdateCliproxyAuthFileBindingUsage(1, CliproxyUsageRefreshUpdate{LastError: "upstream unavailable"})
-	require.NoError(t, err)
 	binding, err := GetCliproxyAuthFileBindingById(1)
 	require.NoError(t, err)
-	assert.Equal(t, "antigravity", binding.Provider)
 	assert.Equal(t, snapshot, binding.LastAntigravityQuota)
+	lastRefreshedAt := binding.LastRefreshedAt
+	_, err = UpdateCliproxyAuthFileBindingUsage(1, CliproxyUsageRefreshUpdate{LastError: "upstream unavailable"})
+	require.NoError(t, err)
+	binding, err = GetCliproxyAuthFileBindingById(1)
+	require.NoError(t, err)
+	assert.Equal(t, "antigravity", binding.Provider)
+	assert.Empty(t, binding.LastAntigravityQuota)
+	assert.Empty(t, binding.LastPlanType)
+	assert.Equal(t, lastRefreshedAt, binding.LastRefreshedAt)
 	assert.Equal(t, "upstream unavailable", binding.LastError)
 }

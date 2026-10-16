@@ -1033,6 +1033,10 @@ function BindingTable({
 
   const refreshMutation = useMutation({
     mutationFn: refreshCliproxyAuthFileBindingUsage,
+    onSettled: () =>
+      queryClient.invalidateQueries({
+        queryKey: ['cliproxy-auth-file-bindings'],
+      }),
     onSuccess: (data) => {
       const errorMessage = getApiErrorMessage(
         data,
@@ -1047,9 +1051,6 @@ function BindingTable({
       } else {
         toast.success(t('Usage refreshed successfully'))
       }
-      queryClient.invalidateQueries({
-        queryKey: ['cliproxy-auth-file-bindings'],
-      })
     },
     onError: (error: Error) => {
       toast.error(error.message || t('Failed to refresh usage'))
@@ -1264,6 +1265,7 @@ function BindingTable({
                       <Button
                         size='icon-sm'
                         variant='outline'
+                        aria-label={t('Refresh')}
                         onClick={() => refreshMutation.mutate(binding.id)}
                         disabled={refreshMutation.isPending}
                       >
