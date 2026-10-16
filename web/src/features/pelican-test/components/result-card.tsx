@@ -20,6 +20,7 @@ import { RotateCcw, ThumbsDown, ThumbsUp } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { ModelResponse } from '@/components/model-response'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -43,7 +44,6 @@ import {
   type PelicanTestRating,
   type PelicanTestRecord,
 } from '../lib'
-import { ModelResponse } from './model-response'
 import { PelicanPreview } from './pelican-preview'
 
 export function ResultCard(props: {

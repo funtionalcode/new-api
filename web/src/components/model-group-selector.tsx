@@ -557,6 +557,7 @@ GroupSelector.displayName = 'GroupSelector'
 
 // Export combined selector component
 export interface ModelGroupSelectorProps {
+  'aria-label'?: string
   // Model props
   selectedModel: string
   models: ModelOption[]
@@ -575,6 +576,7 @@ export interface ModelGroupSelectorProps {
  * Provides both model and group selection in a unified interface
  */
 export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
+  'aria-label': ariaLabel,
   selectedModel,
   models,
   onModelChange,
@@ -660,6 +662,7 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
 
   const renderTrigger = () => (
     <Button
+      aria-label={ariaLabel ?? t('Select Model')}
       aria-expanded={open}
       className={cn(
         'h-8 max-w-[15rem] justify-start gap-2 border px-2.5 font-medium shadow-none',

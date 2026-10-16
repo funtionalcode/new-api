@@ -30,8 +30,8 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { SectionPageLayout } from '@/components/layout'
 import { ErrorState } from '@/components/error-state'
+import { SectionPageLayout } from '@/components/layout'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -73,6 +73,7 @@ import { cn } from '@/lib/utils'
 import { VCHART_OPTION } from '@/lib/vchart'
 
 import { deleteCodexReset, getCodexResets, syncCodexResets } from './api'
+import { ResetPrediction } from './components/reset-prediction'
 import type {
   CodexResetEvent,
   CodexResetsData,
@@ -160,8 +161,8 @@ function Heatmap({
     <TooltipProvider delay={0}>
       <div className='overflow-x-auto'>
         <div className='flex min-w-max gap-1'>
-          {weeks.map((week, weekIdx) => (
-            <div key={weekIdx} className='flex flex-col gap-1'>
+          {weeks.map((week) => (
+            <div key={week[0].date} className='flex flex-col gap-1'>
               {week.map((day) => {
                 const clickable = day.count > 0
                 return (
@@ -279,9 +280,12 @@ export function CodexResetsPage() {
 
   const data = query.data
   const stats = data?.stats
-  const intervals = data?.charts.intervals ?? []
+  const intervals = useMemo(
+    () => data?.charts.intervals ?? [],
+    [data?.charts.intervals]
+  )
   const heatmap = data?.charts.heatmap ?? []
-  const events = data?.events ?? []
+  const events = useMemo(() => data?.events ?? [], [data?.events])
   const eventsByDate = useMemo(() => {
     const map = new Map<string, CodexResetEvent[]>()
     for (const event of events) {
@@ -303,9 +307,7 @@ export function CodexResetsPage() {
     const axisLabelColor = isDark
       ? 'rgba(255,255,255,0.72)'
       : 'rgba(15,23,42,0.72)'
-    const gridColor = isDark
-      ? 'rgba(255,255,255,0.08)'
-      : 'rgba(15,23,42,0.08)'
+    const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)'
     return {
       type: 'bar' as const,
       theme: isDark ? 'dark' : 'light',
@@ -421,28 +423,32 @@ export function CodexResetsPage() {
         </div>
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
-        {query.isLoading ? (
+        {query.isLoading && (
           <div className='space-y-4'>
             <div className='grid gap-4 md:grid-cols-4'>
-              {Array.from({ length: 4 }).map((_, i) => (
-                <Skeleton key={i} className='h-28' />
+              {['last-reset', 'total', 'average', 'longest'].map((key) => (
+                <Skeleton key={key} className='h-28' />
               ))}
             </div>
             <Skeleton className='h-56' />
             <Skeleton className='h-72' />
           </div>
-        ) : query.isError ? (
+        )}
+        {!query.isLoading && query.isError && (
           <ErrorState
             title={t('Failed to load Codex Resets')}
             description={(query.error as Error)?.message}
             onRetry={() => void query.refetch()}
           />
-        ) : (
+        )}
+        {!query.isLoading && !query.isError && (
           <div className='space-y-4'>
             <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
               <Card>
                 <CardHeader className='pb-2'>
-                  <CardDescription>{t('Time since last reset')}</CardDescription>
+                  <CardDescription>
+                    {t('Time since last reset')}
+                  </CardDescription>
                   <CardTitle className='text-2xl tabular-nums'>
                     {formatRelative(stats?.last_reset_at)}
                   </CardTitle>
@@ -489,6 +495,8 @@ export function CodexResetsPage() {
               </Card>
             </div>
 
+            {data && <ResetPrediction data={data} />}
+
             <div className='grid gap-4 xl:grid-cols-2'>
               <Card>
                 <CardHeader>
@@ -517,7 +525,7 @@ export function CodexResetsPage() {
                 </CardHeader>
                 <CardContent>
                   {intervalSpec ? (
-                    <div className='bg-transparent h-64 w-full'>
+                    <div className='h-64 w-full bg-transparent'>
                       <VChart
                         key={`interval-trend-${resolvedTheme}`}
                         spec={intervalSpec}
@@ -545,7 +553,10 @@ export function CodexResetsPage() {
                   </CardDescription>
                 </div>
                 {data?.sync.last_error ? (
-                  <Badge variant='destructive' className='max-w-[240px] truncate'>
+                  <Badge
+                    variant='destructive'
+                    className='max-w-[240px] truncate'
+                  >
                     {data.sync.last_error}
                   </Badge>
                 ) : null}
@@ -564,7 +575,9 @@ export function CodexResetsPage() {
                         <TableRow>
                           <TableHead>{t('When')}</TableHead>
                           <TableHead>{t('Announcement')}</TableHead>
-                          <TableHead className='w-[100px]'>{t('Link')}</TableHead>
+                          <TableHead className='w-[100px]'>
+                            {t('Link')}
+                          </TableHead>
                           {isAdmin ? (
                             <TableHead className='w-[80px] text-right'>
                               {t('Actions')}
@@ -579,13 +592,15 @@ export function CodexResetsPage() {
                             id={`codex-reset-row-${event.tweet_id}`}
                             className='scroll-mt-24 transition-colors'
                           >
-                            <TableCell className='whitespace-nowrap align-top tabular-nums'>
-                              <div>{formatTimestampToDate(event.announced_at)}</div>
+                            <TableCell className='align-top whitespace-nowrap tabular-nums'>
+                              <div>
+                                {formatTimestampToDate(event.announced_at)}
+                              </div>
                               <div className='text-muted-foreground text-xs'>
                                 {formatRelative(event.announced_at)}
                               </div>
                             </TableCell>
-                            <TableCell className='max-w-[640px] whitespace-pre-wrap text-sm'>
+                            <TableCell className='max-w-[640px] text-sm whitespace-pre-wrap'>
                               {event.text}
                             </TableCell>
                             <TableCell className='align-top'>
@@ -608,7 +623,7 @@ export function CodexResetsPage() {
                               )}
                             </TableCell>
                             {isAdmin ? (
-                              <TableCell className='align-top text-right'>
+                              <TableCell className='text-right align-top'>
                                 <Button
                                   type='button'
                                   variant='ghost'
