@@ -44,6 +44,8 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import { getJevDailyUsage } from '../api'
 import { getJevDayRange } from '../lib/jev-daily'
+import { JevAuthDifferenceTable } from './jev-auth-difference-table'
+import { JevDifferenceSummary } from './jev-difference-summary'
 import { JevAuthUsageTable, JevCohortTable } from './jev-usage-tables'
 
 export function JevDailyComparison() {
@@ -52,11 +54,11 @@ export function JevDailyComparison() {
   const switchId = useId()
   const modelId = useId()
   const searchId = useId()
-  const [date, setDate] = useState(() => new Date())
+  const [date, setDate] = useState(() => dayjs().subtract(1, 'day').toDate())
   const [comparisonDate, setComparisonDate] = useState(() =>
-    dayjs().subtract(1, 'day').toDate()
+    dayjs().subtract(2, 'day').toDate()
   )
-  const [compare, setCompare] = useState(false)
+  const [compare, setCompare] = useState(true)
   const [search, setSearch] = useState('')
   const [selectedModel, setSelectedModel] = useState('all')
   const range = getJevDayRange(date)
@@ -156,11 +158,11 @@ export function JevDailyComparison() {
                 </div>
                 {compare && (
                   <section
-                    aria-label={t('Comparison date')}
+                    aria-label={t('Baseline date')}
                     className='space-y-2'
                   >
                     <h3 className='text-sm font-medium'>
-                      {t('Comparison date')}
+                      {t('Baseline date')}
                     </h3>
                     <DatePicker
                       selected={comparisonDate}
@@ -249,6 +251,39 @@ export function JevDailyComparison() {
               description={query.error.message}
               onRetry={() => void query.refetch()}
             />
+          )}
+          {!query.isError &&
+            compare &&
+            reports.length === 1 &&
+            !query.isFetching && (
+              <Alert>
+                <AlertDescription>
+                  {t('Choose two different dates to calculate a difference.')}
+                </AlertDescription>
+              </Alert>
+            )}
+          {!query.isError && compare && reports.length === 2 && (
+            <>
+              {(range.end_timestamp > Date.now() / 1000 ||
+                comparisonRange.end_timestamp > Date.now() / 1000) && (
+                <Alert>
+                  <AlertDescription>
+                    {t(
+                      'One selected day is incomplete. Its totals are provisional.'
+                    )}
+                  </AlertDescription>
+                </Alert>
+              )}
+              <JevDifferenceSummary
+                current={reports[0]}
+                baseline={reports[1]}
+              />
+              <JevAuthDifferenceTable
+                key={`${range.start_timestamp}-${comparisonRange.start_timestamp}-${model}-${search}`}
+                current={reports[0].rows}
+                baseline={reports[1].rows}
+              />
+            </>
           )}
           {!query.isError &&
             reports.map((report) => {
