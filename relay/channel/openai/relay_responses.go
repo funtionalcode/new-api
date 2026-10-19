@@ -76,6 +76,8 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	defer service.CloseResponseBodyGracefully(resp)
 
 	accumulator := service.NewResponsesUsageAccumulator(info)
+	guard := &service.ResponsesCapacityGuard{}
+	var capacityError *types.NewAPIError
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 
@@ -89,12 +91,32 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		if streamResponse.Response != nil {
 			data = string(rewriteSGLangResponsesCreatedAt(info, []byte(data), "response.created_at", streamResponse.Response.CreatedAt))
 		}
-		sendResponsesStreamData(c, streamResponse, data)
+		frames, failure := guard.Observe(&streamResponse, common.StringToByteSlice(data))
+		if failure != nil && !guard.Started {
+			capacityError = failure
+			sr.Stop(failure)
+			return
+		}
+		for _, frame := range frames {
+			var outgoing dto.ResponsesStreamResponse
+			if common.Unmarshal(frame, &outgoing) == nil {
+				sendResponsesStreamData(c, outgoing, string(frame))
+			}
+		}
 		accumulator.Observe(&streamResponse, common.StringToByteSlice(data))
-	})
+	}, helper.StreamScannerOptions{DeferPingUntilWrite: true})
 
 	common.SetContextKey(c, constant.ContextKeyResponseStreamStatus, info.StreamStatus)
 	info.StreamStatus.RequireTerminal()
+	if capacityError != nil {
+		return nil, capacityError
+	}
+	for _, frame := range guard.Flush() {
+		var outgoing dto.ResponsesStreamResponse
+		if common.Unmarshal(frame, &outgoing) == nil {
+			sendResponsesStreamData(c, outgoing, string(frame))
+		}
+	}
 	return accumulator.Finish(), nil
 }
 

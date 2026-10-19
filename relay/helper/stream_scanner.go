@@ -135,7 +135,11 @@ func ExtendWriteDeadline(c *gin.Context) {
 	_ = http.NewResponseController(c.Writer).SetWriteDeadline(time.Now().Add(streamWriteTimeout))
 }
 
-func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo, dataHandler func(data string, sr *StreamResult)) {
+type StreamScannerOptions struct {
+	DeferPingUntilWrite bool
+}
+
+func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo, dataHandler func(data string, sr *StreamResult), options ...StreamScannerOptions) {
 
 	if resp == nil || dataHandler == nil {
 		return
@@ -233,6 +237,9 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 					func() {
 						writeMutex.Lock()
 						defer writeMutex.Unlock()
+						if len(options) > 0 && options[0].DeferPingUntilWrite && !c.Writer.Written() {
+							return
+						}
 						ExtendWriteDeadline(c)
 						err = PingData(c)
 					}()

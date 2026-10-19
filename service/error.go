@@ -152,6 +152,10 @@ func ResetStatusCode(newApiErr *types.NewAPIError, statusCodeMappingStr string) 
 	if newApiErr == nil {
 		return
 	}
+	types.NormalizeUpstreamCapacityError(newApiErr)
+	if newApiErr.GetErrorCode() == types.ErrorCodeUpstreamModelCapacity {
+		return
+	}
 	if statusCodeMappingStr == "" || statusCodeMappingStr == "{}" {
 		return
 	}

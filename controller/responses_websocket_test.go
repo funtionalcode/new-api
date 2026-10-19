@@ -25,6 +25,7 @@ import (
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/alicebob/miniredis/v2"
@@ -37,6 +38,162 @@ import (
 )
 
 var responsesWSTestUserSequence atomic.Int64
+
+func TestModelCapacityErrorsRetryPrivately(t *testing.T) {
+	const message = "Selected model is at capacity. Please try a different model."
+	for _, transport := range []string{"http-json", "http-sse", "websocket"} {
+		for _, outcome := range []string{"recovers", "exhausted", "after-output", "recovers-error", "after-tool"} {
+			if transport == "http-json" && (outcome == "after-output" || outcome == "recovers-error" || outcome == "after-tool") {
+				continue
+			}
+			t.Run(transport+"/"+outcome, func(t *testing.T) {
+				previousRetries := common.RetryTimes
+				common.RetryTimes = 1
+				t.Cleanup(func() { common.RetryTimes = previousRetries })
+				previousErrorLogs := constant.ErrorLogEnabled
+				constant.ErrorLogEnabled = true
+				t.Cleanup(func() { constant.ErrorLogEnabled = previousErrorLogs })
+				var attempts atomic.Int32
+				events := func(attempt int32) []string {
+					if strings.HasPrefix(outcome, "recovers") && attempt > 1 {
+						return []string{`{"type":"response.completed","response":{"id":"ok","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}`}
+					}
+					if outcome == "recovers-error" {
+						return []string{`{"type":"error","status":400,"message":"` + message + `","code":"model_capacity"}`}
+					}
+					frames := []string{`{"type":"response.created","response":{"id":"rejected","status":"in_progress"}}`, `{"type":"response.in_progress","response":{"id":"rejected","status":"in_progress"}}`}
+					if outcome == "after-output" {
+						frames = append(frames, `{"type":"response.output_text.delta","delta":"partial output"}`)
+					}
+					if outcome == "after-tool" {
+						frames = append(frames, `{"type":"response.output_item.added","item":{"id":"call-1","type":"function_call","name":"tool","arguments":"{}"}}`)
+					}
+					return append(frames, `{"type":"response.failed","response":{"id":"rejected","status":"failed","error":{"type":"invalid_request_error","code":"model_capacity","message":"`+message+`"}}}`)
+				}
+				fixture := newResponsesWSBillingTest(t, `tier("request", fixed(0.002))`, func(ws *websocket.Conn, _ *http.Request) {
+					for {
+						if _, _, err := ws.ReadMessage(); err != nil {
+							return
+						}
+						for _, event := range events(attempts.Add(1)) {
+							if err := ws.WriteMessage(websocket.TextMessage, []byte(event)); err != nil {
+								return
+							}
+						}
+					}
+				})
+				fixture.httpUpstream = func(w http.ResponseWriter, _ *http.Request) {
+					attempt := attempts.Add(1)
+					if transport == "http-json" {
+						w.Header().Set("Content-Type", "application/json")
+						if outcome == "recovers" && attempt > 1 {
+							_, _ = io.WriteString(w, `{"id":"ok","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`)
+							return
+						}
+						w.WriteHeader(http.StatusBadRequest)
+						_, _ = io.WriteString(w, `{"error":{"type":"invalid_request_error","message":"`+message+`"}}`)
+						return
+					}
+					w.Header().Set("Content-Type", "text/event-stream")
+					for _, event := range events(attempt) {
+						_, _ = fmt.Fprintf(w, "data: %s\n\n", event)
+					}
+				}
+				var body strings.Builder
+				if transport == "websocket" {
+					require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","input":"hi"}`)))
+					for {
+						event := readResponsesWSTestEvent(t, fixture.client)
+						raw, err := common.Marshal(event)
+						require.NoError(t, err)
+						body.Write(raw)
+						if event["type"] == "error" || event["type"] == "response.failed" || event["type"] == "response.completed" {
+							break
+						}
+					}
+				} else {
+					stream := transport == "http-sse"
+					request, err := http.NewRequest(http.MethodPost, fixture.gatewayURL+"/v1/responses", strings.NewReader(fmt.Sprintf(`{"model":"ws-billing","input":"hi","stream":%t}`, stream)))
+					require.NoError(t, err)
+					request.Header.Set("Authorization", "Bearer sk-"+fixture.token.Key)
+					request.Header.Set("Content-Type", "application/json")
+					response, err := (&http.Client{Timeout: 3 * time.Second}).Do(request)
+					require.NoError(t, err)
+					_, err = io.Copy(&body, response.Body)
+					require.NoError(t, err)
+					require.NoError(t, response.Body.Close())
+					if outcome == "exhausted" {
+						assert.Equal(t, http.StatusInternalServerError, response.StatusCode)
+					}
+					<-fixture.httpDone
+				}
+				assert.NotContains(t, body.String(), message)
+				if strings.HasPrefix(outcome, "recovers") {
+					assert.Contains(t, body.String(), `"completed"`)
+					assert.NotContains(t, body.String(), "rejected")
+				} else {
+					assert.Contains(t, body.String(), "Internal server error")
+				}
+				wantAttempts := int32(2)
+				if outcome == "after-output" || outcome == "after-tool" {
+					wantAttempts = 1
+					if outcome == "after-output" {
+						assert.Contains(t, body.String(), "partial output")
+					} else {
+						assert.Contains(t, body.String(), "call-1")
+					}
+				}
+				assert.Equal(t, wantAttempts, attempts.Load())
+				fixture.closeAndWait(t)
+				if outcome != "exhausted" {
+					assertResponsesWSAccounting(t, fixture, []int{1000})
+				} else {
+					require.Eventually(t, func() bool {
+						var token model.Token
+						return model.DB.First(&token, fixture.token.Id).Error == nil && token.RemainQuota == 3000
+					}, 3*time.Second, 10*time.Millisecond, "重试耗尽后必须退还预扣额度")
+					assertResponsesWSAccounting(t, fixture, nil)
+				}
+				userLogs, err := model.GetLogByTokenId(fixture.token.Id, nil)
+				require.NoError(t, err)
+				visibleLogs, err := common.Marshal(userLogs)
+				require.NoError(t, err)
+				assert.NotContains(t, string(visibleLogs), message)
+				if !strings.HasPrefix(outcome, "after-") {
+					var errorLogs []model.Log
+					require.NoError(t, model.LOG_DB.Where("token_id = ? AND type = ?", fixture.token.Id, model.LogTypeError).Find(&errorLogs).Error)
+					require.NotEmpty(t, errorLogs)
+					for _, log := range errorLogs {
+						assert.Equal(t, "status_code=500, Internal server error", log.Content)
+						assert.Contains(t, log.Other, message, "管理员仍可查看上游诊断")
+					}
+				}
+			})
+		}
+	}
+	// 改写只针对已知容量错误，保留普通参数错误、原始诊断和重试边界。
+	capacity := types.WithOpenAIError(types.OpenAIError{Message: message, Type: "invalid_request_error"}, http.StatusBadRequest)
+	assert.Contains(t, capacity.Error(), message)
+	assert.NotContains(t, capacity.ToOpenAIError().Message, message)
+	assert.NotContains(t, capacity.ToClaudeError().Message, message)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	assert.True(t, service.ShouldRetryRelayError(c, capacity, 1))
+	assert.False(t, service.ShouldRetryRelayError(c, capacity, 0))
+	service.ResetStatusCode(capacity, `{"500":"400"}`)
+	assert.Equal(t, http.StatusInternalServerError, capacity.StatusCode)
+	assert.False(t, service.ShouldRetryRelayError(c, types.WithOpenAIError(types.OpenAIError{Message: "Invalid input", Type: "invalid_request_error"}, 400), 1))
+	assert.False(t, service.ShouldRetryRelayError(c, types.WithOpenAIError(types.OpenAIError{Message: message}, 400, types.ErrOptionWithSkipRetry()), 1))
+	for _, ordinary := range []string{"The model is at capacity.", message + " Additional detail"} {
+		err := types.WithOpenAIError(types.OpenAIError{Message: ordinary, Type: "invalid_request_error"}, 400)
+		assert.Equal(t, 400, err.StatusCode)
+		assert.Equal(t, ordinary, err.ToOpenAIError().Message)
+	}
+	withMetadata := types.WithOpenAIError(types.OpenAIError{Message: message, Metadata: []byte(`{"provider_name":"upstream"}`)}, 400)
+	assert.Equal(t, http.StatusInternalServerError, withMetadata.StatusCode)
+	assert.Equal(t, "Internal server error", withMetadata.ToOpenAIError().Message)
+	c.Writer.WriteHeaderNow()
+	assert.False(t, service.ShouldRetryRelayError(c, capacity, 1), "响应已经提交时禁止重放")
+}
 
 func setupResponsesWSRequestTest(t *testing.T) (*model.User, *model.Token) {
 	t.Helper()

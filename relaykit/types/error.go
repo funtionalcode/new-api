@@ -74,6 +74,7 @@ const (
 	ErrorCodeBadResponse            ErrorCode = "bad_response"
 	ErrorCodeBadResponseBody        ErrorCode = "bad_response_body"
 	ErrorCodeEmptyResponse          ErrorCode = "empty_response"
+	ErrorCodeUpstreamModelCapacity  ErrorCode = "upstream_model_capacity"
 	ErrorCodeAwsInvokeError         ErrorCode = "aws_invoke_error"
 	ErrorCodeModelNotFound          ErrorCode = "model_not_found"
 	ErrorCodePromptBlocked          ErrorCode = "prompt_blocked"
@@ -182,6 +183,9 @@ func (e *NewAPIError) SetMessage(message string) {
 }
 
 func (e *NewAPIError) ToOpenAIError() OpenAIError {
+	if e.errorCode == ErrorCodeUpstreamModelCapacity {
+		return OpenAIError{Message: "Internal server error", Type: "server_error", Code: "internal_error"}
+	}
 	var result OpenAIError
 	switch e.errorType {
 	case ErrorTypeOpenAIError:
@@ -215,6 +219,9 @@ func (e *NewAPIError) ToOpenAIError() OpenAIError {
 }
 
 func (e *NewAPIError) ToClaudeError() ClaudeError {
+	if e.errorCode == ErrorCodeUpstreamModelCapacity {
+		return ClaudeError{Message: "Internal server error", Type: "api_error"}
+	}
 	var result ClaudeError
 	switch e.errorType {
 	case ErrorTypeOpenAIError:
@@ -402,6 +409,7 @@ func WithOpenAIError(openAIError OpenAIError, statusCode int, ops ...NewAPIError
 		Err:        errors.New(openAIError.Message),
 		errorCode:  ErrorCode(code),
 	}
+	NormalizeUpstreamCapacityError(e)
 	// OpenRouter
 	if len(openAIError.Metadata) > 0 {
 		openAIError.Message = fmt.Sprintf("%s (%s)", openAIError.Message, openAIError.Metadata)
@@ -412,7 +420,7 @@ func WithOpenAIError(openAIError OpenAIError, statusCode int, ops ...NewAPIError
 	for _, op := range ops {
 		op(e)
 	}
-	return e
+	return NormalizeUpstreamCapacityError(e)
 }
 
 func WithClaudeError(claudeError ClaudeError, statusCode int, ops ...NewAPIErrorOptions) *NewAPIError {
@@ -429,6 +437,30 @@ func WithClaudeError(claudeError ClaudeError, statusCode int, ops ...NewAPIError
 	}
 	for _, op := range ops {
 		op(e)
+	}
+	return NormalizeUpstreamCapacityError(e)
+}
+
+// NormalizeUpstreamCapacityError 保留内部诊断，对外仅暴露通用服务器错误。
+// 不清除 skipRetry；已经输出或有控制副作用的请求仍由调用方禁止重放。
+func NormalizeUpstreamCapacityError(e *NewAPIError) *NewAPIError {
+	if e == nil {
+		return nil
+	}
+	message := e.Error()
+	switch original := e.RelayError.(type) {
+	case OpenAIError:
+		if original.Message != "" {
+			message = original.Message
+		}
+	case ClaudeError:
+		message = original.Message
+	}
+	const marker = "selected model is at capacity. please try a different model."
+	message = strings.ToLower(strings.TrimSpace(message))
+	if e.errorCode == ErrorCodeUpstreamModelCapacity || message == marker {
+		e.errorCode = ErrorCodeUpstreamModelCapacity
+		e.StatusCode = http.StatusInternalServerError
 	}
 	return e
 }

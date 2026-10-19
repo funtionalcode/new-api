@@ -19,6 +19,7 @@ import (
 // DecideRelayRetry is the single retry decision for relay attempts. The reason
 // is recorded in the request policy decision events of the log details.
 func DecideRelayRetry(c *gin.Context, err *types.NewAPIError, retryTimes int) PolicyDecision {
+	err = types.NormalizeUpstreamCapacityError(err)
 	if err == nil {
 		return PolicyDecision{Action: "stop", Reason: "request_completed", Source: "system"}
 	}
@@ -43,6 +44,9 @@ func DecideRelayRetry(c *gin.Context, err *types.NewAPIError, retryTimes int) Po
 	}
 	if retryTimes <= 0 {
 		return PolicyDecision{Action: "stop", Reason: "attempt_budget_exhausted", Source: "global"}
+	}
+	if err.GetErrorCode() == types.ErrorCodeUpstreamModelCapacity {
+		return PolicyDecision{Action: "retry", Reason: "upstream_model_capacity", Source: "system"}
 	}
 	code := err.StatusCode
 	if code >= 200 && code < 300 {
@@ -89,6 +93,12 @@ func ProcessChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		other.SetPublic("error_type", err.GetErrorType())
 		other.SetPublic("error_code", err.GetErrorCode())
 		other.SetPublic("status_code", err.StatusCode)
+		content := err.MaskSensitiveErrorWithStatusCode()
+		if err.GetErrorCode() == types.ErrorCodeUpstreamModelCapacity {
+			other.SetAdmin("upstream_error", content)
+			other.SetPublic("error_code", "internal_error")
+			content = "status_code=500, Internal server error"
+		}
 		AppendRelayLogAdminInfo(c, relayInfo, other)
 		AppendResponseModelLogInfo(relayInfo, other)
 		AppendTaskPluginContextAuditInfo(c, other)
@@ -97,6 +107,6 @@ func ProcessChannelError(c *gin.Context, channelError types.ChannelError, err *t
 			startTime = time.Now()
 		}
 		useTimeSeconds := int(time.Since(startTime).Seconds())
-		model.RecordErrorLog(c, userId, channelError.ChannelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
+		model.RecordErrorLog(c, userId, channelError.ChannelId, modelName, tokenName, content, tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
 	}
 }

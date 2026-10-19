@@ -439,6 +439,12 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 	var pendingControl []byte
 	var sentControl []byte
 	var responseID string
+	guard := &service.ResponsesCapacityGuard{}
+	// 最多等待 100ms 合并启动元信息；随后发布，保持取消和双工控制可用。
+	preamble := time.NewTimer(100 * time.Millisecond)
+	preamble.Stop()
+	defer preamble.Stop()
+	var preambleReady <-chan time.Time
 	var steeringStopped <-chan struct{}
 	if state.steer != nil {
 		steeringStopped = state.steer.stop
@@ -471,6 +477,12 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 			}
 			if err := common.Unmarshal(incoming.body, &event); err != nil {
 				info.StreamStatus.RecordError("invalid upstream websocket event")
+				for _, frame := range guard.Flush() {
+					if err := s.writeClient(websocket.TextMessage, frame); err != nil {
+						s.shutdown()
+					}
+				}
+				guard.Started = true
 			} else {
 				if strings.HasPrefix(event.Type, "response.steer.") {
 					s.handleSteeringEvent(state, incoming)
@@ -480,6 +492,15 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 					continue
 				}
 				if event.Type != "error" && event.StreamID != "" && event.StreamID != create.StreamID {
+					pass := &service.ResponsesCapacityGuard{Started: true}
+					if frames, failure := pass.Observe(&event.ResponsesStreamResponse, incoming.body); failure != nil && len(frames) > 0 {
+						incoming.body = frames[len(frames)-1]
+					}
+					for _, frame := range guard.Flush() {
+						if err := s.writeClient(websocket.TextMessage, frame); err != nil {
+							s.shutdown()
+						}
+					}
 					if err := s.writeClient(incoming.kind, incoming.body); err != nil {
 						s.shutdown()
 					}
@@ -490,6 +511,58 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 				if event.Response != nil && event.Response.ID != "" && event.Response.ID == s.lastResponseID {
 					continue
 				}
+				// 控制错误先完成关联判断，不能把其他响应的错误重放到当前请求。
+				currentError := true
+				if event.Type == "error" {
+					rejection := parseResponsesWSErrorEvent(incoming.body)
+					terminal, ambiguous, controlError := responsesWSErrorEndsRequest(rejection, create.StreamID, responseID, sentControl)
+					currentError = terminal && !ambiguous && !controlError && (rejection.ResponseID == "" || rejection.ResponseID != s.lastResponseID)
+					s.stateMu.Lock()
+					currentError = currentError && s.pendingSteer == nil
+					s.stateMu.Unlock()
+				}
+				if currentError {
+					frames, capacityErr := guard.Observe(&event.ResponsesStreamResponse, incoming.body)
+					if capacityErr != nil && !guard.Started {
+						decision := service.PolicyDecision{Action: "stop", Reason: "response_started", Source: "system"}
+						if state.steer == nil && pendingControl == nil && sentControl == nil && len(state.controls) == 0 {
+							decision = service.DecideRelayRetry(c, capacityErr, common.RetryTimes-info.RetryIndex)
+						}
+						service.RecordPolicyFailure(c, s.lockedChannelID, capacityErr, decision)
+						service.ProcessChannelError(c, *types.NewChannelError(s.lockedChannelID, info.ChannelType, "", false, info.ApiKey, false), capacityErr, info)
+						if decision.Action != "retry" {
+							return capacityErr
+						}
+						info.RetryIndex++
+						policy.BeginAttempt(&appmodel.Channel{Id: s.lockedChannelID}, info.UsingGroup)
+						preamble.Stop()
+						preambleReady = nil
+						accepted, generationStarted, responseID = false, false, ""
+						accumulator = service.NewResponsesUsageAccumulator(info)
+						if err := s.writeTarget(websocket.TextMessage, state.preparedBody); err != nil {
+							state.closeAfter = true
+							return types.NewError(err, types.ErrorCodeBadResponse, types.ErrOptionWithSkipRetry())
+						}
+						continue
+					}
+					if capacityErr != nil && len(frames) > 0 {
+						incoming.body = frames[len(frames)-1]
+					}
+					// 元信息仅由下面的原有逻辑观察，提交时补发之前暂存的帧。
+					if len(frames) > 1 {
+						for _, frame := range frames[:len(frames)-1] {
+							if err := s.writeClient(websocket.TextMessage, frame); err != nil {
+								s.shutdown()
+							}
+						}
+					}
+				} else {
+					// 其他响应或控制消息只能隐藏指定错误，不能重试当前生成。
+					pass := &service.ResponsesCapacityGuard{Started: true}
+					if frames, failure := pass.Observe(&event.ResponsesStreamResponse, incoming.body); failure != nil && len(frames) > 0 {
+						incoming.body = frames[len(frames)-1]
+					}
+				}
 				if event.Type == "error" {
 					rejection := parseResponsesWSErrorEvent(incoming.body)
 					if rejection.ResponseID != "" && rejection.ResponseID == s.lastResponseID && !(state.steer != nil && !accepted) {
@@ -497,6 +570,11 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 					}
 					terminal, ambiguous, controlError := responsesWSErrorEndsRequest(rejection, create.StreamID, responseID, sentControl)
 					if !terminal {
+						for _, frame := range guard.Flush() {
+							if err := s.writeClient(websocket.TextMessage, frame); err != nil {
+								s.shutdown()
+							}
+						}
 						if err := s.writeClient(incoming.kind, incoming.body); err != nil {
 							s.shutdown()
 						}
@@ -507,6 +585,11 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 						continue
 					}
 					if s.rejectSteeringControl(rejection) {
+						for _, frame := range guard.Flush() {
+							if err := s.writeClient(websocket.TextMessage, frame); err != nil {
+								s.shutdown()
+							}
+						}
 						if err := s.writeClient(incoming.kind, incoming.body); err != nil {
 							s.shutdown()
 						}
@@ -569,8 +652,15 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 				ConsumeResponsesQuota(c, info, accumulator.Finish())
 				return nil
 			}
-			if err := s.writeClient(incoming.kind, incoming.body); err != nil {
-				s.shutdown()
+			if guard.Started {
+				preamble.Stop()
+				preambleReady = nil
+				if err := s.writeClient(incoming.kind, incoming.body); err != nil {
+					s.shutdown()
+				}
+			} else if preambleReady == nil {
+				preamble.Reset(100 * time.Millisecond)
+				preambleReady = preamble.C
 			}
 			if accepted && pendingControl != nil {
 				if err := s.writeTarget(websocket.TextMessage, pendingControl); err != nil {
@@ -580,6 +670,13 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 				pendingControl = nil
 			}
 		case control := <-state.controls:
+			for _, frame := range guard.Flush() {
+				if err := s.writeClient(websocket.TextMessage, frame); err != nil {
+					s.shutdown()
+				}
+			}
+			preamble.Stop()
+			preambleReady = nil
 			if gjson.GetBytes(control.body, "type").String() == "response.steer" {
 				if !accepted || responseID == "" {
 					s.sendError(control.eventID, control.streamID, newResponsesWSInvalidRequestError(errors.New("response.steer requires an active response.created")))
@@ -602,6 +699,13 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 				s.shutdown()
 			}
 			sentControl = control.body
+		case <-preambleReady:
+			for _, frame := range guard.Flush() {
+				if err := s.writeClient(websocket.TextMessage, frame); err != nil {
+					s.shutdown()
+				}
+			}
+			preambleReady = nil
 		case <-idle.C:
 			info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonTimeout, context.DeadlineExceeded)
 			state.closeAfter = true
