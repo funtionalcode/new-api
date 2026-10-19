@@ -53,17 +53,18 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+import { CopyButton } from '@/components/copy-button'
 import { Dialog } from '@/components/dialog'
 import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-pricing-breakdown'
 import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
-import { TypeSafeBeforeAfter } from '@/features/typesafe-evaluations/components/before-after'
-import { splitTypeSafeStages } from '@/features/typesafe-evaluations/lib/answers'
 import { BILLING_PRICING_VARS } from '@/features/pricing/lib/billing-expr'
 import { pluginUsageSchema } from '@/features/pricing/lib/plugin-pricing'
 import { PolicyDecisionRecord } from '@/features/system-settings/request-policies/decision-record'
+import { TypeSafeBeforeAfter } from '@/features/typesafe-evaluations/components/before-after'
+import { splitTypeSafeStages } from '@/features/typesafe-evaluations/lib/answers'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import {
@@ -101,10 +102,10 @@ import {
   isTimingLogType,
 } from '../../lib/utils'
 import { USAGE_BILLING_PATH, type LogOtherData } from '../../types'
+import { AdaptiveReasoningDetails } from '../adaptive-reasoning-details'
 import { ResponseModelDetails } from '../model-badge'
 import { PluginAuthorLink } from '../plugin-author-link'
 import { TypeSafeIODetails } from '../typesafe-io-details'
-import { AdaptiveReasoningDetails } from '../adaptive-reasoning-details'
 import { DetailRow, DetailSection } from './log-detail-layout'
 
 // Maps a channel-update changed-field token (as recorded by the backend audit)
@@ -606,6 +607,10 @@ export function DetailsDialog(props: DetailsDialogProps) {
   // 有 IP 就展示：不再限定消费/错误或管理员充值，避免登录/管理等类型在详情里丢失。
   const showIp = !!props.log.ip?.trim()
   const adminInfo = other?.admin_info
+  const upstreamError =
+    props.isAdmin && typeof adminInfo?.upstream_error === 'string'
+      ? adminInfo.upstream_error
+      : ''
   const topupAuditFields =
     isTopup && props.isAdmin && adminInfo
       ? ([
@@ -1584,6 +1589,26 @@ export function DetailsDialog(props: DetailsDialogProps) {
                 </div>
               )
             })}
+          </DetailSection>
+        )}
+
+        {upstreamError.trim().length > 0 && (
+          <DetailSection
+            icon={<AlertTriangle className='size-3.5' aria-hidden='true' />}
+            label={t('Upstream Error')}
+            variant='danger'
+          >
+            <div className='flex min-w-0 items-start gap-2'>
+              <p className='min-w-0 flex-1 text-xs leading-relaxed wrap-anywhere whitespace-pre-wrap'>
+                {upstreamError}
+              </p>
+              <CopyButton
+                value={upstreamError}
+                className='size-5'
+                iconClassName='size-3'
+                aria-label={t('Copy {{field}}', { field: t('Upstream Error') })}
+              />
+            </div>
           </DetailSection>
         )}
 

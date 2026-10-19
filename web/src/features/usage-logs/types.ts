@@ -149,6 +149,7 @@ export interface TypeSafeEvaluationResult {
 export interface LogOtherData {
   typesafe?: TypeSafeEvaluationResult[]
   admin_info?: {
+    upstream_error?: string
     typesafe_exchange?: TypeSafeExchange
     typesafe?: TypeSafeEvaluationResult[]
     request_policy?: PolicyEvent[]

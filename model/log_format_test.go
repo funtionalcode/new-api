@@ -35,6 +35,41 @@ func TestFormatUserLogsStripsQuotaSaturation(t *testing.T) {
 	require.Contains(t, parsed, "model_price")
 }
 
+func TestUpstreamErrorLogVisibilityIsRoleSeparated(t *testing.T) {
+	const upstreamError = "status_code=500, Our servers are currently overloaded. Please try again later."
+	const publicError = "status_code=500, Internal server error"
+	other := NewLogOther()
+	other.SetPublic("error_code", "internal_error")
+	other.SetAdmin("upstream_error", upstreamError)
+	for _, tc := range []struct {
+		name    string
+		format  func([]*Log)
+		canRead bool
+	}{
+		{name: "user", format: func(logs []*Log) { formatUserLogs(logs, 0) }},
+		{name: "admin", format: FormatAdminLogs, canRead: true},
+		{name: "root", format: FormatRootLogs, canRead: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logs := []*Log{{Type: LogTypeError, Content: publicError, Other: other.JSONString()}}
+			tc.format(logs)
+
+			assert.Equal(t, publicError, logs[0].Content)
+			parsed, err := common.StrToMap(logs[0].Other)
+			require.NoError(t, err)
+			assert.Equal(t, "internal_error", parsed["error_code"])
+			if !tc.canRead {
+				assert.NotContains(t, parsed, "admin_info")
+				assert.NotContains(t, logs[0].Other, upstreamError)
+				return
+			}
+			adminInfo, ok := parsed["admin_info"].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, upstreamError, adminInfo["upstream_error"])
+		})
+	}
+}
+
 func TestTaskPluginLogVisibilityIsRoleSeparated(t *testing.T) {
 	other := common.MapToJsonStr(map[string]any{
 		"model_price": 1.25,

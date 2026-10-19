@@ -7022,6 +7022,7 @@
     "Upstream authentication": "Аутентификация у провайдера",
     "Upstream connection": "Соединение с вышестоящим сервером",
     "Upstream did not return reset credit details.": "Вышестоящий сервис не вернул сведения о сбросах лимита.",
+    "Upstream Error": "Ошибка вышестоящего сервиса",
     "Upstream JSON response": "JSON-ответ поставщика",
     "Upstream Model": "Модель запроса провайдеру",
     "Upstream Model Detection Settings": "Настройки обнаружения моделей провайдера",
