@@ -459,7 +459,9 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 	var sentControl []byte
 	var responseID string
 	discardedResponseIDs := make(map[string]bool)
-	guard := &service.ResponsesCapacityGuard{AllowMetadataReplay: true}
+	// 临时游标只在本连接有效；持久化响应必须保留跨连接可用的原始 ID。
+	allowMetadataReplay := bytes.Equal(bytes.TrimSpace(create.Request.Store), []byte("false"))
+	guard := &service.ResponsesCapacityGuard{AllowMetadataReplay: allowMetadataReplay}
 	// 最多等待 100ms 合并启动元信息；随后发布，保持取消和双工控制可用。
 	preamble := time.NewTimer(100 * time.Millisecond)
 	preamble.Stop()
@@ -586,7 +588,7 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 						preambleReady = nil
 						accepted, generationStarted, responseID = false, false, ""
 						accumulator = service.NewResponsesUsageAccumulator(info)
-						guard = &service.ResponsesCapacityGuard{AllowMetadataReplay: true, Started: state.publishedMetadata != 0}
+						guard = &service.ResponsesCapacityGuard{AllowMetadataReplay: allowMetadataReplay, Started: state.publishedMetadata != 0}
 						if err := s.writeTarget(websocket.TextMessage, state.preparedBody); err != nil {
 							state.closeAfter = true
 							return types.NewError(err, types.ErrorCodeBadResponse, types.ErrOptionWithSkipRetry())

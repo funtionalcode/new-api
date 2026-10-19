@@ -238,7 +238,7 @@ func TestModelCapacityErrorsRetryPrivately(t *testing.T) {
 }
 
 func TestResponsesWebSocketCapacityRetryKeepsResponseIdentity(t *testing.T) {
-	for _, outcome := range []string{"continuation", "interrupt", "steer-rejected", "exhausted"} {
+	for _, outcome := range []string{"continuation", "interrupt", "steer-rejected", "exhausted", "persistent"} {
 		t.Run(outcome, func(t *testing.T) {
 			previousRetries := common.RetryTimes
 			common.RetryTimes = 10
@@ -247,7 +247,11 @@ func TestResponsesWebSocketCapacityRetryKeepsResponseIdentity(t *testing.T) {
 			defer close(allowFailure)
 			retried := make(chan struct{}, 1)
 			var attempts atomic.Int32
-			fixture := newResponsesWSBillingTest(t, `tier("request", fixed(0.002))`, func(ws *websocket.Conn, _ *http.Request) {
+			expression := `tier("request", fixed(0.002))`
+			if outcome == "persistent" {
+				expression = `tier("usage", p * 2 + c * 10)`
+			}
+			fixture := newResponsesWSBillingTest(t, expression, func(ws *websocket.Conn, _ *http.Request) {
 				var prepared []byte
 				for {
 					_, payload, err := ws.ReadMessage()
@@ -322,10 +326,10 @@ func TestResponsesWebSocketCapacityRetryKeepsResponseIdentity(t *testing.T) {
 					}
 				}
 			})
-			require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","input":"seed"}`)))
+			require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"response.create","model":"ws-billing","input":"seed","store":%t}`, outcome == "persistent"))))
 			for readResponsesWSTestEvent(t, fixture.client)["type"] != "response.completed" {
 			}
-			require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","previous_response_id":"seed","input":"task"}`)))
+			require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"response.create","model":"ws-billing","previous_response_id":"seed","input":"task","store":%t}`, outcome == "persistent"))))
 			created := readResponsesWSTestEvent(t, fixture.client)
 			require.Equal(t, "response.created", created["type"])
 			assert.Equal(t, "visible", created["response"].(map[string]any)["id"])
@@ -361,6 +365,10 @@ func TestResponsesWebSocketCapacityRetryKeepsResponseIdentity(t *testing.T) {
 					var token model.Token
 					return model.DB.First(&token, fixture.token.Id).Error == nil && token.RemainQuota == 2000
 				}, 3*time.Second, 10*time.Millisecond)
+			} else if outcome == "persistent" {
+				require.Equal(t, "error", terminal["type"])
+				assert.Equal(t, "Internal server error", terminal["error"].(map[string]any)["message"])
+				assert.Equal(t, int32(2), attempts.Load(), "持久化响应不能创建连接外无效的临时游标")
 			} else {
 				wantType := "response.completed"
 				if outcome == "interrupt" {
@@ -373,8 +381,11 @@ func TestResponsesWebSocketCapacityRetryKeepsResponseIdentity(t *testing.T) {
 			if outcome != "exhausted" {
 				quotas = append(quotas, 1000)
 			}
+			if outcome == "persistent" {
+				quotas = []int{6, 0}
+			}
 			if outcome == "continuation" {
-				require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","previous_response_id":"visible","input":"next"}`)))
+				require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","previous_response_id":"visible","input":"next","store":false}`)))
 				for readResponsesWSTestEvent(t, fixture.client)["type"] != "response.completed" {
 				}
 				quotas = append(quotas, 1000)
