@@ -16,9 +16,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// DecideRelayRetry is the single retry decision for relay attempts. The reason
-// is recorded in the request policy decision events of the log details.
-func DecideRelayRetry(c *gin.Context, err *types.NewAPIError, retryTimes int) PolicyDecision {
+type RelayRetryOptions struct {
+	SameUpstream bool
+}
+
+// DecideRelayRetry 统一决定转发重试，并记录可供日志详情展示的原因。
+func DecideRelayRetry(c *gin.Context, err *types.NewAPIError, retryTimes int, options ...RelayRetryOptions) PolicyDecision {
 	err = types.NormalizeUpstreamCapacityError(err)
 	if err == nil {
 		return PolicyDecision{Action: "stop", Reason: "request_completed", Source: "system"}
@@ -26,14 +29,16 @@ func DecideRelayRetry(c *gin.Context, err *types.NewAPIError, retryTimes int) Po
 	if c != nil && c.Writer != nil && c.Writer.Written() {
 		return PolicyDecision{Action: "stop", Reason: "response_started", Source: "system"}
 	}
-	if ShouldSkipRetryAfterChannelAffinityFailure(c) {
+	// 已锁定的 WebSocket 仅在原连接内重试容量拒绝，不改变渠道、凭据或会话。
+	sameUpstreamCapacity := err.GetErrorCode() == types.ErrorCodeUpstreamModelCapacity && len(options) > 0 && options[0].SameUpstream
+	if !sameUpstreamCapacity && ShouldSkipRetryAfterChannelAffinityFailure(c) {
 		source := RequestPolicy(c).SessionModeSource
 		if source == "" {
 			source = "session_rule"
 		}
 		return PolicyDecision{Action: "stop", Reason: "strict_session", Source: source}
 	}
-	if GetChannelConstraints(c).SuppressesRetry() {
+	if !sameUpstreamCapacity && GetChannelConstraints(c).SuppressesRetry() {
 		return PolicyDecision{Action: "stop", Reason: "pinned_channel", Source: "channel_constraint"}
 	}
 	if types.IsChannelError(err) {

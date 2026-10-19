@@ -10,11 +10,18 @@ import (
 )
 
 // ResponsesCapacityGuard 仅暂存有界的响应元信息，业务内容或工具事件立即提交。
-// Started 为真后只隐藏容量错误，不允许重复生成已提交的响应。
+// HTTP 开始写入后只隐藏错误；WebSocket 可在仅发布元信息时保留同连接重试能力。
+// Committed 为真说明已有业务输出或控制副作用，禁止重放。
 type ResponsesCapacityGuard struct {
-	Started bool
-	pending [][]byte
-	size    int
+	Started             bool
+	Committed           bool
+	AllowMetadataReplay bool
+	pending             [][]byte
+	size                int
+}
+
+func (g *ResponsesCapacityGuard) CanRetry() bool {
+	return !g.Committed && (!g.Started || g.AllowMetadataReplay)
 }
 
 func (g *ResponsesCapacityGuard) Flush() [][]byte {
@@ -33,17 +40,19 @@ func (g *ResponsesCapacityGuard) Observe(event *dto.ResponsesStreamResponse, raw
 			Error any `json:"error"`
 		}
 		_ = common.Unmarshal(raw, &envelope)
-		upstream := dto.GetOpenAIError(envelope.Error)
-		if upstream == nil && event.Response != nil {
-			upstream = event.Response.GetOpenAIError()
+		candidates := []*types.OpenAIError{dto.GetOpenAIError(envelope.Error)}
+		if event.Response != nil {
+			candidates = append(candidates, event.Response.GetOpenAIError())
 		}
-		if upstream == nil && event.Message != "" {
-			upstream = &types.OpenAIError{Message: event.Message, Code: event.Code}
-		}
-		if upstream != nil {
+		candidates = append(candidates, &types.OpenAIError{Message: event.Message, Code: event.Code})
+		for _, upstream := range candidates {
+			if upstream == nil {
+				continue
+			}
 			candidate := types.WithOpenAIError(*upstream, http.StatusInternalServerError)
 			if candidate.GetErrorCode() == types.ErrorCodeUpstreamModelCapacity {
 				failure = candidate
+				break
 			}
 		}
 	}
@@ -55,7 +64,7 @@ func (g *ResponsesCapacityGuard) Observe(event *dto.ResponsesStreamResponse, raw
 		}
 	}
 	if failure != nil {
-		if !g.Started && !produced {
+		if g.CanRetry() && !produced {
 			g.pending, g.size = nil, 0
 			return nil, failure
 		}
@@ -64,7 +73,16 @@ func (g *ResponsesCapacityGuard) Observe(event *dto.ResponsesStreamResponse, raw
 			return nil, failure
 		}
 		if _, exists := frame["error"]; exists || event.Type == "error" {
-			frame["error"] = failure.ToOpenAIError()
+			masked := failure.ToOpenAIError()
+			publicError := map[string]any{"type": masked.Type, "code": masked.Code, "message": masked.Message}
+			if original, ok := frame["error"].(map[string]any); ok {
+				for _, key := range []string{"response_id", "event_id", "stream_id"} {
+					if id, ok := original[key].(string); ok {
+						publicError[key] = id
+					}
+				}
+			}
+			frame["error"] = publicError
 		}
 		if response, ok := frame["response"].(map[string]any); ok {
 			response["error"] = failure.ToOpenAIError()
@@ -91,5 +109,8 @@ func (g *ResponsesCapacityGuard) Observe(event *dto.ResponsesStreamResponse, raw
 	}
 	frames := g.Flush()
 	g.Started = true
+	if produced || (event.Type != "response.created" && event.Type != "response.in_progress") {
+		g.Committed = true
+	}
 	return append(frames, raw), failure
 }

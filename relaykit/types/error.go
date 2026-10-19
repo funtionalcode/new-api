@@ -448,17 +448,27 @@ func NormalizeUpstreamCapacityError(e *NewAPIError) *NewAPIError {
 		return nil
 	}
 	message := e.Error()
+	code, errorType := "", ""
 	switch original := e.RelayError.(type) {
 	case OpenAIError:
 		if original.Message != "" {
 			message = original.Message
 		}
+		code, errorType = formatCodeValue(original.Code), original.Type
 	case ClaudeError:
 		message = original.Message
+		errorType = original.Type
 	}
 	const marker = "selected model is at capacity. please try a different model."
 	message = strings.ToLower(strings.TrimSpace(message))
-	if e.errorCode == ErrorCodeUpstreamModelCapacity || message == marker {
+	capacityCode := false
+	for _, value := range []string{code, errorType} {
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "model_capacity", "model_at_capacity", "model_is_at_capacity", "server_is_overloaded":
+			capacityCode = true
+		}
+	}
+	if e.errorCode == ErrorCodeUpstreamModelCapacity || capacityCode || message == marker || message == "selected model is at capacity" || message == "selected model is at capacity." {
 		e.errorCode = ErrorCodeUpstreamModelCapacity
 		e.StatusCode = http.StatusInternalServerError
 	}

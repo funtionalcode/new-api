@@ -42,11 +42,15 @@ var responsesWSTestUserSequence atomic.Int64
 func TestModelCapacityErrorsRetryPrivately(t *testing.T) {
 	const message = "Selected model is at capacity. Please try a different model."
 	for _, transport := range []string{"http-json", "http-sse", "websocket"} {
-		for _, outcome := range []string{"recovers", "exhausted", "after-output", "recovers-error", "after-tool"} {
+		for _, outcome := range []string{"recovers", "exhausted", "after-output", "recovers-error", "after-tool", "recovers-overloaded"} {
 			if transport == "http-json" && (outcome == "after-output" || outcome == "recovers-error" || outcome == "after-tool") {
 				continue
 			}
 			t.Run(transport+"/"+outcome, func(t *testing.T) {
+				failureMessage := message
+				if outcome == "recovers-overloaded" {
+					failureMessage = "Our servers are currently overloaded. Please try again later."
+				}
 				previousRetries := common.RetryTimes
 				common.RetryTimes = 1
 				t.Cleanup(func() { common.RetryTimes = previousRetries })
@@ -60,6 +64,9 @@ func TestModelCapacityErrorsRetryPrivately(t *testing.T) {
 					}
 					if outcome == "recovers-error" {
 						return []string{`{"type":"error","status":400,"message":"` + message + `","code":"model_capacity"}`}
+					}
+					if outcome == "recovers-overloaded" {
+						return []string{`{"type":"error","status":503,"error":{"type":"service_unavailable_error","code":"server_is_overloaded","message":"` + failureMessage + `"}}`}
 					}
 					frames := []string{`{"type":"response.created","response":{"id":"rejected","status":"in_progress"}}`, `{"type":"response.in_progress","response":{"id":"rejected","status":"in_progress"}}`}
 					if outcome == "after-output" {
@@ -86,12 +93,16 @@ func TestModelCapacityErrorsRetryPrivately(t *testing.T) {
 					attempt := attempts.Add(1)
 					if transport == "http-json" {
 						w.Header().Set("Content-Type", "application/json")
-						if outcome == "recovers" && attempt > 1 {
+						if strings.HasPrefix(outcome, "recovers") && attempt > 1 {
 							_, _ = io.WriteString(w, `{"id":"ok","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`)
 							return
 						}
 						w.WriteHeader(http.StatusBadRequest)
-						_, _ = io.WriteString(w, `{"error":{"type":"invalid_request_error","message":"`+message+`"}}`)
+						if outcome == "recovers-overloaded" {
+							_, _ = io.WriteString(w, `{"error":{"type":"service_unavailable_error","code":"server_is_overloaded","message":"`+failureMessage+`"}}`)
+						} else {
+							_, _ = io.WriteString(w, `{"error":{"type":"invalid_request_error","message":"`+message+`"}}`)
+						}
 						return
 					}
 					w.Header().Set("Content-Type", "text/event-stream")
@@ -127,7 +138,7 @@ func TestModelCapacityErrorsRetryPrivately(t *testing.T) {
 					}
 					<-fixture.httpDone
 				}
-				assert.NotContains(t, body.String(), message)
+				assert.NotContains(t, body.String(), failureMessage)
 				if strings.HasPrefix(outcome, "recovers") {
 					assert.Contains(t, body.String(), `"completed"`)
 					assert.NotContains(t, body.String(), "rejected")
@@ -158,14 +169,14 @@ func TestModelCapacityErrorsRetryPrivately(t *testing.T) {
 				require.NoError(t, err)
 				visibleLogs, err := common.Marshal(userLogs)
 				require.NoError(t, err)
-				assert.NotContains(t, string(visibleLogs), message)
+				assert.NotContains(t, string(visibleLogs), failureMessage)
 				if !strings.HasPrefix(outcome, "after-") {
 					var errorLogs []model.Log
 					require.NoError(t, model.LOG_DB.Where("token_id = ? AND type = ?", fixture.token.Id, model.LogTypeError).Find(&errorLogs).Error)
 					require.NotEmpty(t, errorLogs)
 					for _, log := range errorLogs {
 						assert.Equal(t, "status_code=500, Internal server error", log.Content)
-						assert.Contains(t, log.Other, message, "管理员仍可查看上游诊断")
+						assert.Contains(t, log.Other, failureMessage, "管理员仍可查看上游诊断")
 					}
 				}
 			})
@@ -191,8 +202,188 @@ func TestModelCapacityErrorsRetryPrivately(t *testing.T) {
 	withMetadata := types.WithOpenAIError(types.OpenAIError{Message: message, Metadata: []byte(`{"provider_name":"upstream"}`)}, 400)
 	assert.Equal(t, http.StatusInternalServerError, withMetadata.StatusCode)
 	assert.Equal(t, "Internal server error", withMetadata.ToOpenAIError().Message)
+	for _, upstream := range []types.OpenAIError{
+		{Message: "Selected Model is at capacity"},
+		{Code: "model_at_capacity"},
+		{Type: "model_is_at_capacity"},
+		{Code: "server_is_overloaded", Type: "service_unavailable_error", Message: "Our servers are currently overloaded. Please try again later."},
+	} {
+		failure := types.WithOpenAIError(upstream, 400)
+		assert.Equal(t, http.StatusInternalServerError, failure.StatusCode)
+		assert.Equal(t, "Internal server error", failure.ToOpenAIError().Message)
+	}
+	raw := []byte(`{"type":"response.failed","error":{},"response":{"error":{"code":"model_at_capacity"}}}`)
+	var event dto.ResponsesStreamResponse
+	require.NoError(t, common.Unmarshal(raw, &event))
+	guard := &service.ResponsesCapacityGuard{}
+	_, failure := guard.Observe(&event, raw)
+	require.NotNil(t, failure, "空的顶层 error 不能掩盖 response.error 中的容量错误")
+	raw = []byte(`{"type":"error","error":{"response_id":"foreign","event_id":"control","stream_id":"other","code":"server_is_overloaded","message":"overloaded"}}`)
+	event = dto.ResponsesStreamResponse{}
+	require.NoError(t, common.Unmarshal(raw, &event))
+	guard = &service.ResponsesCapacityGuard{Started: true}
+	frames, failure := guard.Observe(&event, raw)
+	require.NotNil(t, failure)
+	require.Len(t, frames, 1)
+	var masked struct {
+		Error map[string]any `json:"error"`
+	}
+	require.NoError(t, common.Unmarshal(frames[0], &masked))
+	assert.Equal(t, "foreign", masked.Error["response_id"])
+	assert.Equal(t, "control", masked.Error["event_id"])
+	assert.Equal(t, "other", masked.Error["stream_id"])
+	assert.Equal(t, "Internal server error", masked.Error["message"])
 	c.Writer.WriteHeaderNow()
 	assert.False(t, service.ShouldRetryRelayError(c, capacity, 1), "响应已经提交时禁止重放")
+}
+
+func TestResponsesWebSocketCapacityRetryKeepsResponseIdentity(t *testing.T) {
+	for _, outcome := range []string{"continuation", "interrupt", "steer-rejected", "exhausted"} {
+		t.Run(outcome, func(t *testing.T) {
+			previousRetries := common.RetryTimes
+			common.RetryTimes = 10
+			t.Cleanup(func() { common.RetryTimes = previousRetries })
+			allowFailure := make(chan struct{})
+			defer close(allowFailure)
+			retried := make(chan struct{}, 1)
+			var attempts atomic.Int32
+			fixture := newResponsesWSBillingTest(t, `tier("request", fixed(0.002))`, func(ws *websocket.Conn, _ *http.Request) {
+				var prepared []byte
+				for {
+					_, payload, err := ws.ReadMessage()
+					if err != nil {
+						return
+					}
+					attempt := attempts.Add(1)
+					var request map[string]any
+					if !assert.NoError(t, common.Unmarshal(payload, &request)) {
+						return
+					}
+					id := "seed"
+					if attempt == 2 {
+						id = "visible"
+						prepared = payload
+					} else if attempt > 2 {
+						id = fmt.Sprintf("upstream-%d", attempt)
+						if attempt == 3 || outcome == "exhausted" {
+							assert.Equal(t, string(prepared), string(payload), "重试必须保持原请求及上游连接")
+						} else {
+							assert.Equal(t, "upstream-3", request["previous_response_id"], "续传使用真实上游游标")
+						}
+					}
+					created := fmt.Sprintf(`{"type":"response.created","response":{"id":%q,"status":"in_progress"}}`, id)
+					if !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, []byte(created))) {
+						return
+					}
+					if attempt == 2 {
+						<-allowFailure
+					}
+					if attempt == 2 || outcome == "exhausted" && attempt > 2 {
+						failure := `{"type":"error","status":503,"error":{"type":"service_unavailable_error","code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}}`
+						if !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, []byte(failure))) {
+							return
+						}
+						continue
+					}
+					if attempt == 3 && outcome == "continuation" {
+						late := `{"type":"response.failed","response":{"id":"visible","status":"failed","error":{"code":"server_is_overloaded","message":"late failure"}}}`
+						if !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, []byte(late))) {
+							return
+						}
+					}
+					status, eventType := "completed", "response.completed"
+					if attempt == 3 && (outcome == "interrupt" || outcome == "steer-rejected") {
+						retried <- struct{}{}
+						_, control, err := ws.ReadMessage()
+						if !assert.NoError(t, err) {
+							return
+						}
+						var command map[string]any
+						if !assert.NoError(t, common.Unmarshal(control, &command)) {
+							return
+						}
+						if outcome == "interrupt" {
+							assert.Equal(t, "response.interrupt", command["type"])
+							assert.Equal(t, "upstream-3", command["response_id"])
+							assert.Equal(t, false, command["discard_partial_items"])
+							status, eventType = "cancelled", "response.cancelled"
+						} else {
+							assert.Equal(t, "response.steer", command["type"])
+							assert.Equal(t, "upstream-3", command["previous_response_id"])
+							rejection := `{"type":"error","event_id":"steer-c","response_id":"upstream-3","error":{"type":"invalid_request_error","code":"invalid_request_error","message":"steer rejected"}}`
+							if !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, []byte(rejection))) {
+								return
+							}
+						}
+					}
+					terminal := fmt.Sprintf(`{"type":%q,"response":{"id":%q,"status":%q,"output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}`, eventType, id, status)
+					if !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, []byte(terminal))) {
+						return
+					}
+				}
+			})
+			require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","input":"seed"}`)))
+			for readResponsesWSTestEvent(t, fixture.client)["type"] != "response.completed" {
+			}
+			require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","previous_response_id":"seed","input":"task"}`)))
+			created := readResponsesWSTestEvent(t, fixture.client)
+			require.Equal(t, "response.created", created["type"])
+			assert.Equal(t, "visible", created["response"].(map[string]any)["id"])
+			allowFailure <- struct{}{}
+			if outcome == "interrupt" || outcome == "steer-rejected" {
+				select {
+				case <-retried:
+				case <-time.After(3 * time.Second):
+					t.Fatal("启动通知发布后未执行内部重试")
+				}
+				control := `{"type":"response.interrupt","response_id":"visible","discard_partial_items":false}`
+				if outcome == "steer-rejected" {
+					control = `{"type":"response.steer","event_id":"steer-c","previous_response_id":"visible","input":"shorter"}`
+				}
+				require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(control)))
+			}
+			terminal := readResponsesWSTestEvent(t, fixture.client)
+			if outcome == "steer-rejected" {
+				require.Equal(t, "error", terminal["type"])
+				assert.Equal(t, "visible", terminal["response_id"])
+				terminal = readResponsesWSTestEvent(t, fixture.client)
+				require.Eventually(t, func() bool {
+					var token model.Token
+					return model.DB.First(&token, fixture.token.Id).Error == nil && token.RemainQuota == 1000
+				}, 3*time.Second, 10*time.Millisecond)
+			}
+			if outcome == "exhausted" {
+				assert.Equal(t, "error", terminal["type"])
+				assert.Equal(t, float64(http.StatusInternalServerError), terminal["status"])
+				assert.Equal(t, "Internal server error", terminal["error"].(map[string]any)["message"])
+				assert.Equal(t, int32(12), attempts.Load(), "预热成功后当前请求最多首次加 10 次重试")
+				require.Eventually(t, func() bool {
+					var token model.Token
+					return model.DB.First(&token, fixture.token.Id).Error == nil && token.RemainQuota == 2000
+				}, 3*time.Second, 10*time.Millisecond)
+			} else {
+				wantType := "response.completed"
+				if outcome == "interrupt" {
+					wantType = "response.cancelled"
+				}
+				require.Equal(t, wantType, terminal["type"], "内部重试不能重复发布 response.created")
+				assert.Equal(t, "visible", terminal["response"].(map[string]any)["id"])
+			}
+			quotas := []int{1000}
+			if outcome != "exhausted" {
+				quotas = append(quotas, 1000)
+			}
+			if outcome == "continuation" {
+				require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","previous_response_id":"visible","input":"next"}`)))
+				for readResponsesWSTestEvent(t, fixture.client)["type"] != "response.completed" {
+				}
+				quotas = append(quotas, 1000)
+			}
+			fixture.closeAndWait(t)
+			assert.Equal(t, int32(1), fixture.connections.Load())
+			assertResponsesWSAccounting(t, fixture, quotas)
+		})
+	}
 }
 
 func setupResponsesWSRequestTest(t *testing.T) (*model.User, *model.Token) {

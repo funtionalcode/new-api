@@ -97,13 +97,16 @@ type responsesWSControl struct {
 // Only the request worker reads or changes billing state. Socket readers pass
 // bounded messages to it; cancellation never performs an independent refund.
 type responsesWSCallState struct {
-	inbox        chan responsesWSMessage
-	controls     chan responsesWSControl
-	done         chan struct{}
-	terminal     *responsesWSMessage
-	closeAfter   bool
-	preparedBody []byte
-	steer        *responsesWSSteering
+	inbox             chan responsesWSMessage
+	controls          chan responsesWSControl
+	done              chan struct{}
+	terminal          *responsesWSMessage
+	closeAfter        bool
+	preparedBody      []byte
+	steer             *responsesWSSteering
+	clientResponseID  string
+	publishedMetadata uint8
+	capacityRetry     bool
 }
 
 type responsesWSSession struct {
@@ -116,14 +119,16 @@ type responsesWSSession struct {
 	nextEventIndex int
 	workers        sync.WaitGroup
 
-	clientWriteMu sync.Mutex
-	targetWriteMu sync.Mutex
-	connectionMu  sync.Mutex
-	target        *websocket.Conn
-	unregister    func()
-	stateMu       sync.Mutex
-	current       *responsesWSCallState
-	pendingSteer  *responsesWSCallState
+	clientWriteMu           sync.Mutex
+	targetWriteMu           sync.Mutex
+	connectionMu            sync.Mutex
+	target                  *websocket.Conn
+	unregister              func()
+	stateMu                 sync.Mutex
+	current                 *responsesWSCallState
+	pendingSteer            *responsesWSCallState
+	responseAliases         map[string]string
+	upstreamResponseAliases map[string]string
 
 	// 连接配置首次绑定后只读，响应游标仅由当前生成请求更新。
 	// 每条请求的令牌、用户和计费状态不保存在连接中。
@@ -158,6 +163,11 @@ func ResponsesWebSocketHelper(c *gin.Context, client *websocket.Conn, runner Res
 		_, message, err := client.ReadMessage()
 		if err != nil {
 			return nil
+		}
+		message, err = s.translateResponseIDs(message, true)
+		if err != nil {
+			s.sendError("", "", newResponsesWSInvalidRequestError(err))
+			continue
 		}
 		envelope, streamID, err := parseResponsesWSEnvelope(message)
 		eventType := envelope.Type
@@ -215,6 +225,15 @@ func (s *responsesWSSession) runRequest(state *responsesWSCallState, message []b
 		if apiErr != nil {
 			if body, err := buildResponsesWSErrorPayload(envelope.EventID, streamID, apiErr); err == nil {
 				outgoing = &responsesWSMessage{kind: websocket.TextMessage, body: body}
+			}
+		}
+		if outgoing != nil && outgoing.kind == websocket.TextMessage {
+			body, err := s.translateResponseIDs(outgoing.body, false)
+			if err != nil {
+				state.closeAfter = true
+				outgoing = nil
+			} else {
+				outgoing.body = body
 			}
 		}
 		s.clientWriteMu.Lock()
@@ -439,7 +458,8 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 	var pendingControl []byte
 	var sentControl []byte
 	var responseID string
-	guard := &service.ResponsesCapacityGuard{}
+	discardedResponseIDs := make(map[string]bool)
+	guard := &service.ResponsesCapacityGuard{AllowMetadataReplay: true}
 	// 最多等待 100ms 合并启动元信息；随后发布，保持取消和双工控制可用。
 	preamble := time.NewTimer(100 * time.Millisecond)
 	preamble.Stop()
@@ -478,11 +498,11 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 			if err := common.Unmarshal(incoming.body, &event); err != nil {
 				info.StreamStatus.RecordError("invalid upstream websocket event")
 				for _, frame := range guard.Flush() {
-					if err := s.writeClient(websocket.TextMessage, frame); err != nil {
+					if err := s.publishCallEvent(state, websocket.TextMessage, frame); err != nil {
 						s.shutdown()
 					}
 				}
-				guard.Started = true
+				guard.Started, guard.Committed = true, true
 			} else {
 				if strings.HasPrefix(event.Type, "response.steer.") {
 					s.handleSteeringEvent(state, incoming)
@@ -497,7 +517,7 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 						incoming.body = frames[len(frames)-1]
 					}
 					for _, frame := range guard.Flush() {
-						if err := s.writeClient(websocket.TextMessage, frame); err != nil {
+						if err := s.publishCallEvent(state, websocket.TextMessage, frame); err != nil {
 							s.shutdown()
 						}
 					}
@@ -511,6 +531,29 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 				if event.Response != nil && event.Response.ID != "" && event.Response.ID == s.lastResponseID {
 					continue
 				}
+				if responseID != "" && event.Type != "response.created" {
+					id := gjson.GetBytes(incoming.body, "response_id").String()
+					if id == "" {
+						id = gjson.GetBytes(incoming.body, "error.response_id").String()
+					}
+					if event.Response != nil && event.Response.ID != "" {
+						id = event.Response.ID
+					}
+					if id != responseID && discardedResponseIDs[id] {
+						continue
+					}
+				}
+				// 启动通知已发布后，内部重试仍保持客户端的逻辑响应 ID。
+				if state.capacityRetry && state.clientResponseID != "" && event.Response != nil && event.Response.ID != "" {
+					s.stateMu.Lock()
+					if s.responseAliases == nil {
+						s.responseAliases = make(map[string]string)
+						s.upstreamResponseAliases = make(map[string]string)
+					}
+					s.responseAliases[state.clientResponseID] = event.Response.ID
+					s.upstreamResponseAliases[event.Response.ID] = state.clientResponseID
+					s.stateMu.Unlock()
+				}
 				// 控制错误先完成关联判断，不能把其他响应的错误重放到当前请求。
 				currentError := true
 				if event.Type == "error" {
@@ -523,10 +566,10 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 				}
 				if currentError {
 					frames, capacityErr := guard.Observe(&event.ResponsesStreamResponse, incoming.body)
-					if capacityErr != nil && !guard.Started {
+					if capacityErr != nil && guard.CanRetry() {
 						decision := service.PolicyDecision{Action: "stop", Reason: "response_started", Source: "system"}
 						if state.steer == nil && pendingControl == nil && sentControl == nil && len(state.controls) == 0 {
-							decision = service.DecideRelayRetry(c, capacityErr, common.RetryTimes-info.RetryIndex)
+							decision = service.DecideRelayRetry(c, capacityErr, common.RetryTimes-info.RetryIndex, service.RelayRetryOptions{SameUpstream: true})
 						}
 						service.RecordPolicyFailure(c, s.lockedChannelID, capacityErr, decision)
 						service.ProcessChannelError(c, *types.NewChannelError(s.lockedChannelID, info.ChannelType, "", false, info.ApiKey, false), capacityErr, info)
@@ -534,16 +577,26 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 							return capacityErr
 						}
 						info.RetryIndex++
+						state.capacityRetry = true
+						if responseID != "" {
+							discardedResponseIDs[responseID] = true
+						}
 						policy.BeginAttempt(&appmodel.Channel{Id: s.lockedChannelID}, info.UsingGroup)
 						preamble.Stop()
 						preambleReady = nil
 						accepted, generationStarted, responseID = false, false, ""
 						accumulator = service.NewResponsesUsageAccumulator(info)
+						guard = &service.ResponsesCapacityGuard{AllowMetadataReplay: true, Started: state.publishedMetadata != 0}
 						if err := s.writeTarget(websocket.TextMessage, state.preparedBody); err != nil {
 							state.closeAfter = true
 							return types.NewError(err, types.ErrorCodeBadResponse, types.ErrOptionWithSkipRetry())
 						}
 						continue
+					}
+					if capacityErr != nil {
+						decision := service.PolicyDecision{Action: "stop", Reason: "response_started", Source: "system"}
+						service.RecordPolicyFailure(c, s.lockedChannelID, capacityErr, decision)
+						service.ProcessChannelError(c, *types.NewChannelError(s.lockedChannelID, info.ChannelType, "", false, info.ApiKey, false), capacityErr, info)
 					}
 					if capacityErr != nil && len(frames) > 0 {
 						incoming.body = frames[len(frames)-1]
@@ -551,7 +604,7 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 					// 元信息仅由下面的原有逻辑观察，提交时补发之前暂存的帧。
 					if len(frames) > 1 {
 						for _, frame := range frames[:len(frames)-1] {
-							if err := s.writeClient(websocket.TextMessage, frame); err != nil {
+							if err := s.publishCallEvent(state, websocket.TextMessage, frame); err != nil {
 								s.shutdown()
 							}
 						}
@@ -571,7 +624,7 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 					terminal, ambiguous, controlError := responsesWSErrorEndsRequest(rejection, create.StreamID, responseID, sentControl)
 					if !terminal {
 						for _, frame := range guard.Flush() {
-							if err := s.writeClient(websocket.TextMessage, frame); err != nil {
+							if err := s.publishCallEvent(state, websocket.TextMessage, frame); err != nil {
 								s.shutdown()
 							}
 						}
@@ -586,7 +639,7 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 					}
 					if s.rejectSteeringControl(rejection) {
 						for _, frame := range guard.Flush() {
-							if err := s.writeClient(websocket.TextMessage, frame); err != nil {
+							if err := s.publishCallEvent(state, websocket.TextMessage, frame); err != nil {
 								s.shutdown()
 							}
 						}
@@ -655,7 +708,7 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 			if guard.Started {
 				preamble.Stop()
 				preambleReady = nil
-				if err := s.writeClient(incoming.kind, incoming.body); err != nil {
+				if err := s.publishCallEvent(state, incoming.kind, incoming.body); err != nil {
 					s.shutdown()
 				}
 			} else if preambleReady == nil {
@@ -670,8 +723,15 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 				pendingControl = nil
 			}
 		case control := <-state.controls:
+			guard.Committed = true
+			var err error
+			control.body, err = s.translateResponseIDs(control.body, true)
+			if err != nil {
+				s.sendError(control.eventID, control.streamID, newResponsesWSInvalidRequestError(err))
+				continue
+			}
 			for _, frame := range guard.Flush() {
-				if err := s.writeClient(websocket.TextMessage, frame); err != nil {
+				if err := s.publishCallEvent(state, websocket.TextMessage, frame); err != nil {
 					s.shutdown()
 				}
 			}
@@ -701,7 +761,7 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 			sentControl = control.body
 		case <-preambleReady:
 			for _, frame := range guard.Flush() {
-				if err := s.writeClient(websocket.TextMessage, frame); err != nil {
+				if err := s.publishCallEvent(state, websocket.TextMessage, frame); err != nil {
 					s.shutdown()
 				}
 			}
@@ -1003,7 +1063,63 @@ func (s *responsesWSSession) setTarget(target *websocket.Conn) bool {
 	return true
 }
 
+// translateResponseIDs 只转换协议游标字段，不修改用户文本、工具参数或输出项 ID。
+func (s *responsesWSSession) translateResponseIDs(message []byte, upstream bool) ([]byte, error) {
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+	aliases := s.upstreamResponseAliases
+	if upstream {
+		aliases = s.responseAliases
+	}
+	if len(aliases) == 0 {
+		return message, nil
+	}
+	for _, path := range []string{"response.id", "response_id", "previous_response_id", "response.previous_response_id", "error.response_id", "steer.previous_response_id"} {
+		id := gjson.GetBytes(message, path)
+		if id.Type != gjson.String {
+			continue
+		}
+		if replacement, exists := aliases[id.String()]; exists && replacement != id.String() {
+			var err error
+			message, err = sjson.SetBytes(message, path, replacement)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return message, nil
+}
+
+func (s *responsesWSSession) publishCallEvent(state *responsesWSCallState, kind int, message []byte) error {
+	if kind == websocket.TextMessage {
+		var bit uint8
+		switch gjson.GetBytes(message, "type").String() {
+		case "response.created":
+			bit = 1
+		case "response.in_progress":
+			bit = 2
+		}
+		if bit != 0 {
+			if state.capacityRetry && state.publishedMetadata&bit != 0 {
+				return nil
+			}
+			state.publishedMetadata |= bit
+			if state.clientResponseID == "" {
+				state.clientResponseID = gjson.GetBytes(message, "response.id").String()
+			}
+		}
+	}
+	return s.writeClient(kind, message)
+}
+
 func (s *responsesWSSession) writeTarget(kind int, message []byte) error {
+	if kind == websocket.TextMessage {
+		var err error
+		message, err = s.translateResponseIDs(message, true)
+		if err != nil {
+			return err
+		}
+	}
 	s.targetWriteMu.Lock()
 	defer s.targetWriteMu.Unlock()
 	target := s.getTarget()
@@ -1017,6 +1133,13 @@ func (s *responsesWSSession) writeTarget(kind int, message []byte) error {
 }
 
 func (s *responsesWSSession) writeClient(kind int, message []byte) error {
+	if kind == websocket.TextMessage {
+		var err error
+		message, err = s.translateResponseIDs(message, false)
+		if err != nil {
+			return err
+		}
+	}
 	s.clientWriteMu.Lock()
 	defer s.clientWriteMu.Unlock()
 	if err := s.client.SetWriteDeadline(time.Now().Add(responsesWSWriteTimeout)); err != nil {
