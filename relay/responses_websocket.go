@@ -460,7 +460,7 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 	var responseID string
 	discardedResponseIDs := make(map[string]bool)
 	// 临时游标只在本连接有效；持久化响应必须保留跨连接可用的原始 ID。
-	allowMetadataReplay := bytes.Equal(bytes.TrimSpace(create.Request.Store), []byte("false"))
+	allowMetadataReplay := gjson.GetBytes(state.preparedBody, "store").Type == gjson.False
 	guard := &service.ResponsesCapacityGuard{AllowMetadataReplay: allowMetadataReplay}
 	// 最多等待 100ms 合并启动元信息；随后发布，保持取消和双工控制可用。
 	preamble := time.NewTimer(100 * time.Millisecond)
@@ -474,6 +474,7 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 	for {
 		select {
 		case incoming := <-state.inbox:
+			forwardCurrent := true
 			idle.Reset(timeout)
 			if incoming.err != nil {
 				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonScannerErr, incoming.err)
@@ -567,7 +568,9 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 					s.stateMu.Unlock()
 				}
 				if currentError {
+					committedBefore := guard.Committed
 					frames, capacityErr := guard.Observe(&event.ResponsesStreamResponse, incoming.body)
+					forwardCurrent = len(frames) > 0
 					if capacityErr != nil && guard.CanRetry() {
 						decision := service.PolicyDecision{Action: "stop", Reason: "response_started", Source: "system"}
 						if state.steer == nil && pendingControl == nil && sentControl == nil && len(state.controls) == 0 {
@@ -597,6 +600,9 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 					}
 					if capacityErr != nil {
 						decision := service.PolicyDecision{Action: "stop", Reason: "response_started", Source: "system"}
+						if !committedBefore && !guard.AllowMetadataReplay {
+							decision.Reason = "persistent_response_started"
+						}
 						service.RecordPolicyFailure(c, s.lockedChannelID, capacityErr, decision)
 						service.ProcessChannelError(c, *types.NewChannelError(s.lockedChannelID, info.ChannelType, "", false, info.ApiKey, false), capacityErr, info)
 					}
@@ -710,8 +716,10 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 			if guard.Started {
 				preamble.Stop()
 				preambleReady = nil
-				if err := s.publishCallEvent(state, incoming.kind, incoming.body); err != nil {
-					s.shutdown()
+				if forwardCurrent {
+					if err := s.publishCallEvent(state, incoming.kind, incoming.body); err != nil {
+						s.shutdown()
+					}
 				}
 			} else if preambleReady == nil {
 				preamble.Reset(100 * time.Millisecond)
@@ -762,7 +770,7 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 			}
 			sentControl = control.body
 		case <-preambleReady:
-			for _, frame := range guard.Flush() {
+			for _, frame := range guard.FlushPreamble() {
 				if err := s.publishCallEvent(state, websocket.TextMessage, frame); err != nil {
 					s.shutdown()
 				}

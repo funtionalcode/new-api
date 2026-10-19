@@ -238,7 +238,7 @@ func TestModelCapacityErrorsRetryPrivately(t *testing.T) {
 }
 
 func TestResponsesWebSocketCapacityRetryKeepsResponseIdentity(t *testing.T) {
-	for _, outcome := range []string{"continuation", "interrupt", "steer-rejected", "exhausted", "persistent"} {
+	for _, outcome := range []string{"continuation", "interrupt", "steer-rejected", "exhausted", "persistent", "prepared-store", "bootstrap"} {
 		t.Run(outcome, func(t *testing.T) {
 			previousRetries := common.RetryTimes
 			common.RetryTimes = 10
@@ -263,6 +263,9 @@ func TestResponsesWebSocketCapacityRetryKeepsResponseIdentity(t *testing.T) {
 					if !assert.NoError(t, common.Unmarshal(payload, &request)) {
 						return
 					}
+					if outcome == "prepared-store" {
+						assert.Equal(t, false, request["store"])
+					}
 					id := "seed"
 					if attempt == 2 {
 						id = "visible"
@@ -278,6 +281,27 @@ func TestResponsesWebSocketCapacityRetryKeepsResponseIdentity(t *testing.T) {
 					created := fmt.Sprintf(`{"type":"response.created","response":{"id":%q,"status":"in_progress"}}`, id)
 					if !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, []byte(created))) {
 						return
+					}
+					if outcome == "bootstrap" && (attempt == 2 || attempt == 3) {
+						itemID := "discarded-item"
+						if attempt == 3 {
+							itemID = "real-item"
+						}
+						metadata := []string{
+							`{"type":"keepalive","sequence_number":1}`,
+							fmt.Sprintf(`{"type":"response.output_item.added","item":{"id":%q,"type":"message","role":"assistant","content":[]}}`, itemID),
+							`{"type":"response.content_part.added","part":{"type":"output_text","text":""}}`,
+							`{"type":"response.reasoning_summary_part.added","part":{"type":"summary_text","text":""}}`,
+							`{"type":"response.output_text.delta","delta":""}`,
+						}
+						if attempt == 3 {
+							metadata = append(metadata, `{"type":"response.output_text.delta","delta":"ok"}`)
+						}
+						for _, frame := range metadata {
+							if !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, []byte(frame))) {
+								return
+							}
+						}
 					}
 					if attempt == 2 {
 						<-allowFailure
@@ -326,10 +350,14 @@ func TestResponsesWebSocketCapacityRetryKeepsResponseIdentity(t *testing.T) {
 					}
 				}
 			})
-			require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"response.create","model":"ws-billing","input":"seed","store":%t}`, outcome == "persistent"))))
+			if outcome == "prepared-store" {
+				require.NoError(t, model.DB.Model(fixture.channel).Update("param_override", `{"store":false}`).Error)
+			}
+			persistent := outcome == "persistent" || outcome == "prepared-store"
+			require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"response.create","model":"ws-billing","input":"seed","store":%t}`, persistent))))
 			for readResponsesWSTestEvent(t, fixture.client)["type"] != "response.completed" {
 			}
-			require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"response.create","model":"ws-billing","previous_response_id":"seed","input":"task","store":%t}`, outcome == "persistent"))))
+			require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"response.create","model":"ws-billing","previous_response_id":"seed","input":"task","store":%t}`, persistent))))
 			created := readResponsesWSTestEvent(t, fixture.client)
 			require.Equal(t, "response.created", created["type"])
 			assert.Equal(t, "visible", created["response"].(map[string]any)["id"])
@@ -347,6 +375,18 @@ func TestResponsesWebSocketCapacityRetryKeepsResponseIdentity(t *testing.T) {
 				require.NoError(t, fixture.client.WriteMessage(websocket.TextMessage, []byte(control)))
 			}
 			terminal := readResponsesWSTestEvent(t, fixture.client)
+			if outcome == "bootstrap" {
+				var observed []string
+				for terminal["type"] != "response.completed" && terminal["type"] != "error" {
+					observed = append(observed, terminal["type"].(string))
+					if terminal["type"] == "response.output_item.added" {
+						assert.Equal(t, "real-item", terminal["item"].(map[string]any)["id"], "失败尝试的空输出项不能到达客户端")
+					}
+					terminal = readResponsesWSTestEvent(t, fixture.client)
+				}
+				assert.Contains(t, observed, "response.output_item.added")
+				assert.Contains(t, observed, "response.output_text.delta")
+			}
 			if outcome == "steer-rejected" {
 				require.Equal(t, "error", terminal["type"])
 				assert.Equal(t, "visible", terminal["response_id"])
