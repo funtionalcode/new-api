@@ -16,7 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-export type CliproxyAuthFileType = 'codex' | 'claude' | 'xai' | 'antigravity'
+export type CliproxyAuthFileType =
+  | 'codex'
+  | 'claude'
+  | 'xai'
+  | 'antigravity'
+  | 'meta'
 
 const claudePlanTypes = new Set([
   'claude',
@@ -125,10 +130,17 @@ export function getCliproxyAuthFileType(
       provider === 'antigravity' ||
       provider === 'claude' ||
       provider === 'xai' ||
+      provider === 'meta' ||
       provider === 'codex'
     ) {
       return provider
     }
+  }
+  if (
+    hasAuthFileNamePrefix(source.auth_file, 'meta') ||
+    hasAuthFileNamePrefix(source.auth_name, 'meta')
+  ) {
+    return 'meta'
   }
   if (
     normalizeCliproxyPlan(source.last_plan_type) === 'antigravity' ||
@@ -160,6 +172,7 @@ export function getCliproxyAuthFileTypeLabel(
   if (type === 'claude') return 'Claude'
   if (type === 'xai') return 'xAI'
   if (type === 'antigravity') return 'Antigravity'
+  if (type === 'meta') return 'Muse (Meta)'
   return 'Codex'
 }
 
@@ -176,7 +189,7 @@ function getAuthFileBaseName(value?: string): string {
 function emailFromAuthFileName(value?: string): string {
   const name = getAuthFileBaseName(value)
     .replace(/\.json$/i, '')
-    .replace(/^(codex|claude|xai|antigravity)[-_]/i, '')
+    .replace(/^(codex|claude|xai|antigravity|meta)[-_]/i, '')
     .replace(emailPlanSuffixPattern, '')
   return emailPattern.test(name) ? name : ''
 }

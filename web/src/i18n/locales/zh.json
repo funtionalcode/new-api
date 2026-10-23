@@ -8058,6 +8058,16 @@
     "Zhipu": "智谱",
     "Zhipu GLM": "智谱GLM",
     "Zhipu V4": "智谱 V4",
-    "Zoom": "缩放"
+    "Zoom": "缩放",
+    "Failed to load the Meta credential. Refresh the credential list and try again.": "加载 Meta 凭证失败，请刷新凭证列表后重试。",
+    "Failed to download the Meta credential.": "下载 Meta 凭证失败。",
+    "Meta credential is missing a valid DCA token. Sign in to Meta again.": "Meta 凭证缺少有效的 DCA token，请重新登录 Meta。",
+    "Meta requires a verified 18+ account. Verify your age or add a payment method, then retry.": "Meta 要求账号通过年满 18 岁验证，请验证年龄或添加付款方式后重试。",
+    "Meta authorization expired or was denied. Sign in to Meta again.": "Meta 授权已过期或被拒绝，请重新登录 Meta。",
+    "Meta quota request failed. Try again later.": "Meta 额度查询失败，请稍后重试。",
+    "Invalid Meta quota response.": "Meta 额度响应无效。",
+    "Usage Window": "用量窗口",
+    "{{minutes}}-Minute Window": "{{minutes}} 分钟窗口",
+    "Subscription inactive": "订阅未激活"
   }
 }

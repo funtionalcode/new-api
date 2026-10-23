@@ -220,12 +220,17 @@ func cliproxyAuthFileNameType(value string) string {
 		return "xai"
 	case strings.HasPrefix(name, "antigravity-"), strings.HasPrefix(name, "antigravity_"):
 		return "antigravity"
+	case strings.HasPrefix(name, "meta-"), strings.HasPrefix(name, "meta_"):
+		return "meta"
 	default:
 		return ""
 	}
 }
 
 func cliproxyProviderPlanType(provider string, fileType string) string {
+	if normalizeCliproxyPlan(provider) == "meta" || normalizeCliproxyPlan(fileType) == "meta" {
+		return "meta"
+	}
 	if normalizeCliproxyPlan(provider) == "antigravity" || normalizeCliproxyPlan(fileType) == "antigravity" {
 		return "antigravity"
 	}
@@ -338,6 +343,9 @@ func (client *CliproxyAPIClient) doCallAPI(ctx context.Context, payload Cliproxy
 	if resp.StatusCode >= http.StatusBadRequest {
 		var body map[string]any
 		_ = common.DecodeJson(io.LimitReader(resp.Body, 64*1024), &body)
+		if payload.URL == cliproxyMetaQuotaURL {
+			return nil, cliproxyMetaQuotaHTTPError(resp.StatusCode, nil, false)
+		}
 		return nil, &cliproxyHTTPStatusError{
 			message:    cliproxyAPIErrorMessage("刷新额度失败，状态码", resp.StatusCode, body),
 			statusCode: resp.StatusCode,
@@ -353,6 +361,9 @@ func (client *CliproxyAPIClient) doCallAPI(ctx context.Context, payload Cliproxy
 		body := result.Body
 		if len(body) == 0 {
 			body = result.Data
+		}
+		if payload.URL == cliproxyMetaQuotaURL {
+			return nil, cliproxyMetaQuotaHTTPError(result.Status, body, true)
 		}
 		return nil, &cliproxyHTTPStatusError{
 			message:    cliproxyAPIErrorMessage("刷新额度失败，上游状态码", result.Status, body),
@@ -401,7 +412,10 @@ func cliproxyAPIErrorMessage(prefix string, status int, body map[string]any) str
 type cliproxyHTTPStatusError struct {
 	message    string
 	statusCode int
+	cause      error
 }
+
+func (e *cliproxyHTTPStatusError) Unwrap() error { return e.cause }
 
 func (e *cliproxyHTTPStatusError) Error() string {
 	if e == nil {

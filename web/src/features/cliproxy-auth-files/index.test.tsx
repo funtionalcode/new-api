@@ -87,3 +87,23 @@ describe('xAI binding usage plan', () => {
     expect(screen.getByText('SuperGrok Plus')).toBeInTheDocument()
   })
 })
+
+test('Meta 绑定使用独立额度窗口，不显示 Codex 限额', () => {
+  render(
+    <BindingUsageCell
+      binding={{
+        ...xaiBinding,
+        provider: 'meta',
+        last_meta_quota:
+          '{"window":{"used_percent":42.5,"duration_minutes":300},"weekly":{}}',
+      }}
+      labels={labels}
+    />
+  )
+  expect(screen.getByText('300-Minute Window')).toBeInTheDocument()
+  expect(screen.getByRole('progressbar')).toHaveAttribute(
+    'aria-valuenow',
+    '42.5'
+  )
+  expect(screen.queryByText('Codex Five-hour Limit')).not.toBeInTheDocument()
+})

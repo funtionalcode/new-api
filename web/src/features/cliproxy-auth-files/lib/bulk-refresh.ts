@@ -42,12 +42,14 @@ export const CLIPROXY_BULK_REFRESH_CONCURRENCY_BY_TYPE: Record<
   claude: 2,
   xai: 1,
   antigravity: 2,
+  meta: 1,
 }
 
 const cliproxyAuthFileBulkRefreshTypeOrder: CliproxyAuthFileType[] = [
   'codex',
   'claude',
   'antigravity',
+  'meta',
 ]
 
 export function getCliproxyAuthFileBulkRefreshOptions(

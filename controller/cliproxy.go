@@ -220,6 +220,13 @@ func RefreshCliproxyAuthFileBindingUsage(c *gin.Context) {
 	}
 	client, err := newCliproxyClientFromOptions()
 	if err != nil {
+		if isCliproxyMetaAuthFile(binding) {
+			err = common.NewMessage("Meta quota request failed. Try again later.")
+			if _, updateErr := model.UpdateCliproxyAuthFileBindingUsage(id, model.CliproxyUsageRefreshUpdate{Provider: "meta", LastError: err.Error()}); updateErr != nil {
+				common.ApiError(c, updateErr)
+				return
+			}
+		}
 		if isCliproxyAntigravityAuthFile(binding) {
 			_, updateErr := model.UpdateCliproxyAuthFileBindingUsage(id, model.CliproxyUsageRefreshUpdate{Provider: "antigravity", LastError: err.Error()})
 			if updateErr != nil {
@@ -260,6 +267,32 @@ func RefreshCliproxyAuthFileBindingUsage(c *gin.Context) {
 		})
 		if updateErr != nil {
 			common.ApiError(c, updateErr)
+			return
+		}
+		common.ApiSuccess(c, updatedBinding)
+		return
+	}
+	if isCliproxyMetaAuthFile(binding) {
+		quota, refreshErr := client.RefreshMetaQuota(c.Request.Context(), binding.AuthIndex)
+		update := model.CliproxyUsageRefreshUpdate{Provider: "meta"}
+		if refreshErr != nil {
+			update.LastError = refreshErr.Error()
+		} else {
+			raw, marshalErr := common.Marshal(quota)
+			if marshalErr != nil {
+				common.ApiError(c, common.NewMessage("Invalid Meta quota response."))
+				return
+			}
+			update.LastMetaQuota = string(raw)
+			update.LastPlanType = quota.Plan
+		}
+		updatedBinding, updateErr := model.UpdateCliproxyAuthFileBindingUsage(id, update)
+		if updateErr != nil {
+			common.ApiError(c, updateErr)
+			return
+		}
+		if refreshErr != nil {
+			common.ApiError(c, refreshErr)
 			return
 		}
 		common.ApiSuccess(c, updatedBinding)
@@ -1000,6 +1033,16 @@ func isCliproxyClaudeAuthFile(binding *model.CliproxyAuthFileBinding) bool {
 		return true
 	}
 	return isCliproxyClaudeAuthFileName(binding.AuthFile) || isCliproxyClaudeAuthFileName(binding.AuthName)
+}
+
+func isCliproxyMetaAuthFile(binding *model.CliproxyAuthFileBinding) bool {
+	if binding == nil {
+		return false
+	}
+	if strings.TrimSpace(binding.Provider) != "" {
+		return normalizeCliproxyPlan(binding.Provider) == "meta"
+	}
+	return hasCliproxyAuthFileNamePrefix(binding.AuthName, "meta") || hasCliproxyAuthFileNamePrefix(binding.AuthFile, "meta")
 }
 
 func isCliproxyXAIAuthFile(binding *model.CliproxyAuthFileBinding) bool {

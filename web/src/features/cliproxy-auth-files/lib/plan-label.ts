@@ -44,6 +44,7 @@ export function getCliproxyPlanLabelConfig(
   )
   const key = normalizeCliproxyPlanKey(planLabel)
   if (!key) return null
+  if (type === 'meta' && (key === 'meta' || key === 'oauth')) return null
 
   if (type === 'antigravity') {
     if (key === 'antigravity' || key === 'oauth') return null

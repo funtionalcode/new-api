@@ -27,6 +27,7 @@ type CliproxyAuthFileBinding struct {
 	LastUsageQuota               int    `json:"last_usage_quota" gorm:"default:0"`
 	LastPlanType                 string `json:"last_plan_type" gorm:"size:64;default:''"`
 	LastAntigravityQuota         string `json:"last_antigravity_quota" gorm:"type:text"`
+	LastMetaQuota                string `json:"last_meta_quota" gorm:"type:text"`
 	LastFiveHourPercent          int    `json:"last_five_hour_percent" gorm:"default:0"`
 	LastFiveHourResetAt          int64  `json:"last_five_hour_reset_at" gorm:"bigint;default:0"`
 	LastWeeklyPercent            int    `json:"last_weekly_percent" gorm:"default:0"`
@@ -76,6 +77,7 @@ type CliproxyUsageRefreshUpdate struct {
 	LastUsageQuota               int
 	LastPlanType                 string
 	LastAntigravityQuota         string
+	LastMetaQuota                string
 	LastFiveHourPercent          int
 	LastFiveHourResetAt          int64
 	LastWeeklyPercent            int
@@ -280,6 +282,7 @@ func UpdateCliproxyAuthFileBinding(id int, update CliproxyAuthFileBindingUpdate)
 		LastUsageQuota:               binding.LastUsageQuota,
 		LastPlanType:                 firstNonEmpty(update.LastPlanType, binding.LastPlanType),
 		LastAntigravityQuota:         binding.LastAntigravityQuota,
+		LastMetaQuota:                binding.LastMetaQuota,
 		LastFiveHourPercent:          binding.LastFiveHourPercent,
 		LastFiveHourResetAt:          binding.LastFiveHourResetAt,
 		LastWeeklyPercent:            binding.LastWeeklyPercent,
@@ -310,14 +313,16 @@ func UpdateCliproxyAuthFileBindingUsage(id int, update CliproxyUsageRefreshUpdat
 	if err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(update.LastError) != "" && strings.EqualFold(firstNonEmpty(update.Provider, binding.Provider), "antigravity") {
-		// Antigravity 刷新失败只保存错误，避免旧套餐和额度被当成本次结果。
-		update = CliproxyUsageRefreshUpdate{Provider: "antigravity", LastError: update.LastError, PreserveLastRefreshedAt: true}
+	provider := strings.ToLower(strings.TrimSpace(firstNonEmpty(update.Provider, binding.Provider)))
+	if strings.TrimSpace(update.LastError) != "" && (provider == "antigravity" || provider == "meta") {
+		// 刷新失败只保存错误，避免旧套餐和额度被当成本次结果。
+		update = CliproxyUsageRefreshUpdate{Provider: provider, LastError: update.LastError, PreserveLastRefreshedAt: true}
 	} else if strings.TrimSpace(update.LastError) != "" && !update.AllowPartialUsage {
 		update.LastUsageTokens = binding.LastUsageTokens
 		update.LastUsageQuota = binding.LastUsageQuota
 		update.LastPlanType = binding.LastPlanType
 		update.LastAntigravityQuota = binding.LastAntigravityQuota
+		update.LastMetaQuota = binding.LastMetaQuota
 		update.LastFiveHourPercent = binding.LastFiveHourPercent
 		update.LastFiveHourResetAt = binding.LastFiveHourResetAt
 		update.LastWeeklyPercent = binding.LastWeeklyPercent
@@ -336,7 +341,7 @@ func UpdateCliproxyAuthFileBindingUsage(id int, update CliproxyUsageRefreshUpdat
 		update.LastXAIOnDemandUsed = binding.LastXAIOnDemandUsed
 		update.LastXAIOnDemandUsedRefreshed = binding.LastXAIOnDemandUsedRefreshed
 		update.LastXAIBillingPeriodEndAt = binding.LastXAIBillingPeriodEndAt
-	} else if strings.TrimSpace(update.LastPlanType) == "" {
+	} else if strings.TrimSpace(update.LastPlanType) == "" && provider != "meta" {
 		update.LastPlanType = binding.LastPlanType
 	}
 	lastRefreshedAt := time.Now().Unix()
@@ -359,6 +364,7 @@ func UpdateCliproxyAuthFileBindingUsage(id int, update CliproxyUsageRefreshUpdat
 		LastUsageQuota:               update.LastUsageQuota,
 		LastPlanType:                 update.LastPlanType,
 		LastAntigravityQuota:         update.LastAntigravityQuota,
+		LastMetaQuota:                update.LastMetaQuota,
 		LastFiveHourPercent:          update.LastFiveHourPercent,
 		LastFiveHourResetAt:          update.LastFiveHourResetAt,
 		LastWeeklyPercent:            update.LastWeeklyPercent,
@@ -781,7 +787,7 @@ func resolveUserTokenDailyUsageOrder(query UserTokenUsageQuery) string {
 
 func ValidateCliproxyAuthFileBindingUpdate(update CliproxyAuthFileBindingUpdate) error {
 	switch update.Provider {
-	case "", "codex", "claude", "xai", "antigravity":
+	case "", "codex", "claude", "xai", "antigravity", "meta":
 	default:
 		return errors.New("认证文件提供商无效")
 	}

@@ -10,6 +10,29 @@ import {
 } from './bulk-refresh'
 
 describe('cliproxy auth file bulk refresh', () => {
+  test('Meta 可单独批量刷新，只查询已启用的 Meta 绑定', async () => {
+    const bindings = [
+      createBinding(1, true, { provider: 'meta' }),
+      createBinding(2, false, { provider: 'meta' }),
+      createBinding(3, true, { provider: 'codex' }),
+    ]
+    assert.deepEqual(getCliproxyAuthFileBulkRefreshOptions(bindings), [
+      { type: 'codex', count: 1 },
+      { type: 'meta', count: 1 },
+    ])
+    const refreshedIds: number[] = []
+    const summary = await refreshCliproxyAuthFileBindingsUsageByType(
+      bindings,
+      'meta',
+      async (id) => {
+        refreshedIds.push(id)
+        return { success: true, data: createBinding(id, true) }
+      }
+    )
+    assert.deepEqual(refreshedIds, [1])
+    assert.deepEqual(summary, { total: 1, success: 1, failed: 0 })
+  })
+
   test('offers bulk refresh only for enabled Codex and Claude bindings', () => {
     const options = getCliproxyAuthFileBulkRefreshOptions([
       createBinding(1, true),

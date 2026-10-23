@@ -59,6 +59,7 @@ export interface CliproxyAuthFileBinding {
   last_usage_quota: number
   last_plan_type: string
   last_antigravity_quota?: string
+  last_meta_quota?: string
   last_five_hour_percent: number
   last_five_hour_reset_at: number
   last_weekly_percent: number

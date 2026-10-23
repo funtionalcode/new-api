@@ -8058,6 +8058,16 @@
     "Zhipu": "Zhipu",
     "Zhipu GLM": "Zhipu GLM",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Failed to load the Meta credential. Refresh the credential list and try again.": "Failed to load the Meta credential. Refresh the credential list and try again.",
+    "Failed to download the Meta credential.": "Failed to download the Meta credential.",
+    "Meta credential is missing a valid DCA token. Sign in to Meta again.": "Meta credential is missing a valid DCA token. Sign in to Meta again.",
+    "Meta requires a verified 18+ account. Verify your age or add a payment method, then retry.": "Meta requires a verified 18+ account. Verify your age or add a payment method, then retry.",
+    "Meta authorization expired or was denied. Sign in to Meta again.": "Meta authorization expired or was denied. Sign in to Meta again.",
+    "Meta quota request failed. Try again later.": "Meta quota request failed. Try again later.",
+    "Invalid Meta quota response.": "Invalid Meta quota response.",
+    "Usage Window": "Usage Window",
+    "{{minutes}}-Minute Window": "{{minutes}}-Minute Window",
+    "Subscription inactive": "Subscription inactive"
   }
 }

@@ -62,7 +62,6 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Progress } from '@/components/ui/progress'
 import { Switch } from '@/components/ui/switch'
 import {
   Table,
@@ -103,6 +102,8 @@ import {
   updateCliproxyAuthFileBinding,
 } from './api'
 import { AntigravityUsageCell } from './components/antigravity-usage-cell'
+import { MetaUsageCell } from './components/meta-usage-cell'
+import { UsageLimitBar } from './components/usage-limit-bar'
 import {
   getCliproxyAuthFileEmail,
   getCliproxyAuthFileType,
@@ -264,33 +265,6 @@ function normalizeUsagePercent(value: unknown): number {
   return Math.min(100, Math.max(0, Math.round(percent)))
 }
 
-function usageProgressColor(percent: number): string {
-  if (percent >= 90) {
-    return '[&_[data-slot=progress-indicator]]:bg-rose-500'
-  }
-  if (percent >= 70) {
-    return '[&_[data-slot=progress-indicator]]:bg-amber-500'
-  }
-  return '[&_[data-slot=progress-indicator]]:bg-emerald-500'
-}
-
-function UsageLimitBar({ label, percent }: { label: string; percent: number }) {
-  const normalizedPercent = normalizeUsagePercent(percent)
-
-  return (
-    <div className='min-w-[140px] space-y-1'>
-      <div className='flex items-center justify-between gap-3 text-xs'>
-        <span className='text-muted-foreground'>{label}</span>
-        <span className='font-mono font-medium'>{normalizedPercent}%</span>
-      </div>
-      <Progress
-        value={normalizedPercent}
-        className={cn('h-1.5', usageProgressColor(normalizedPercent))}
-      />
-    </div>
-  )
-}
-
 function usageWindowLabel(
   key: CliproxyUsageWindowKey,
   labels: {
@@ -339,6 +313,7 @@ export function BindingUsageCell({
   const { t } = useTranslation()
   const type = getCliproxyAuthFileType(binding)
   if (type === 'antigravity') return <AntigravityUsageCell binding={binding} />
+  if (type === 'meta') return <MetaUsageCell binding={binding} />
   if (type === 'xai') {
     const xaiSummary = buildCliproxyXAIUsageSummary(binding)
     const xaiUsageLabels = {
