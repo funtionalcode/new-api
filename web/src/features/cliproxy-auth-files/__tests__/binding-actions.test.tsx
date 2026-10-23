@@ -220,8 +220,28 @@ it.each([false, true])(
       enabled: true,
       last_plan_type: 'Google AI Pro',
       last_refreshed_at: 123,
-      last_antigravity_quota:
-        '[{"bucket_id":"gemini-5h","remaining_fraction":0.9804,"reset_at":0},{"bucket_id":"gemini-weekly","remaining_fraction":1,"reset_at":0}]',
+      last_antigravity_quota: JSON.stringify([
+        {
+          bucket_id: 'gemini-5h',
+          remaining_fraction: 0.9804,
+          reset_at: 1792756083,
+        },
+        {
+          bucket_id: 'gemini-weekly',
+          remaining_fraction: 1,
+          reset_at: 1792983374,
+        },
+        {
+          bucket_id: '3p-5h',
+          remaining_fraction: 1,
+          reset_at: 1792756083,
+        },
+        {
+          bucket_id: '3p-weekly',
+          remaining_fraction: 1,
+          reset_at: 1793071308,
+        },
+      ]),
       last_error: '',
     }
     vi.spyOn(api, 'get').mockImplementation(async (url) => ({

@@ -25,7 +25,7 @@ test.each(['zhCN', 'zhTW'])(
           binding={{
             last_error: '',
             last_antigravity_quota:
-              '[{"bucket_id":"gemini-5h","remaining_fraction":0.9917125,"reset_at":0},{"bucket_id":"gemini-weekly","remaining_fraction":1,"reset_at":0}]',
+              '[{"bucket_id":"gemini-5h","remaining_fraction":0.9917125,"reset_at":0},{"bucket_id":"gemini-weekly","remaining_fraction":1,"reset_at":0},{"bucket_id":"3p-5h","remaining_fraction":1,"reset_at":0},{"bucket_id":"3p-weekly","remaining_fraction":1,"reset_at":0}]',
           }}
         />
       </I18nextProvider>

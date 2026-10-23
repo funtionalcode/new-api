@@ -425,7 +425,7 @@ func buildCliproxyUsageRefreshRequest(binding *model.CliproxyAuthFileBinding) se
 			Header: map[string]string{
 				"Authorization": "Bearer $TOKEN$",
 				"Content-Type":  "application/json",
-				"User-Agent":    "antigravity/cli/1.0.13 (aidev_client; os_type=darwin; arch=arm64)",
+				"User-Agent":    cliproxyAntigravityUserAgent,
 			},
 			Data: `{"project":"aicode-consumers"}`,
 		}

@@ -1,7 +1,6 @@
 export type AntigravityBucketID =
   | 'gemini-5h'
   | 'gemini-weekly'
-  | 'gemini-shared'
   | '3p-5h'
   | '3p-weekly'
 
@@ -25,13 +24,9 @@ export function parseAntigravityQuota(
       if (ids.has(bucket.bucket_id)) return false
       ids.add(bucket.bucket_id)
       return (
-        [
-          'gemini-5h',
-          'gemini-weekly',
-          'gemini-shared',
-          '3p-5h',
-          '3p-weekly',
-        ].includes(bucket.bucket_id) &&
+        ['gemini-5h', 'gemini-weekly', '3p-5h', '3p-weekly'].includes(
+          bucket.bucket_id
+        ) &&
         typeof bucket.reset_at === 'number' &&
         Number.isFinite(bucket.reset_at) &&
         typeof bucket.remaining_fraction === 'number' &&
@@ -41,7 +36,7 @@ export function parseAntigravityQuota(
         (bucket.disabled === undefined || bucket.disabled === false)
       )
     })
-    if (!valid || value.length === 0) {
+    if (!valid || value.length !== 4) {
       return null
     }
     return value
