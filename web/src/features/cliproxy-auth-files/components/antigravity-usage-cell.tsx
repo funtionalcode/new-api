@@ -71,11 +71,15 @@ export function AntigravityUsageCell(props: {
         } else if (percent >= 70) {
           progressColor = '[&_[data-slot=progress-indicator]]:bg-amber-500'
         }
+        let label = t('Shared quota')
+        if (bucket.bucket_id.endsWith('-5h')) {
+          label = t('5-Hour Window')
+        } else if (bucket.bucket_id.endsWith('-weekly')) {
+          label = t('Weekly Window')
+        }
         return {
           key: bucket.bucket_id,
-          label: bucket.bucket_id.endsWith('-5h')
-            ? t('5-Hour Window')
-            : t('Weekly Window'),
+          label,
           percent,
           progressColor,
           value: `${numberFormat.format(percent)}%`,

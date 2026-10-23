@@ -86,3 +86,56 @@ func TestExtractAntigravityUsageHandlesUnavailableAndInvalidBuckets(t *testing.T
 		})
 	}
 }
+
+func TestExtractAntigravityGeminiModelQuota(t *testing.T) {
+	for _, tt := range []struct {
+		name, body, wantError string
+		wantRemaining         float64
+		wantReset             int64
+	}{
+		{
+			name:          "shared quota uses minimum and latest limiting reset",
+			body:          `{"models":{"gemini-pro":{"quotaInfo":{"remainingFraction":0.25,"resetTime":"2026-10-23T10:00:00Z"}},"gemini-flash":{"quotaInfo":{"remainingFraction":0.25,"resetTime":"2026-10-23T11:00:00Z"}},"gemini-lite":{"quotaInfo":{"remainingFraction":1,"resetTime":"2026-10-24T11:00:00Z"}},"chat-internal":{"modelProvider":"MODEL_PROVIDER_GOOGLE","quotaInfo":{"remainingFraction":0}},"tab-flash":{"apiProvider":"API_PROVIDER_GOOGLE_GEMINI","quotaInfo":{"remainingFraction":0}}},"tabModelIds":["tab-flash"]}`,
+			wantRemaining: 0.25, wantReset: time.Date(2026, 10, 23, 11, 0, 0, 0, time.UTC).Unix(),
+		},
+		{
+			name:          "snake case and provider classification",
+			body:          `{"models":{"model-1":{"api_provider":"API_PROVIDER_GOOGLE_GEMINI","quota_info":{"remaining_fraction":0.4,"reset_time":"2026-10-23T10:00:00Z"}},"model-2":{"api_provider":"API_PROVIDER_GOOGLE_GEMINI","quota_info":{"remaining_fraction":0}}},"tab_model_ids":["model-2"]}`,
+			wantRemaining: 0.4, wantReset: time.Date(2026, 10, 23, 10, 0, 0, 0, time.UTC).Unix(),
+		},
+		{
+			name: "explicit zero is exhausted",
+			body: `{"models":{"gemini-pro":{"quotaInfo":{"remainingFraction":0}},"gemini-flash":{"quotaInfo":{"remainingFraction":1}}}}`,
+		},
+		{
+			name:      "reset without fraction is exhausted as in CPA",
+			body:      `{"models":{"gemini-pro":{"quotaInfo":{"resetTime":"2026-10-23T10:00:00Z"}}}}`,
+			wantReset: time.Date(2026, 10, 23, 10, 0, 0, 0, time.UTC).Unix(),
+		},
+		{
+			name:          "unknown reset on a limiting model remains unknown",
+			body:          `{"models":{"gemini-pro":{"quotaInfo":{"remainingFraction":0.5}},"gemini-flash":{"quotaInfo":{"remainingFraction":0.5,"resetTime":"2026-10-23T10:00:00Z"}}}}`,
+			wantRemaining: 0.5,
+		},
+		{name: "absent fraction is not fabricated", body: `{"models":{"gemini-pro":{"quotaInfo":{}}}}`, wantError: "缺少可用 Gemini 额度"},
+		{name: "no Gemini models", body: `{"models":{"claude-sonnet":{"quotaInfo":{"remainingFraction":1}}}}`, wantError: "缺少可用 Gemini 额度"},
+		{name: "invalid fraction", body: `{"models":{"gemini-pro":{"quotaInfo":{"remainingFraction":1.5}}}}`, wantError: "超出范围"},
+		{name: "invalid fraction type", body: `{"models":{"gemini-pro":{"quotaInfo":{"remainingFraction":"unknown"}}}}`, wantError: "数据无效"},
+		{name: "invalid reset", body: `{"models":{"gemini-pro":{"quotaInfo":{"remainingFraction":1,"resetTime":"invalid"}}}}`, wantError: "重置时间无效"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var body map[string]any
+			require.NoError(t, common.UnmarshalJsonStr(tt.body, &body))
+			bucket, err := extractCliproxyAntigravityGeminiQuota(body)
+			if tt.wantError != "" {
+				require.ErrorContains(t, err, tt.wantError)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, "gemini-shared", bucket.BucketID)
+			require.NotNil(t, bucket.RemainingFraction)
+			assert.Equal(t, tt.wantRemaining, *bucket.RemainingFraction)
+			assert.Equal(t, tt.wantReset, bucket.ResetAt)
+		})
+	}
+}

@@ -104,6 +104,51 @@ describe('Antigravity 额度展示', () => {
     }
   )
 
+  test('合并 Gemini 共享额度和第三方窗口，不将模型额度伪装成五小时或周额度', async () => {
+    const user = userEvent.setup()
+    render(
+      <AntigravityUsageCell
+        binding={{
+          last_error: '',
+          last_plan_type: 'Google AI Pro',
+          last_antigravity_quota: JSON.stringify([
+            {
+              bucket_id: 'gemini-shared',
+              remaining_fraction: 0.75,
+              reset_at: 1792752183,
+            },
+            { bucket_id: '3p-5h', remaining_fraction: 0, reset_at: 1792743914 },
+            {
+              bucket_id: '3p-weekly',
+              remaining_fraction: 1,
+              reset_at: 1793328283,
+            },
+          ]),
+        }}
+      />
+    )
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('progressbar')).toHaveLength(1)
+    expect(
+      screen.getByRole('progressbar', {
+        name: 'Gemini Models Shared quota Used',
+      })
+    ).toHaveAttribute('aria-valuenow', '25')
+    await user.hover(screen.getByRole('button', { name: 'Antigravity' }))
+    const details = within(await screen.findByRole('tooltip'))
+    const gemini = within(
+      details.getByRole('region', { name: 'Gemini Models' })
+    )
+    expect(gemini.getByText('Shared quota')).toBeInTheDocument()
+    expect(gemini.queryByText('5-Hour Window')).not.toBeInTheDocument()
+    expect(gemini.queryByText('Weekly Window')).not.toBeInTheDocument()
+    const thirdParty = within(
+      details.getByRole('region', { name: 'Claude and GPT models' })
+    )
+    expect(thirdParty.getByText('5-Hour Window')).toBeInTheDocument()
+    expect(thirdParty.getByText('Weekly Window')).toBeInTheDocument()
+  })
+
   test('仅返回 Claude 和 GPT 额度时展示真实用量，悬浮详情不补造 Gemini 额度', async () => {
     const user = userEvent.setup()
     render(
