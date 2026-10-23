@@ -90,15 +90,17 @@ func TestRefreshCliproxyAntigravityUsageReportsErrorsWithoutFallback(t *testing.
 	for _, tt := range []struct {
 		name, quota, plan, wantError string
 		wantCalls                    int
+		wantBucketIDs                []string
 	}{
-		{"valid quota and plan", validQuota, validPlan, "", 2},
-		{"quota forbidden", `{"status_code":403,"body":{"error":{"status":"PERMISSION_DENIED","message":"Verify your account to continue.","details":[{"reason":"VALIDATION_REQUIRED","metadata":{"validation_url":"https://accounts.google.com/verify?token=private-validation-token"}}]}}}`, validPlan, "403; PERMISSION_DENIED; VALIDATION_REQUIRED; Verify your account to continue.", 1},
-		{"invalid quota", `{"status_code":200,"body":{"groups":[{"buckets":[{"bucketId":"gemini-5h"}]}]}}`, validPlan, "gemini-5h", 1},
-		{"wrong provider format", `{"status_code":200,"body":{"plan_type":"pro"}}`, validPlan, "Antigravity", 1},
-		{"plan forbidden", validQuota, `{"status_code":403,"body":{"error":{"message":"Plan access denied"}}}`, "403", 2},
-		{"plan missing", validQuota, `{"status_code":200,"body":{}}`, "套餐", 2},
-		{"missing management configuration", validQuota, validPlan, "登录密码", 0},
-		{"recovery clears previous error", validQuota, validPlan, "", 2},
+		{"valid quota and plan", validQuota, validPlan, "", 2, []string{"gemini-5h", "gemini-weekly"}},
+		{"Claude and GPT quota without Gemini", `{"status_code":200,"body":{"groups":[{"displayName":"Claude and GPT models","buckets":[{"bucketId":"3p-weekly","remainingFraction":1,"resetTime":"2026-10-30T02:44:43Z"},{"bucketId":"3p-5h","remainingFraction":0,"resetTime":"2026-10-23T08:25:14Z"}]}]}}`, validPlan, "", 2, []string{"3p-5h", "3p-weekly"}},
+		{"quota forbidden", `{"status_code":403,"body":{"error":{"status":"PERMISSION_DENIED","message":"Verify your account to continue.","details":[{"reason":"VALIDATION_REQUIRED","metadata":{"validation_url":"https://accounts.google.com/verify?token=private-validation-token"}}]}}}`, validPlan, "403; PERMISSION_DENIED; VALIDATION_REQUIRED; Verify your account to continue.", 1, nil},
+		{"invalid quota", `{"status_code":200,"body":{"groups":[{"buckets":[{"bucketId":"gemini-5h"}]}]}}`, validPlan, "gemini-5h", 1, nil},
+		{"wrong provider format", `{"status_code":200,"body":{"plan_type":"pro"}}`, validPlan, "Antigravity", 1, nil},
+		{"plan forbidden", validQuota, `{"status_code":403,"body":{"error":{"message":"Plan access denied"}}}`, "403", 2, nil},
+		{"plan missing", validQuota, `{"status_code":200,"body":{}}`, "套餐", 2, nil},
+		{"missing management configuration", validQuota, validPlan, "登录密码", 0, nil},
+		{"recovery clears previous error", validQuota, validPlan, "", 2, []string{"gemini-5h", "gemini-weekly"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			quotaResponse, planResponse, requests = tt.quota, tt.plan, nil
@@ -137,7 +139,20 @@ func TestRefreshCliproxyAntigravityUsageReportsErrorsWithoutFallback(t *testing.
 			require.True(t, response.Success)
 			assert.Equal(t, "Google AI Pro", response.Data.LastPlanType)
 			assert.Empty(t, response.Data.LastError)
-			assert.Contains(t, response.Data.LastAntigravityQuota, "0.9804")
+			var buckets []cliproxyAntigravityQuotaBucket
+			require.NoError(t, common.UnmarshalJsonStr(response.Data.LastAntigravityQuota, &buckets))
+			require.Len(t, buckets, len(tt.wantBucketIDs))
+			for i, id := range tt.wantBucketIDs {
+				assert.Equal(t, id, buckets[i].BucketID)
+				require.NotNil(t, buckets[i].RemainingFraction)
+			}
+			if tt.wantBucketIDs[0] == "3p-5h" {
+				assert.Zero(t, *buckets[0].RemainingFraction)
+				assert.Equal(t, 1.0, *buckets[1].RemainingFraction)
+				assert.Equal(t, int64(1792743914), buckets[0].ResetAt)
+			} else {
+				assert.Equal(t, 0.9804, *buckets[0].RemainingFraction)
+			}
 			assert.Equal(t, response.Data.LastPlanType, stored.LastPlanType)
 			assert.Equal(t, response.Data.LastAntigravityQuota, stored.LastAntigravityQuota)
 			assert.Greater(t, stored.LastRefreshedAt, int64(123))

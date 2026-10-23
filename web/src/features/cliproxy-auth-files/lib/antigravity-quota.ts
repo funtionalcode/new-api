@@ -36,7 +36,7 @@ export function parseAntigravityQuota(
         (bucket.disabled === undefined || bucket.disabled === false)
       )
     })
-    if (!valid || !ids.has('gemini-5h') || !ids.has('gemini-weekly')) {
+    if (!valid || value.length === 0) {
       return null
     }
     return value

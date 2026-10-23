@@ -149,10 +149,9 @@ func extractCliproxyAntigravityUsage(body map[string]any) (cliproxyUsageRefreshB
 			buckets[bucket.BucketID] = cliproxyAntigravityQuotaBucket{BucketID: bucket.BucketID, RemainingFraction: fraction, ResetAt: resetAt, Disabled: bucket.Disabled}
 		}
 	}
-	for _, id := range []string{"gemini-5h", "gemini-weekly"} {
-		if _, ok := buckets[id]; !ok {
-			return cliproxyUsageRefreshBody{}, fmt.Errorf("Antigravity 刷新结果缺少额度窗口: %s", id)
-		}
+	// 上游可只返回部分模型组或窗口，不为缺失窗口补造额度。
+	if len(buckets) == 0 {
+		return cliproxyUsageRefreshBody{}, fmt.Errorf("Antigravity 刷新结果缺少可用额度窗口")
 	}
 	ordered := make([]cliproxyAntigravityQuotaBucket, 0, len(buckets))
 	for _, id := range []string{"gemini-5h", "gemini-weekly", "3p-5h", "3p-weekly"} {

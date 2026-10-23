@@ -83,6 +83,7 @@ export function AntigravityUsageCell(props: {
         }
       }),
   }))
+  const primaryGroup = groups.find((group) => group.windows.length > 0)
 
   return (
     <TooltipProvider delay={150}>
@@ -103,7 +104,7 @@ export function AntigravityUsageCell(props: {
             </span>
           ) : (
             <div className='grid gap-2 sm:grid-cols-2'>
-              {groups[0].windows.map((window) => (
+              {primaryGroup?.windows.map((window) => (
                 <div key={window.key} className='min-w-[140px] space-y-1'>
                   <div className='flex items-center justify-between gap-3 text-xs'>
                     <span className='text-muted-foreground'>
@@ -114,7 +115,7 @@ export function AntigravityUsageCell(props: {
                     </span>
                   </div>
                   <Progress
-                    aria-label={`${groups[0].label} ${window.label} ${t('Used')}`}
+                    aria-label={`${primaryGroup.label} ${window.label} ${t('Used')}`}
                     value={window.percent}
                     className={cn('h-1.5', window.progressColor)}
                   />

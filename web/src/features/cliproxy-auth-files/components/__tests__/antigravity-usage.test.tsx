@@ -77,6 +77,78 @@ describe('Antigravity 额度展示', () => {
   })
 
   test.each([
+    { bucketID: 'gemini-5h', label: 'Gemini Models 5-Hour Window Used' },
+    {
+      bucketID: '3p-weekly',
+      label: 'Claude and GPT models Weekly Window Used',
+    },
+  ])(
+    '上游仅返回 $bucketID 时展示该窗口，不补造其他窗口',
+    ({ bucketID, label }) => {
+      render(
+        <AntigravityUsageCell
+          binding={{
+            last_error: '',
+            last_antigravity_quota: JSON.stringify([
+              { bucket_id: bucketID, remaining_fraction: 0.75, reset_at: 0 },
+            ]),
+          }}
+        />
+      )
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(screen.getAllByRole('progressbar')).toHaveLength(1)
+      expect(screen.getByRole('progressbar', { name: label })).toHaveAttribute(
+        'aria-valuenow',
+        '25'
+      )
+    }
+  )
+
+  test('仅返回 Claude 和 GPT 额度时展示真实用量，悬浮详情不补造 Gemini 额度', async () => {
+    const user = userEvent.setup()
+    render(
+      <AntigravityUsageCell
+        binding={{
+          last_error: '',
+          last_plan_type: 'Google AI Pro',
+          last_refreshed_at: 1,
+          last_antigravity_quota: JSON.stringify([
+            { bucket_id: '3p-5h', remaining_fraction: 0, reset_at: 1792743914 },
+            {
+              bucket_id: '3p-weekly',
+              remaining_fraction: 1,
+              reset_at: 1793328283,
+            },
+          ]),
+        }}
+      />
+    )
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByText('Pro')).toBeInTheDocument()
+    expect(screen.getAllByRole('progressbar')).toHaveLength(2)
+    expect(
+      screen.getByRole('progressbar', {
+        name: 'Claude and GPT models 5-Hour Window Used',
+      })
+    ).toHaveAttribute('aria-valuenow', '100')
+    expect(
+      screen.getByRole('progressbar', {
+        name: 'Claude and GPT models Weekly Window Used',
+      })
+    ).toHaveAttribute('aria-valuenow', '0')
+
+    await user.hover(screen.getByRole('button', { name: 'Antigravity' }))
+    const details = within(await screen.findByRole('tooltip'))
+    expect(
+      details.getByRole('region', { name: 'Claude and GPT models' })
+    ).toBeInTheDocument()
+    expect(
+      details.queryByRole('region', { name: 'Gemini Models' })
+    ).not.toBeInTheDocument()
+    expect(details.getAllByText(/^Reset:/)).toHaveLength(2)
+  })
+
+  test.each([
     { remaining: 1, used: 0, color: 'emerald' },
     { remaining: 0.2, used: 80, color: 'amber' },
     { remaining: 0, used: 100, color: 'rose' },
@@ -116,8 +188,9 @@ describe('Antigravity 额度展示', () => {
   test.each([
     '[{"bucket_id":"gemini-5h","disabled":true,"remaining_fraction":1,"reset_at":0}]',
     '[{"bucket_id":"gemini-5h","reset_at":0}]',
-    '[{"bucket_id":"gemini-5h","remaining_fraction":1,"reset_at":0}]',
     '[{"bucket_id":"gemini-5h","remaining_fraction":2,"reset_at":0}]',
+    '[{"bucket_id":"future-5h","remaining_fraction":1,"reset_at":0}]',
+    '[{"bucket_id":"3p-5h","remaining_fraction":1,"reset_at":0},{"bucket_id":"3p-5h","remaining_fraction":0,"reset_at":0}]',
     'invalid JSON',
     '[]',
   ])(

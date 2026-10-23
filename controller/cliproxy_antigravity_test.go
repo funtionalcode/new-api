@@ -56,16 +56,18 @@ func TestExtractAntigravityUsageHandlesUnavailableAndInvalidBuckets(t *testing.T
 	for _, tt := range []struct {
 		name, body string
 		wantError  bool
+		wantCount  int
 	}{
-		{"disabled", `{"groups":[{"buckets":[{"bucketId":"gemini-5h","disabled":true}]}]}`, true},
-		{"unknown remaining", `{"groups":[{"buckets":[{"bucketId":"gemini-5h"}]}]}`, true},
-		{"nested fraction", `{"groups":[{"buckets":[{"bucketId":"gemini-5h","remaining":{"remainingFraction":0.5}},{"bucketId":"gemini-weekly","remainingFraction":1}]}]}`, false},
-		{"missing weekly window", `{"groups":[{"buckets":[{"bucketId":"gemini-5h","remainingFraction":0.5}]}]}`, true},
-		{"missing Gemini windows", `{"groups":[{"buckets":[{"bucketId":"3p-5h","remainingFraction":0.5}]}]}`, true},
-		{"duplicate window", `{"groups":[{"buckets":[{"bucketId":"gemini-5h","remainingFraction":0.5},{"bucketId":"gemini-5h","remainingFraction":0.4}]}]}`, true},
-		{"empty", `{"groups":[]}`, true},
-		{"invalid fraction", `{"groups":[{"buckets":[{"bucketId":"gemini-5h","remainingFraction":2}]}]}`, true},
-		{"invalid date", `{"groups":[{"buckets":[{"bucketId":"gemini-5h","remainingFraction":1,"resetTime":"invalid"}]}]}`, true},
+		{"disabled", `{"groups":[{"buckets":[{"bucketId":"gemini-5h","disabled":true}]}]}`, true, 0},
+		{"unknown remaining", `{"groups":[{"buckets":[{"bucketId":"gemini-5h"}]}]}`, true, 0},
+		{"nested fraction", `{"groups":[{"buckets":[{"bucketId":"gemini-5h","remaining":{"remainingFraction":0.5}},{"bucketId":"gemini-weekly","remainingFraction":1}]}]}`, false, 2},
+		{"single Gemini window", `{"groups":[{"buckets":[{"bucketId":"gemini-5h","remainingFraction":0.5}]}]}`, false, 1},
+		{"single third-party window", `{"groups":[{"buckets":[{"bucketId":"3p-5h","remainingFraction":0.5}]}]}`, false, 1},
+		{"duplicate window", `{"groups":[{"buckets":[{"bucketId":"gemini-5h","remainingFraction":0.5},{"bucketId":"gemini-5h","remainingFraction":0.4}]}]}`, true, 0},
+		{"empty", `{"groups":[]}`, true, 0},
+		{"unknown windows only", `{"groups":[{"buckets":[{"bucketId":"future-5h","remainingFraction":1}]}]}`, true, 0},
+		{"invalid fraction", `{"groups":[{"buckets":[{"bucketId":"gemini-5h","remainingFraction":2}]}]}`, true, 0},
+		{"invalid date", `{"groups":[{"buckets":[{"bucketId":"gemini-5h","remainingFraction":1,"resetTime":"invalid"}]}]}`, true, 0},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var body map[string]any
@@ -78,7 +80,7 @@ func TestExtractAntigravityUsageHandlesUnavailableAndInvalidBuckets(t *testing.T
 			require.NoError(t, err)
 			var buckets []cliproxyAntigravityQuotaBucket
 			require.NoError(t, common.UnmarshalJsonStr(usage.AntigravityQuota, &buckets))
-			require.Len(t, buckets, 2)
+			require.Len(t, buckets, tt.wantCount)
 			require.NotNil(t, buckets[0].RemainingFraction)
 			assert.Equal(t, 0.5, *buckets[0].RemainingFraction)
 		})
