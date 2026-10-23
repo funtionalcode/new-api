@@ -9,7 +9,7 @@ import (
 func TestMaskSensitiveInfoPreservesDomains(t *testing.T) {
 	input := `status_code=500, Post "https://api.openai.com/v1/responses?api_key=secret&token=abc" EOF`
 
-	result := MaskSensitiveInfo(input)
+	result := MaskSensitiveInfo(input, "https://api.openai.com")
 
 	require.Equal(t, `status_code=500, Post "https://api.openai.com/***/***?api_key=***&token=***" EOF`, result)
 }

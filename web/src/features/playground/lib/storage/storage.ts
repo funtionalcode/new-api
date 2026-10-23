@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useAuthStore } from '@/stores/auth-store'
+
 import { MESSAGE_STATUS, STORAGE_KEYS } from '../../constants'
 import type {
   CursorAgentSession,
@@ -65,21 +67,33 @@ export function getScopedStorageKey(
   key: string,
   scope: PlaygroundStorageScope
 ): string {
-  return `${key}:${getPlaygroundStorageScope(scope)}`
+  try {
+    for (const legacyKey of Object.values(STORAGE_KEYS)) {
+      localStorage.removeItem(legacyKey)
+    }
+  } catch {
+    // 禁用浏览器存储时仍按账号隔离内存缓存，旧版全局数据不会被读取。
+  }
+  const userId =
+    scope === undefined ? useAuthStore.getState().auth.user?.id : scope
+  if (userId == null || userId === '') return ''
+  return `${key}:${getPlaygroundStorageScope(userId)}`
 }
 
 function readStoredValue(key: string): unknown | null {
+  if (!key) return null
   const saved = localStorage.getItem(key)
   if (!saved) return null
-
   return JSON.parse(saved) as unknown
 }
 
 function readStoredMessagesValue(key: string): unknown | null {
+  if (!key) return null
   const saved = localStorage.getItem(key)
   if (!saved) return null
 
   if (saved.length > MAX_STORED_MESSAGES_BYTES) {
+    localStorage.removeItem(key)
     return null
   }
 
@@ -99,6 +113,7 @@ function unwrapStoredValue(value: unknown): unknown {
 }
 
 function writeStoredValue<T>(key: string, data: T): void {
+  if (!key) return
   const payload: StoredEnvelope<T> = {
     version: STORAGE_VERSION,
     data,
@@ -118,10 +133,12 @@ function cloneMessages(messages: Message[]): Message[] {
 }
 
 function cacheMessagesInMemory(key: string, messages: Message[]): void {
+  if (!key) return
   persistedMessagesMemoryCache.set(key, cloneMessages(messages))
 }
 
 function getCachedMessagesFromMemory(key: string): Message[] | null {
+  if (!key) return null
   const cached = persistedMessagesMemoryCache.get(key)
   return cached ? cloneMessages(cached) : null
 }
@@ -528,7 +545,7 @@ export function clearCursorAgentSession(scope?: PlaygroundStorageScope): void {
 }
 
 /**
- * Clear all playground data
+ * Clear the signed-in user's playground data
  */
 export function clearPlaygroundData(scope?: PlaygroundStorageScope): void {
   try {

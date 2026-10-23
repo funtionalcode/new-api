@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -52,6 +53,53 @@ func TestAdaptorUsesExactRouteAndQueryAuth(t *testing.T) {
 	assert.Equal(t, "/v1/chat/completions", parsedURL.Path)
 	assert.Equal(t, "1", parsedURL.Query().Get("existing"))
 	assert.Equal(t, "sk-test", parsedURL.Query().Get("api_key"))
+}
+
+// 握手失败保留域名用于诊断，但仍隐藏绝对路由的路径和查询凭据。
+func TestAdaptorPreservesDialedHostAndMasksPathInDialFailure(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer upstream.Close()
+	upstreamURL, err := url.Parse(upstream.URL)
+	require.NoError(t, err)
+	for _, useProxy := range []bool{false, true} {
+		t.Run(fmt.Sprintf("proxy=%t", useProxy), func(t *testing.T) {
+			var proxyCalls atomic.Int32
+			proxyURL := ""
+			if useProxy {
+				proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					proxyCalls.Add(1)
+					assert.Equal(t, http.MethodConnect, r.Method)
+					w.WriteHeader(http.StatusForbidden)
+				}))
+				defer proxy.Close()
+				proxyURL = proxy.URL
+			}
+			info := advancedCustomRelayInfo(&dto.AdvancedCustomConfig{
+				Routes: []dto.AdvancedCustomRoute{{IncomingPath: "/v1/realtime", UpstreamPath: "http://localhost:" + upstreamURL.Port() + "/v1/realtime?api_key=private-secret", Converter: relayconvert.ConverterNone}},
+			})
+			info.RelayMode = relayconstant.RelayModeRealtime
+			info.RequestURLPath = "/v1/realtime"
+			info.ChannelSetting.Proxy = proxyURL
+			c := advancedCustomGinContext("/v1/realtime")
+			common.SetContextKey(c, constant.ContextKeyChannelBaseUrl, info.ChannelBaseUrl)
+			common.SetContextKey(c, constant.ContextKeyChannelSetting, info.ChannelSetting)
+
+			_, err := (&Adaptor{}).DoRequest(c, info, nil)
+
+			var apiErr *types.NewAPIError
+			require.ErrorAs(t, err, &apiErr)
+			require.Contains(t, apiErr.Error(), "localhost")
+			message := apiErr.ToOpenAIError(common.UpstreamAddresses(c)...).Message
+			assert.Contains(t, message, "dial failed to ws://localhost:"+upstreamURL.Port()+"/***/***")
+			assert.NotContains(t, message, "/v1/realtime")
+			assert.NotContains(t, message, "private-secret")
+			if useProxy {
+				assert.Equal(t, int32(1), proxyCalls.Load())
+			}
+		})
+	}
 }
 
 func TestAdaptorJoinsUpstreamPathWithChannelBaseURL(t *testing.T) {

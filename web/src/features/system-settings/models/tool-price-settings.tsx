@@ -41,6 +41,12 @@ const DEFAULT_PRICES: Record<string, number> = {
   'web_search_preview:gpt-4.1-mini*': 25.0,
   file_search: 2.5,
   google_search: 14.0,
+  'google_search:gemini-2.5*': 0.0,
+  'google_search:gemini-2.0*': 0.0,
+  'google_search:gemini-1.5*': 0.0,
+  'google_search_grounded_prompt:gemini-2.5*': 35.0,
+  'google_search_grounded_prompt:gemini-2.0*': 35.0,
+  'google_search_grounded_prompt:gemini-1.5*': 35.0,
   image_generation: 150.0,
   search_std: 10.0,
   search_pro: 30.0,
@@ -54,6 +60,8 @@ const DEFAULT_PRICES: Record<string, number> = {
   'web_search:grok*': 5.0,
   x_search_posts: 5.0,
   x_search_profiles: 10.0,
+  deepseek_search: 0.75,
+  deepseek_fetch: 0.75,
 }
 
 type ToolPriceRow = {

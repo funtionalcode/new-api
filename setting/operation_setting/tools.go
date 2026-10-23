@@ -2,7 +2,6 @@ package operation_setting
 
 import (
 	"encoding/json"
-	"fmt"
 	"math"
 	"sort"
 	"strings"
@@ -52,6 +51,18 @@ func seedHardcodedToolPrices(prices map[string]float64) {
 	prices["web_search_preview:gpt-4o-mini*"] = defaultSearchPreviewModelPrice
 	prices["web_search_preview:gpt-4.1-mini*"] = defaultSearchPreviewModelPrice
 
+	// Google Search grounding (USD per 1K, ai.google.dev/gemini-api/docs/pricing
+	// and cloud.google.com/vertex-ai/generative-ai/pricing): Gemini 3 bills each
+	// search query at $14 (the google_search default); Gemini 2.5 and older bill
+	// $35 per grounded prompt, so their query count is free and the grounded
+	// prompt carries the price.
+	prices["google_search:gemini-2.5*"] = 0
+	prices["google_search:gemini-2.0*"] = 0
+	prices["google_search:gemini-1.5*"] = 0
+	prices["google_search_grounded_prompt:gemini-2.5*"] = 35
+	prices["google_search_grounded_prompt:gemini-2.0*"] = 35
+	prices["google_search_grounded_prompt:gemini-1.5*"] = 35
+
 	// Vendor search tiers, verbatim in the vendor's list currency per 1K
 	// calls. CNY: Zhipu search engines, 0.01/0.03/0.05 CNY per call
 	// (https://docs.bigmodel.cn/cn/guide/tools/web-search), and Alibaba Model
@@ -74,6 +85,14 @@ func seedHardcodedToolPrices(prices map[string]float64) {
 	prices["web_search:grok*"] = 5
 	prices["x_search_posts"] = 5
 	prices["x_search_profiles"] = 10
+
+	// DeepSeek Search and Fetch APIs, $0.75 per 1,000 successful requests
+	// each (https://api-docs.deepseek.com/quick_start/pricing), for the
+	// searches and page fetches DeepSeek runs server-side for Claude Code and
+	// Codex traffic. /v1/tools/search and /v1/tools/fetch bill through the
+	// deepseek-search and deepseek-fetch model prices instead.
+	prices["deepseek_search"] = 0.75
+	prices["deepseek_fetch"] = 0.75
 }
 
 // ToolPriceSetting is managed by config.GlobalConfig.Register.
@@ -132,25 +151,25 @@ func isValidToolPrice(price float64) bool {
 func decodeToolPricesJSON(value string, ignoreInvalidEntries bool) (map[string]float64, error) {
 	rawValue := json.RawMessage(strings.TrimSpace(value))
 	if common.GetJsonType(rawValue) != "object" {
-		return nil, fmt.Errorf("工具价格必须是 JSON 对象")
+		return nil, common.NewMessage("Tool prices must be a JSON object")
 	}
 
 	var rawPrices map[string]json.RawMessage
 	if err := common.Unmarshal(rawValue, &rawPrices); err != nil {
-		return nil, fmt.Errorf("解析工具价格失败: %w", err)
+		return nil, common.NewMessage("Failed to parse tool prices: {{error}}", map[string]any{"error": err.Error()})
 	}
 
 	prices := make(map[string]float64, len(rawPrices))
 	for name, rawPrice := range rawPrices {
 		var entryErr error
 		if common.GetJsonType(rawPrice) != "number" {
-			entryErr = fmt.Errorf("工具价格 %q 必须是非负数字", name)
+			entryErr = common.NewMessage(`Tool price "{{name}}" must be a non-negative number`, map[string]any{"name": name})
 		} else {
 			var price float64
 			if err := common.Unmarshal(rawPrice, &price); err != nil {
-				entryErr = fmt.Errorf("解析工具价格 %q 失败: %w", name, err)
+				entryErr = common.NewMessage(`Failed to parse tool price "{{name}}": {{error}}`, map[string]any{"name": name, "error": err.Error()})
 			} else if !isValidToolPrice(price) {
-				entryErr = fmt.Errorf("工具价格 %q 必须是有限的非负数字", name)
+				entryErr = common.NewMessage(`Tool price "{{name}}" must be a finite non-negative number`, map[string]any{"name": name})
 			} else {
 				prices[name] = price
 			}
@@ -180,7 +199,7 @@ func ValidateToolPricesJSON(value string) error {
 func LoadToolPricesFromJSONString(value string) {
 	prices, err := decodeToolPricesJSON(value, true)
 	if err != nil {
-		common.SysError("加载工具价格失败，将使用硬编码兜底: " + err.Error())
+		common.SysError(common.LogText("failed to load tool prices, using hardcoded fallbacks: %s", err.Error()))
 		prices = make(map[string]float64)
 	}
 	toolPriceSetting.Prices = prices

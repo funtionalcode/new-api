@@ -41,9 +41,9 @@ func TestJevLogVisibilityFiltersBeforePaginationAndPreservesRecords(t *testing.T
 		t.Run(scope, func(t *testing.T) {
 			query := func(offset, limit int, modelName string) ([]*Log, int64, error) {
 				if scope == "self" {
-					return GetUserLogs(7, LogTypeUnknown, 0, 0, modelName, "", offset, limit, "", "", "", "", []int{21})
+					return GetUserLogs(7, LogFilter{ModelName: modelName, VisibleChannelIDs: []int{21}}, offset, limit)
 				}
-				return GetAllLogs(LogTypeUnknown, 0, 0, modelName, "", "", offset, limit, 0, "", "", "", "", "", []int{21})
+				return GetAllLogs(LogFilter{ModelName: modelName, VisibleChannelIDs: []int{21}}, offset, limit)
 			}
 			var expectedTotal int64 = 4
 			if scope == "all" {

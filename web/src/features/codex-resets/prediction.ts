@@ -47,7 +47,7 @@ export function buildResetForecastInput(
         event.announced_at > 0 &&
         event.announced_at * 1000 <= now
     )
-    .toSorted((a, b) => b.announced_at - a.announced_at)
+    .sort((a, b) => b.announced_at - a.announced_at)
     .filter((event) => {
       const key = event.tweet_id || String(event.id)
       if (seen.has(key)) return false

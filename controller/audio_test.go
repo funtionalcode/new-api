@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -121,17 +122,19 @@ func TestXAISpeechRelayReturnsAudioAndSettlesCharacters(t *testing.T) {
 			} else {
 				assert.Equal(t, int32(1), calls.Load())
 			}
-			require.NoError(t, model.DB.First(token, token.Id).Error)
-			require.NoError(t, model.DB.First(user, user.Id).Error)
 			tokenQuota := quota
 			if strings.HasPrefix(scenario.path, "/pg/") {
 				// 游乐场只扣用户钱包，不扣持久化 API 令牌额度。
 				tokenQuota = 0
 			}
-			assert.Equal(t, 1000-tokenQuota, token.RemainQuota)
-			assert.Equal(t, tokenQuota, token.UsedQuota)
-			assert.Equal(t, 100000-quota, user.Quota)
-			assert.Equal(t, quota, user.UsedQuota)
+			require.EventuallyWithT(t, func(collect *assert.CollectT) {
+				require.NoError(collect, model.DB.First(token, token.Id).Error)
+				require.NoError(collect, model.DB.First(user, user.Id).Error)
+				assert.Equal(collect, 1000-tokenQuota, token.RemainQuota)
+				assert.Equal(collect, tokenQuota, token.UsedQuota)
+				assert.Equal(collect, 100000-quota, user.Quota)
+				assert.Equal(collect, quota, user.UsedQuota)
+			}, 3*time.Second, 10*time.Millisecond)
 		})
 	}
 }

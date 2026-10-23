@@ -15,8 +15,12 @@ function Fixture(props: { showJevLogs?: boolean }) {
       <div ref={setContainer} />
       <SettingsPageProvider actionsContainer={container}>
         <LogSettingsSection
-          defaultEnabled
-          defaultShowJevLogs={props.showJevLogs}
+          defaultValues={{
+            LogConsumeEnabled: true,
+            'general_setting.show_jev_logs': props.showJevLogs,
+            'log_setting.user_export_enabled': false,
+            'log_setting.max_range_days': 30,
+          }}
         />
       </SettingsPageProvider>
     </>

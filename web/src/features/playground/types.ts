@@ -115,7 +115,8 @@ export interface ChatCompletionChunk {
     delta: {
       role?: MessageRole
       content?: string
-      reasoning_content?: string
+      reasoning_content?: string | null
+      reasoning?: string | null
     }
     finish_reason: string | null
   }>
@@ -131,7 +132,8 @@ export interface ChatCompletionResponse {
     message: {
       role: MessageRole
       content: string
-      reasoning_content?: string
+      reasoning_content?: string | null
+      reasoning?: string | null
     }
     finish_reason: string
   }>
@@ -231,6 +233,6 @@ export interface ModelOption {
 export interface GroupOption {
   label: string
   value: string
-  ratio: number
+  ratio: number | string
   desc?: string
 }

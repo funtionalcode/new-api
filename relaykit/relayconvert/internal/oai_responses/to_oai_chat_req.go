@@ -380,41 +380,33 @@ func appendToolCallToLastAssistant(messages []dto.Message, toolCall dto.ToolCall
 }
 
 func responsesRequestToolsToChat(rawTools json.RawMessage, rawInput json.RawMessage) ([]dto.ToolCallRequest, error) {
-	if !rawJSONPresent(rawTools) && !rawJSONPresent(rawInput) {
-		return nil, nil
-	}
-
-	var tools []map[string]any
+	var tools []json.RawMessage
 	if rawJSONPresent(rawTools) {
 		if err := kitutil.Unmarshal(rawTools, &tools); err != nil {
 			return nil, fmt.Errorf("invalid tools: %w", err)
 		}
 	}
 	if rawJSONPresent(rawInput) && kitutil.GetJsonType(rawInput) == "array" {
-		var inputItems []map[string]any
+		var inputItems []struct {
+			Type  string            `json:"type"`
+			Tools []json.RawMessage `json:"tools"`
+		}
 		if err := kitutil.Unmarshal(rawInput, &inputItems); err != nil {
 			return nil, fmt.Errorf("invalid input: %w", err)
 		}
 		for _, item := range inputItems {
-			if strings.TrimSpace(kitutil.Interface2String(item["type"])) != "additional_tools" {
-				continue
-			}
-			additionalTools, ok := item["tools"].([]any)
-			if !ok {
-				continue
-			}
-			for _, rawTool := range additionalTools {
-				if tool, ok := rawTool.(map[string]any); ok {
-					tools = append(tools, tool)
-				}
+			if strings.TrimSpace(item.Type) == "additional_tools" {
+				tools = append(tools, item.Tools...)
 			}
 		}
 	}
-
+	if len(tools) == 0 {
+		return nil, nil
+	}
 	out := make([]dto.ToolCallRequest, 0, len(tools))
-	for _, tool := range tools {
+	for _, rawTool := range tools {
 		var err error
-		out, err = appendResponsesToolToChat(out, tool, "")
+		out, err = appendResponsesToolToChat(out, rawTool, "")
 		if err != nil {
 			return nil, err
 		}
@@ -422,58 +414,58 @@ func responsesRequestToolsToChat(rawTools json.RawMessage, rawInput json.RawMess
 	return out, nil
 }
 
-func appendResponsesToolToChat(out []dto.ToolCallRequest, tool map[string]any, namespace string) ([]dto.ToolCallRequest, error) {
-	toolType := strings.TrimSpace(kitutil.Interface2String(tool["type"]))
+func appendResponsesToolToChat(out []dto.ToolCallRequest, rawTool json.RawMessage, namespace string) ([]dto.ToolCallRequest, error) {
+	var tool struct {
+		Type        string            `json:"type"`
+		Name        string            `json:"name"`
+		Description string            `json:"description"`
+		Parameters  json.RawMessage   `json:"parameters"`
+		Tools       []json.RawMessage `json:"tools"`
+	}
+	if err := kitutil.Unmarshal(rawTool, &tool); err != nil {
+		return nil, fmt.Errorf("invalid tools: %w", err)
+	}
+	toolType := strings.TrimSpace(tool.Type)
+	name := responsesQualifiedToolName(namespace, strings.TrimSpace(tool.Name))
 	if toolType == "namespace" {
-		namespace = responsesQualifiedToolName(namespace, strings.TrimSpace(kitutil.Interface2String(tool["name"])))
-		children, ok := tool["tools"].([]any)
-		if !ok {
-			return out, nil
-		}
-		for _, rawChild := range children {
-			child, ok := rawChild.(map[string]any)
-			if !ok {
-				continue
-			}
+		for _, child := range tool.Tools {
 			var err error
-			out, err = appendResponsesToolToChat(out, child, namespace)
+			out, err = appendResponsesToolToChat(out, child, name)
 			if err != nil {
 				return nil, err
 			}
 		}
 		return out, nil
 	}
-
-	name := responsesQualifiedToolName(namespace, strings.TrimSpace(kitutil.Interface2String(tool["name"])))
 	if toolType == "function" {
 		return append(out, dto.ToolCallRequest{
 			Type: "function",
 			Function: dto.FunctionRequest{
 				Name:        name,
-				Description: kitutil.Interface2String(tool["description"]),
-				Parameters:  tool["parameters"],
+				Description: tool.Description,
+				Parameters:  tool.Parameters,
 			},
 		}), nil
 	}
-
-	toolCopy := make(map[string]any, len(tool))
-	for key, value := range tool {
-		toolCopy[key] = value
-	}
-	if name != "" {
-		toolCopy["name"] = name
-	}
-	rawTool, err := kitutil.Marshal(toolCopy)
-	if err != nil {
-		return nil, err
+	if namespace != "" && name != "" {
+		var toolCopy map[string]json.RawMessage
+		if err := kitutil.Unmarshal(rawTool, &toolCopy); err != nil {
+			return nil, err
+		}
+		nameJSON, err := kitutil.Marshal(name)
+		if err != nil {
+			return nil, err
+		}
+		toolCopy["name"] = nameJSON
+		rawTool, err = kitutil.Marshal(toolCopy)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return append(out, dto.ToolCallRequest{
-		Type:   toolType,
-		Custom: rawTool,
-		Function: dto.FunctionRequest{
-			Name:        name,
-			Description: kitutil.Interface2String(tool["description"]),
-		},
+		Type:     toolType,
+		Custom:   rawTool,
+		Function: dto.FunctionRequest{Name: name, Description: tool.Description},
 	}), nil
 }
 
@@ -542,11 +534,8 @@ func responsesRequestTextToChatResponseFormat(raw json.RawMessage) (*dto.Respons
 
 	out := &dto.ResponseFormat{Type: formatType}
 	if formatType == "json_schema" {
-		schemaRaw, err := kitutil.Marshal(format)
-		if err != nil {
-			return nil, err
-		}
-		out.JsonSchema = schemaRaw
+		// The client's bytes keep the schema's property order.
+		out.JsonSchema = kitutil.ObjectMember(raw, "format")
 	}
 	return out, nil
 }
@@ -557,6 +546,12 @@ func RequestTextToChatResponseFormat(raw json.RawMessage) (*dto.ResponseFormat, 
 
 func responsesImagePartToChatImageURL(part map[string]any) any {
 	if imageURL, ok := part["image_url"]; ok {
+		// Chat Completions takes the URL inside an object. detail is left out:
+		// Chat upstreams that validate it with older OpenAI SDKs reject newer
+		// values such as "original".
+		if url, ok := imageURL.(string); ok {
+			return map[string]any{"url": url}
+		}
 		return imageURL
 	}
 	imageURL := map[string]any{}

@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/gorilla/websocket"
 	"github.com/tidwall/gjson"
 )
 
@@ -104,6 +105,16 @@ func buildResponsesWSSteeringCreate(parent responsesWSCreateRequest, prepared, f
 }
 
 func (s *responsesWSSession) queueSteering(parentState *responsesWSCallState, parent responsesWSCreateRequest, responseID string, control responsesWSControl) error {
+	// 排队期间可能再次重试；先恢复逻辑游标，再解析为最新上游游标。
+	var err error
+	control.body, err = s.translateResponseIDs(control.body, false)
+	if err != nil {
+		return err
+	}
+	control.body, err = s.translateResponseIDs(control.body, true)
+	if err != nil {
+		return err
+	}
 	// 参数转换会改写 DTO 的模型名；重新鉴权必须使用连接绑定的客户端模型。
 	parent.Request.Model = s.lockedModel
 	message, envelope, err := buildResponsesWSSteeringCreate(parent, parentState.preparedBody, control.body, responseID)
@@ -150,7 +161,7 @@ func (s *responsesWSSession) handleSteeringEvent(state *responsesWSCallState, in
 	}
 	s.stateMu.Unlock()
 	if err := s.writeClient(incoming.kind, incoming.body); err != nil {
-		s.shutdown()
+		s.shutdown(websocket.CloseInternalServerErr, "")
 	}
 }
 

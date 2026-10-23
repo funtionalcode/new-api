@@ -69,7 +69,7 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 
 func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
 	if resp == nil || resp.Body == nil {
-		logger.LogError(c, "invalid response or response body")
+		logger.LogError(c, common.LogText("invalid response or response body"))
 		return nil, types.NewError(fmt.Errorf("invalid response"), types.ErrorCodeBadResponse)
 	}
 
@@ -84,7 +84,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		// 检查当前数据是否包含 completed 状态和 usage 信息
 		var streamResponse dto.ResponsesStreamResponse
 		if err := common.UnmarshalJsonStr(data, &streamResponse); err != nil {
-			logger.LogError(c, "failed to unmarshal stream response: "+err.Error())
+			logger.LogError(c, common.LogText("failed to unmarshal stream response: %s", err.Error()))
 			sr.Error(err)
 			return
 		}
@@ -97,13 +97,21 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			sr.Stop(failure)
 			return
 		}
+		// 上游已完成的用量仍需结算；下游写入失败不能丢失已发生的消耗。
+		accumulator.Observe(&streamResponse, common.StringToByteSlice(data))
 		for _, frame := range frames {
 			var outgoing dto.ResponsesStreamResponse
 			if common.Unmarshal(frame, &outgoing) == nil {
-				sendResponsesStreamData(c, outgoing, string(frame))
+				if err := helper.ResponseChunkData(c, outgoing, string(frame)); err != nil {
+					sr.Stop(err)
+					return
+				}
 			}
 		}
-		accumulator.Observe(&streamResponse, common.StringToByteSlice(data))
+		if (streamResponse.Type == "response.completed" || streamResponse.Type == "response.done") &&
+			streamResponse.Response != nil && info.StreamStatus.ResponseOutcome() == string(relaycommon.ResponseOutcomeCompleted) {
+			sr.Done()
+		}
 	}, helper.StreamScannerOptions{DeferPingUntilWrite: true})
 
 	common.SetContextKey(c, constant.ContextKeyResponseStreamStatus, info.StreamStatus)
@@ -114,7 +122,10 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	for _, frame := range guard.Flush() {
 		var outgoing dto.ResponsesStreamResponse
 		if common.Unmarshal(frame, &outgoing) == nil {
-			sendResponsesStreamData(c, outgoing, string(frame))
+			if err := helper.ResponseChunkData(c, outgoing, string(frame)); err != nil {
+				info.StreamStatus.RecordError(err.Error())
+				break
+			}
 		}
 	}
 	return accumulator.Finish(), nil

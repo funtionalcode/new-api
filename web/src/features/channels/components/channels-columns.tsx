@@ -54,7 +54,10 @@ import {
 } from '@/lib/currency'
 import { formatTimestampToDate } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
-import { createServerError } from '@/lib/server-error-message'
+import {
+  createServerError,
+  translateServerText,
+} from '@/lib/server-error-message'
 import { truncateText } from '@/lib/utils'
 
 import { getCodexUsage, updateChannelBalance } from '../api'
@@ -563,9 +566,9 @@ export function BalanceCell({ channel }: { channel: Channel }) {
           />
           <TooltipContent>
             <p>{remainingTooltipLabel}</p>
-            {channel.type !== 57 && channel.type !== 58 && !isInferenceChannel && (
-              <p>{t('Click to update balance')}</p>
-            )}
+            {channel.type !== 57 &&
+              channel.type !== 58 &&
+              !isInferenceChannel && <p>{t('Click to update balance')}</p>}
           </TooltipContent>
         </Tooltip>
       </div>
@@ -1109,7 +1112,8 @@ export function useChannelsColumns(
                       <div className='space-y-1 text-xs'>
                         {statusReason && (
                           <div className='wrap-anywhere'>
-                            {t('Reason:')} {statusReason}
+                            {t('Reason:')}{' '}
+                            {translateServerText(t, statusReason)}
                           </div>
                         )}
                         {statusTime && (

@@ -979,7 +979,7 @@ it('存储写入失败时保留当前结果并提示未保存，而不是报告�
       screen.getByRole('button', { name: 'Generate and save result' })
     ).toBeEnabled()
   )
-  vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => {
+  vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
     throw new Error('storage quota')
   })
   await userEvent.click(

@@ -95,7 +95,7 @@ func TestUsageLogsEnforceChannelAccessForAdminsAndUsers(t *testing.T) {
 		{"self", 10, common.RoleCommonUser, 3, GetUserLogs},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			recorder := runLogAccessRequest(t, tc.handler, "/api/log/?type=2&page_size=1&visible_channel_ids=13&user_id=20", tc.userID, tc.role)
+			recorder := runLogAccessRequest(t, tc.handler, "/api/log/?type=2&page_size=1&visible_channel_ids=13&user_id=20&start_timestamp=1700000000&end_timestamp=1700000060", tc.userID, tc.role)
 			require.Equal(t, http.StatusOK, recorder.Code)
 			var result struct {
 				Success bool `json:"success"`
@@ -205,7 +205,7 @@ func TestTaskAndDrawingLogsEnforceChannelAccess(t *testing.T) {
 
 func TestUsageLogAccessFailsClosedAndKeepsUnassignedLogs(t *testing.T) {
 	setupLogChannelAccessTest(t)
-	require.NoError(t, model.LOG_DB.Create(&model.Log{UserId: 10, TokenId: 501, Type: model.LogTypeTopup, ChannelId: 0}).Error)
+	require.NoError(t, model.LOG_DB.Create(&model.Log{UserId: 10, TokenId: 501, Type: model.LogTypeTopup, ChannelId: 0, CreatedAt: common.GetTimestamp()}).Error)
 	recorder := runLogAccessRequest(t, GetUserLogs, "/api/log/self?type=1", 10, common.RoleCommonUser)
 	var result struct {
 		Success bool `json:"success"`

@@ -170,7 +170,7 @@ it('仅把最近二十条有效历史公告作为不可信数据发送，保留�
     {
       ...sample,
       events: [
-        ...events.toReversed(),
+        ...[...events].reverse(),
         events[0],
         { ...events[0], tweet_id: 'future', announced_at: now / 1000 + 1 },
         { ...events[0], tweet_id: 'empty', text: ' ' },

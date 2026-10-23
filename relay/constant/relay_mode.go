@@ -52,6 +52,9 @@ const (
 
 	RelayModeClaudeCountTokens
 	RelayModeTypeSafe
+
+	RelayModeToolsSearch
+	RelayModeToolsFetch
 )
 
 func Path2RelayMode(path string) int {
@@ -80,6 +83,10 @@ func Path2RelayMode(path string) int {
 		relayMode = RelayModeAlphaSearch
 	} else if strings.HasPrefix(path, "/v1/messages/count_tokens") {
 		relayMode = RelayModeClaudeCountTokens
+	} else if strings.HasPrefix(path, "/v1/tools/search") {
+		relayMode = RelayModeToolsSearch
+	} else if strings.HasPrefix(path, "/v1/tools/fetch") {
+		relayMode = RelayModeToolsFetch
 	} else if strings.HasPrefix(path, "/v1/audio/speech") || strings.HasPrefix(path, "/pg/audio/speech") {
 		relayMode = RelayModeAudioSpeech
 	} else if strings.HasPrefix(path, "/v1/audio/transcriptions") || strings.HasPrefix(path, "/pg/audio/transcriptions") || strings.HasPrefix(path, "/v1/stt") {

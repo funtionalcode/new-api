@@ -369,7 +369,7 @@ func TestConvertOpenAIRequestRejectsUnsupportedMediaAndAcceptsTools(t *testing.T
 			Function: dto.FunctionRequest{
 				Name:        "lookup_weather",
 				Description: "Look up weather",
-				Parameters:  map[string]any{"type": "object"},
+				Parameters:  []byte(`{"type":"object"}`),
 			},
 		}},
 	})

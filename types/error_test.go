@@ -18,7 +18,7 @@ func TestMaskSensitiveErrorWithStatusCodePreservesDomain(t *testing.T) {
 	require.Equal(
 		t,
 		`status_code=500, Post "https://api.openai.com/***/***": EOF`,
-		apiErr.MaskSensitiveErrorWithStatusCode(),
+		apiErr.MaskSensitiveErrorWithStatusCode("https://api.openai.com"),
 	)
 }
 

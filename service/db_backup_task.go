@@ -121,7 +121,7 @@ func FinishDBBackupReport(taskID string, succeeded bool, payload DBBackupPayload
 		common.SysLog(fmt.Sprintf("db backup finish task %s failed: %v", taskID, err))
 	}
 
-	model.RecordLog(0, model.LogTypeSystem, buildDBBackupLogContent(status, result, errMsg), "")
+	model.RecordLog(0, model.LogTypeSystem, common.NewMessage("{{message}}", map[string]any{"message": buildDBBackupLogContent(status, result, errMsg)}), "")
 	return nil
 }
 

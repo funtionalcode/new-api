@@ -187,23 +187,10 @@ func TestLogQueriesFilterByChannelName(t *testing.T) {
 		},
 	}).Error)
 
-	logs, total, err := GetAllLogs(
-		LogTypeConsume,
-		now-60,
-		now,
-		"",
-		"",
-		"",
-		0,
-		10,
-		0,
-		"codex",
-		"",
-		"",
-		"",
-		"",
-		[]int{31, 32},
-	)
+	logs, total, err := GetAllLogs(LogFilter{
+		Type: LogTypeConsume, StartTimestamp: now - 60, EndTimestamp: now,
+		ChannelName: "codex", VisibleChannelIDs: []int{31, 32},
+	}, 0, 10)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total)
 	require.Len(t, logs, 1)

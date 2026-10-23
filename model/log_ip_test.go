@@ -14,7 +14,7 @@ import (
 func TestRecordLogPersistsClientIP(t *testing.T) {
 	require.NoError(t, LOG_DB.Where("user_id = ?", 9001).Delete(&Log{}).Error)
 
-	RecordLog(9001, LogTypeSystem, "unit test system op", "198.51.100.20")
+	RecordLog(9001, LogTypeSystem, common.NewMessage("unit test system op"), "198.51.100.20")
 
 	var log Log
 	require.NoError(t, LOG_DB.Where("user_id = ? AND type = ?", 9001, LogTypeSystem).Order("id desc").First(&log).Error)
@@ -50,7 +50,7 @@ func TestRecordConsumeLogAlwaysRecordsIPEvenWhenOptionDisabled(t *testing.T) {
 		ModelName: "gpt-test",
 		TokenName: "tok",
 		Quota:     1,
-		Content:   "consume with ip",
+		Content:   []*common.Message{common.NewMessage("consume with ip")},
 	})
 
 	var log Log
