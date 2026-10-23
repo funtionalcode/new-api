@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -97,4 +98,54 @@ func TestGenerateTextOtherInfoIncludesSanitizedTypeSafe(t *testing.T) {
 	require.True(t, ok)
 	assert.Contains(t, admin, "typesafe_exchange")
 	assert.Equal(t, relayInfo.TypeSafeResults, admin["typesafe"])
+}
+
+func TestGenerateTextOtherInfoKeepsResponsesTerminalOutcome(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tc := range []struct {
+		name       string
+		event      string
+		status     string
+		outcome    string
+		reason     string
+		completion int
+	}{
+		{"output limit", `{"type":"response.incomplete","response":{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"usage":{"input_tokens":100,"output_tokens":128000,"total_tokens":128100}}}`, "error", "incomplete", "max_output_tokens", 128000},
+		{"content filter", `{"type":"response.done","response":{"status":"incomplete","incomplete_details":{"reason":"content_filter"},"usage":{"input_tokens":100,"output_tokens":5,"total_tokens":105}}}`, "error", "incomplete", "content_filter", 5},
+		{"cancelled", `{"type":"response.cancelled","response":{"status":"cancelled","usage":{"input_tokens":100,"output_tokens":5,"total_tokens":105}}}`, "error", "cancelled", "", 5},
+		{"failed", `{"type":"response.failed","response":{"status":"failed","usage":{"input_tokens":100,"output_tokens":5,"total_tokens":105}}}`, "error", "failed", "", 5},
+		{"completed", `{"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":100,"output_tokens":5,"total_tokens":105}}}`, "ok", "completed", "", 5},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			start := time.Unix(1000, 0)
+			info := &relaycommon.RelayInfo{
+				StartTime: start, FirstResponseTime: start, IsStream: true,
+				ChannelMeta: &relaycommon.ChannelMeta{}, StreamStatus: relaycommon.NewStreamStatus(),
+			}
+			var event dto.ResponsesStreamResponse
+			require.NoError(t, common.UnmarshalJsonStr(tc.event, &event))
+			accumulator := NewResponsesUsageAccumulator(info)
+			accumulator.Observe(&event, []byte(tc.event))
+			info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonDone, nil)
+
+			usage := accumulator.Finish()
+			other := GenerateTextOtherInfo(ctx, info, 1, 1, 1, 0, 0, 0, -1)
+			stream, ok := other.Snapshot()["stream_status"].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, tc.status, stream["status"])
+			assert.Equal(t, "done", stream["end_reason"])
+			assert.Equal(t, tc.outcome, stream["response_status"])
+			if tc.reason == "" {
+				assert.NotContains(t, stream, "incomplete_reason")
+			} else {
+				assert.Equal(t, tc.reason, stream["incomplete_reason"])
+			}
+			assert.Equal(t, tc.status == "ok", RequestPolicy(ctx).Successful)
+			assert.Equal(t, 100, usage.PromptTokens)
+			assert.Equal(t, tc.completion, usage.CompletionTokens)
+			assert.Equal(t, 100+tc.completion, usage.TotalTokens)
+		})
+	}
 }

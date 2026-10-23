@@ -1567,7 +1567,7 @@ func TestResponsesStreamOutcomesPreserveAccounting(t *testing.T) {
 			{name: "failed-estimated-output", expression: `tier("output", c * 2000)`, terminal: `{"type":"response.failed","response":{"id":"first","status":"failed","usage":null}}`, delta: true, failed: true},
 			{name: "error-after-created", expression: `tier("request", fixed(0.002))`, terminal: `{"type":"error","status":500,"error":{"type":"server_error","code":"server_error","message":"Internal server error"}}`, sseTerminal: `{"type":"error","code":"server_error","message":"Internal server error","param":null,"sequence_number":2}`, failed: true},
 			{name: "business-error-after-created", expression: `tier("request", fixed(0.002))`, terminal: `{"type":"error","status":400,"error":{"type":"invalid_request_error","code":"context_length_exceeded","message":"Input too long"}}`, sseTerminal: `{"type":"error","code":"context_length_exceeded","message":"Input too long","param":null,"sequence_number":2}`, failed: true, ignored: true},
-			{name: "completed-at-output-limit", expression: `tier("request", fixed(0.002))`, terminal: `{"type":"response.incomplete","response":{"id":"first","status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"usage":{"input_tokens":1000,"output_tokens":1,"total_tokens":1001}}}`},
+			{name: "incomplete-at-output-limit", expression: `tier("request", fixed(0.002))`, terminal: `{"type":"response.incomplete","response":{"id":"first","status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"usage":{"input_tokens":1000,"output_tokens":1,"total_tokens":1001}}}`},
 			{name: "completed-zero-fixed", expression: `tier("request", fixed(0.002))`, terminal: `{"type":"response.completed","response":{"id":"first","status":"completed","usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}}`},
 		} {
 			t.Run(transport+"/"+tc.name, func(t *testing.T) {
@@ -1651,13 +1651,13 @@ func TestResponsesStreamOutcomesPreserveAccounting(t *testing.T) {
 				if tc.failed {
 					assert.Equal(t, "error", stream["status"])
 					assert.Equal(t, "failed", stream["response_status"])
+				} else if tc.name == "incomplete-at-output-limit" {
+					assert.Equal(t, "error", stream["status"])
+					assert.Equal(t, "incomplete", stream["response_status"])
+					assert.Equal(t, "max_output_tokens", stream["incomplete_reason"])
 				} else {
 					assert.Equal(t, "ok", stream["status"])
-					if tc.name == "completed-at-output-limit" {
-						assert.Equal(t, "incomplete", stream["response_status"])
-					} else {
-						assert.Equal(t, "completed", stream["response_status"])
-					}
+					assert.Equal(t, "completed", stream["response_status"])
 				}
 				assert.NotContains(t, logs[0].Other, "sensitive upstream detail")
 				expectedRequests := int64(len(quotas))
