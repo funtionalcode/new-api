@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"net/http"
 
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/middleware"
@@ -14,7 +15,7 @@ func SetTaskPluginProtocolRouter(router *gin.Engine) {
 	for _, protocol := range pluginruntime.HostProtocols() {
 		for _, operation := range protocol.Operations {
 			for _, method := range operation.Methods {
-				handlers, err := taskPluginProtocolHandlers(protocol.Name, operation.Name)
+				handlers, err := taskPluginProtocolHandlers(protocol.Name, operation.Name, router)
 				if err != nil {
 					panic(err)
 				}
@@ -24,11 +25,12 @@ func SetTaskPluginProtocolRouter(router *gin.Engine) {
 	}
 }
 
-func taskPluginProtocolHandlers(protocol, operation string) ([]gin.HandlerFunc, error) {
+func taskPluginProtocolHandlers(protocol, operation string, dispatcher http.Handler) ([]gin.HandlerFunc, error) {
 	switch protocol + "." + operation {
 	case "openai_responses.create":
 		return []gin.HandlerFunc{
 			middleware.RouteTag("relay"), middleware.SystemPerformanceCheck(), middleware.TokenAuth(),
+			controller.ResponsesImageToolMiddleware(dispatcher),
 			middleware.ModelRequestRateLimit(), middleware.RouteTaskPluginEndpoint(), middleware.PrepareTaskPluginEndpoint(), middleware.Distribute(),
 			func(c *gin.Context) {
 				controller.RelayTaskPluginEndpoint(c, func(c *gin.Context) { controller.Relay(c, types.RelayFormatOpenAIResponses) })

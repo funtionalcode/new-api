@@ -25,6 +25,7 @@ type responsesWSRequestState struct {
 	requestID string
 	handle    func(*gin.Context) *types.NewAPIError
 	apiError  *types.NewAPIError
+	imageTool func([]byte) bool
 }
 
 // Each response.create runs the ordinary request middleware to completion,
@@ -38,7 +39,19 @@ var responsesWSRequestEngine = sync.OnceValue(func() *gin.Engine {
 		c.Set(common.RequestIdKey, state.requestID)
 		common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
 		c.Next()
-	}, middleware.BodyStorageCleanup(), middleware.TokenAuth(), middleware.ModelRequestRateLimit(), func(c *gin.Context) {
+	}, middleware.BodyStorageCleanup(), middleware.TokenAuth(), func(c *gin.Context) {
+		state := c.Request.Context().Value(responsesWSRequestContextKey{}).(*responsesWSRequestState)
+		if state.imageTool != nil {
+			if storage, err := common.GetBodyStorage(c); err == nil {
+				if body, err := storage.Bytes(); err == nil && state.imageTool(body) {
+					// 内部 HTTP 子请求各自限流，外层不重复占用同一次聊天调用的名额。
+					c.Next()
+					return
+				}
+			}
+		}
+		middleware.ModelRequestRateLimit()(c)
+	}, func(c *gin.Context) {
 		c.Set("typesafe_prepare", prepareTypeSafeIntegration)
 		state := c.Request.Context().Value(responsesWSRequestContextKey{}).(*responsesWSRequestState)
 		state.apiError = state.handle(c)
@@ -74,7 +87,7 @@ func (w *responsesWSResponseWriter) Write(data []byte) (int, error) {
 	return w.body.Write(data)
 }
 
-func newResponsesWSRequestRunner(c *gin.Context) relay.ResponsesWSRequestRunner {
+func newResponsesWSRequestRunner(c *gin.Context, imageTool ...func([]byte) bool) relay.ResponsesWSRequestRunner {
 	// Capture credentials before channel selection or header overrides. Resolve
 	// the peer once with the public router's trusted-proxy configuration.
 	headers := c.Request.Header.Clone()
@@ -84,6 +97,9 @@ func newResponsesWSRequestRunner(c *gin.Context) relay.ResponsesWSRequestRunner 
 	remoteAddr := net.JoinHostPort(common.GetClientIP(c), "0")
 	return func(request *http.Request, requestID string, handle func(*gin.Context) *types.NewAPIError) *types.NewAPIError {
 		state := &responsesWSRequestState{requestID: requestID, handle: handle}
+		if len(imageTool) != 0 {
+			state.imageTool = imageTool[0]
+		}
 		ctx := context.WithValue(request.Context(), responsesWSRequestContextKey{}, state)
 		ctx = context.WithValue(ctx, common.RequestIdKey, requestID)
 		request = request.Clone(ctx)
@@ -113,15 +129,22 @@ func newResponsesWSRequestRunner(c *gin.Context) relay.ResponsesWSRequestRunner 
 }
 
 func ResponsesWebSocket(c *gin.Context) {
+	responsesWebSocket(c, nil)
+}
+
+func responsesWebSocket(c *gin.Context, imageTools *relay.ResponsesWSImageToolHandler) {
 	requestID := c.GetString(common.RequestIdKey)
 	runner := newResponsesWSRequestRunner(c)
+	if imageTools != nil {
+		runner = newResponsesWSRequestRunner(c, imageTools.Match)
+	}
 	ws, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		return
 	}
 	defer ws.Close()
 
-	if apiError := relay.ResponsesWebSocketHelper(c, ws, runner); apiError != nil {
+	if apiError := relay.ResponsesWebSocketHelper(c, ws, runner, imageTools); apiError != nil {
 		logger.LogError(c, common.LogText("responses websocket relay error: %s", common.LocalLogPreview(apiError.Error())))
 		apiError.SetMessage(common.MessageWithRequestId(apiError.Error(), requestID))
 		helper.WssError(c, ws, apiError.ToOpenAIError(common.UpstreamAddresses(c)...))

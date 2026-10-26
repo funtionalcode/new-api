@@ -42,6 +42,12 @@ const responsesWSWriteTimeout = 30 * time.Second
 // middleware around one complete request, without a second HTTP connection.
 type ResponsesWSRequestRunner func(*http.Request, string, func(*gin.Context) *types.NewAPIError) *types.NewAPIError
 
+// ResponsesWSImageToolHandler 复用 HTTP 图片编排，不在 WebSocket 层另建计费流程。
+type ResponsesWSImageToolHandler struct {
+	Match func([]byte) bool
+	Run   func(*gin.Context, []byte, helper.ResponsesStreamWriter) *types.NewAPIError
+}
+
 type responsesWSCreateEvent struct {
 	Type     string            `json:"type"`
 	EventID  string            `json:"event_id,omitempty"`
@@ -115,6 +121,7 @@ type responsesWSSession struct {
 	cancel         context.CancelFunc
 	client         *websocket.Conn
 	runner         ResponsesWSRequestRunner
+	imageTools     *ResponsesWSImageToolHandler
 	request        *http.Request
 	requestID      string
 	nextEventIndex int
@@ -146,10 +153,13 @@ type responsesWSSession struct {
 	lockedRoute     dto.AdvancedCustomRoute
 }
 
-func ResponsesWebSocketHelper(c *gin.Context, client *websocket.Conn, runner ResponsesWSRequestRunner) *types.NewAPIError {
+func ResponsesWebSocketHelper(c *gin.Context, client *websocket.Conn, runner ResponsesWSRequestRunner, imageTools ...*ResponsesWSImageToolHandler) *types.NewAPIError {
 	ctx, cancel := context.WithCancel(c.Request.Context())
 	s := &responsesWSSession{ctx: ctx, cancel: cancel, client: client, runner: runner,
 		request: c.Request.Clone(ctx), requestID: c.GetString(common.RequestIdKey)}
+	if len(imageTools) != 0 {
+		s.imageTools = imageTools[0]
+	}
 	if s.requestID == "" {
 		s.requestID = common.NewRequestId()
 	}
@@ -304,6 +314,7 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 	var info *relaycommon.RelayInfo
 	billingPrepared := false
 	generationStarted := false
+	internalImageTool := false
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			apiErr = types.NewError(fmt.Errorf("responses websocket call panic: %v", recovered), types.ErrorCodeBadResponse, types.ErrOptionWithSkipRetry())
@@ -312,7 +323,7 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 		if info == nil && modelName != "" {
 			info = &relaycommon.RelayInfo{OriginModelName: modelName, UsingGroup: common.GetContextKeyString(c, appconstant.ContextKeyUsingGroup), StartTime: started}
 		}
-		if state.steer == nil || generationStarted {
+		if !internalImageTool && (state.steer == nil || generationStarted) {
 			perfmetrics.RecordRelayResult(c.Request.Context(), info, apiErr)
 		}
 		if state.steer != nil && !generationStarted && info != nil && info.Billing != nil {
@@ -333,6 +344,13 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 	}
 	if apiErr = checkResponsesWSModelAccess(c, modelName); apiErr != nil {
 		return apiErr
+	}
+	if s.imageTools != nil && s.imageTools.Match(create.Body) {
+		if state.steer != nil || s.lockedChannelID != 0 {
+			return newResponsesWSInvalidRequestError(errors.New("internal image generation requires a new websocket without a native upstream session or response.steer"))
+		}
+		internalImageTool = true
+		return s.runImageToolCall(c, state, create)
 	}
 	common.SetContextKey(c, appconstant.ContextKeyOriginalModel, modelName)
 	service.PrepareCursorAgentSessionFromBody(c, modelName, create.Body)
@@ -840,6 +858,47 @@ func (s *responsesWSSession) lockChannel(c *gin.Context, channel *appmodel.Chann
 		}
 	}
 	s.registerChannelClose(channel.Id)
+}
+
+func (s *responsesWSSession) runImageToolCall(c *gin.Context, state *responsesWSCallState, create responsesWSCreateRequest) *types.NewAPIError {
+	write := func(data []byte) error {
+		if create.StreamID != "" {
+			var err error
+			data, err = sjson.SetBytes(data, "stream_id", create.StreamID)
+			if err != nil {
+				return err
+			}
+		}
+		switch gjson.GetBytes(data, "type").String() {
+		case "response.completed", "response.done", "response.incomplete", "response.failed", "response.cancelled", "response.canceled":
+			s.lastResponseID = gjson.GetBytes(data, "response.id").String()
+			state.terminal = &responsesWSMessage{kind: websocket.TextMessage, body: bytes.Clone(data)}
+			return nil
+		}
+		return s.writeClient(websocket.TextMessage, data)
+	}
+	if string(create.Generate) == "false" {
+		info := relaycommon.GenRelayInfoResponses(c, &create.Request)
+		if err := completeResponsesWebsocketPrewarm(&responsesWebsocketTurn{info: info}, write); err != nil {
+			return types.NewError(err, types.ErrorCodeBadResponse, types.ErrOptionWithSkipRetry())
+		}
+		return nil
+	}
+	ctx, cancel := context.WithCancel(c.Request.Context())
+	defer cancel()
+	c.Request = c.Request.WithContext(ctx)
+	s.workers.Go(func() {
+		select {
+		case <-state.controls:
+			cancel()
+		case <-ctx.Done():
+		}
+	})
+	apiErr := s.imageTools.Run(c, create.Body, write)
+	if apiErr == nil {
+		s.lockedModel = create.Request.Model
+	}
+	return apiErr
 }
 
 // Cursor 通过 HTTP 流提供 Responses 事件，并复用每条请求的鉴权和结算。

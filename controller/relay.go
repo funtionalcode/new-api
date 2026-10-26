@@ -248,6 +248,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		relayInfo.LastError = newAPIError
 
 		decision := service.DecideRelayRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry())
+		if isResponsesImageToolSubmission(c) {
+			decision = service.PolicyDecision{Action: "stop", Reason: "image_tool_single_submission", Source: "system"}
+		}
 		service.RecordPolicyFailure(c, channel.Id, newAPIError, decision)
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError, relayInfo)
 
@@ -894,6 +897,8 @@ func decideTaskRetry(c *gin.Context, taskErr *taskdto.TaskError, retryTimes int)
 	switch {
 	case taskErr == nil:
 		stop.Reason = "request_completed"
+	case isResponsesImageToolSubmission(c):
+		stop.Reason = "image_tool_single_submission"
 	case taskErr.NoRetry:
 		stop.Reason = "task_accepted"
 	case service.ShouldSkipRetryAfterChannelAffinityFailure(c):
