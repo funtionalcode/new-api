@@ -535,6 +535,71 @@ func TestResponsesImageToolSelectionAndImageProtocols(t *testing.T) {
 	assert.Equal(t, "png", format)
 }
 
+func TestResponsesImageToolSystemModelSetting(t *testing.T) {
+	setupResponsesWSRequestTest(t)
+	require.NoError(t, model.DB.AutoMigrate(&model.Option{}))
+	const optionKey = "global.responses_image_tool_model"
+	defaults := config.GlobalConfig.ExportAllConfigs()
+	previousModel := defaults[optionKey]
+	common.OptionMapRWMutex.Lock()
+	previousOptions := common.OptionMap
+	common.OptionMap = defaults
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{optionKey: previousModel}))
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap = previousOptions
+		common.OptionMapRWMutex.Unlock()
+	})
+
+	router := gin.New()
+	router.GET("/api/option/", GetOptions)
+	router.PUT("/api/option/", UpdateOption)
+	options := httptest.NewRecorder()
+	router.ServeHTTP(options, httptest.NewRequest(http.MethodGet, "/api/option/", nil))
+	require.Equal(t, http.StatusOK, options.Code)
+	require.True(t, gjson.GetBytes(options.Body.Bytes(), `data.#(key=="global.responses_image_tool_model").value`).Exists(), "系统配置接口必须返回图片工具模型设置")
+
+	for _, tc := range []struct {
+		name        string
+		systemModel string
+		envModel    string
+		toolModel   string
+		want        string
+	}{
+		{name: "default", want: "grok-imagine-image-2.0"},
+		{name: "environment fallback", envModel: " grok-imagine-image-custom ", want: "grok-imagine-image-custom"},
+		{name: "system overrides environment", systemModel: " gpt-image-2 ", envModel: "grok-imagine-image-2.0", want: "gpt-image-2"},
+		{name: "saved change applies immediately", systemModel: "grok-imagine-image-new", envModel: "gpt-image-2", want: "grok-imagine-image-new"},
+		{name: "tool overrides system", systemModel: "grok-imagine-image-2.0", envModel: "grok-imagine-image-new", toolModel: "gpt-image-2", want: "gpt-image-2"},
+		{name: "clearing restores environment", envModel: "gpt-image-2", want: "gpt-image-2"},
+		{name: "blank system uses default", systemModel: " \t ", want: "grok-imagine-image-2.0"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("RESPONSES_IMAGE_TOOL_MODEL", tc.envModel)
+			body, err := common.Marshal(gin.H{"key": optionKey, "value": tc.systemModel})
+			require.NoError(t, err)
+			saved := httptest.NewRecorder()
+			router.ServeHTTP(saved, httptest.NewRequest(http.MethodPut, "/api/option/", bytes.NewReader(body)))
+			require.Equal(t, http.StatusOK, saved.Code)
+			require.True(t, gjson.GetBytes(saved.Body.Bytes(), "success").Bool(), saved.Body.String())
+			var persisted model.Option
+			require.NoError(t, model.DB.Where(&model.Option{Key: optionKey}).First(&persisted).Error)
+			assert.Equal(t, tc.systemModel, persisted.Value)
+
+			options := httptest.NewRecorder()
+			router.ServeHTTP(options, httptest.NewRequest(http.MethodGet, "/api/option/", nil))
+			assert.Equal(t, tc.systemModel, gjson.GetBytes(options.Body.Bytes(), `data.#(key=="global.responses_image_tool_model").value`).String())
+			settings, err := common.Marshal(gin.H{"model": tc.toolModel})
+			require.NoError(t, err)
+			tool := &responsesImageTool{settings: gjson.ParseBytes(settings)}
+			image, err := tool.imageRequest(`{"prompt":"Draw a red panda"}`)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, gjson.GetBytes(image, "model").String())
+		})
+	}
+}
+
 func TestResponsesImageToolDownloadsWithoutCredentials(t *testing.T) {
 	if service.GetSSRFProtectedHTTPClient() == nil {
 		service.InitHttpClient()

@@ -354,6 +354,11 @@ func (tool *responsesImageTool) imageRequest(arguments string) ([]byte, error) {
 	}
 	model := tool.settings.Get("model").String()
 	if model == "" {
+		common.OptionMapRWMutex.RLock()
+		model = strings.TrimSpace(common.OptionMap["global.responses_image_tool_model"])
+		common.OptionMapRWMutex.RUnlock()
+	}
+	if model == "" {
 		model = strings.TrimSpace(os.Getenv("RESPONSES_IMAGE_TOOL_MODEL"))
 	}
 	if model == "" {

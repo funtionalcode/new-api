@@ -37,6 +37,7 @@ func (p ChatCompletionsToResponsesPolicy) IsChannelEnabled(channelID int, channe
 
 type GlobalSettings struct {
 	PassThroughRequestEnabled bool     `json:"pass_through_request_enabled"`
+	ResponsesImageToolModel   string   `json:"responses_image_tool_model"`
 	ThinkingModelBlacklist    []string `json:"thinking_model_blacklist"`
 	// EffortTailModelIDs 保存以思考强度词结尾的完整模型 ID，各提供方统一保留原名。
 	EffortTailModelIDs               []string                         `json:"effort_tail_model_ids"`

@@ -90,6 +90,7 @@ const jsonString = z.string().refine((value) => {
 const schema = z.object({
   global: z.object({
     pass_through_request_enabled: z.boolean(),
+    responses_image_tool_model: z.string().trim(),
     thinking_model_blacklist: jsonString,
     chat_completions_to_responses_policy: jsonString,
   }),
@@ -104,6 +105,7 @@ type GlobalModelSettingsFormInput = z.input<typeof schema>
 
 type FlatGlobalModelSettings = {
   'global.pass_through_request_enabled': boolean
+  'global.responses_image_tool_model': string
   'global.thinking_model_blacklist': string
   'global.chat_completions_to_responses_policy': string
   'general_setting.ping_interval_enabled': boolean
@@ -115,6 +117,8 @@ const flattenGlobalValues = (
 ): FlatGlobalModelSettings => ({
   'global.pass_through_request_enabled':
     values.global.pass_through_request_enabled,
+  'global.responses_image_tool_model':
+    values.global.responses_image_tool_model.trim(),
   'global.thinking_model_blacklist': normalizeJsonText(
     values.global.thinking_model_blacklist,
     '[]'
@@ -170,11 +174,15 @@ export function GlobalSettingsCard({ defaultValues }: GlobalSettingsCardProps) {
       return
     }
 
-    for (const [key, value] of updates) {
-      await updateOption.mutateAsync({
-        key,
-        value,
-      })
+    try {
+      for (const [key, value] of updates) {
+        await updateOption.mutateAsync({
+          key,
+          value,
+        })
+      }
+    } catch {
+      // 保存失败由 useUpdateOption 提示，保留当前输入以便重试。
     }
   }
 
@@ -206,6 +214,29 @@ export function GlobalSettingsCard({ defaultValues }: GlobalSettingsCardProps) {
                   />
                 </FormControl>
               </SettingsSwitchItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='global.responses_image_tool_model'
+            render={({ field }) => (
+              <FormItem data-settings-form-span='full'>
+                <FormLabel>{t('Responses image tool model')}</FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    placeholder='grok-imagine-image-2.0'
+                    disabled={updateOption.isPending}
+                  />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'Used by image_gen.imagegen. An explicit tool model takes precedence. Leave blank to use RESPONSES_IMAGE_TOOL_MODEL, then grok-imagine-image-2.0. Changes apply after saving.'
+                  )}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
             )}
           />
 
