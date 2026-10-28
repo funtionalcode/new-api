@@ -20,6 +20,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -213,6 +214,55 @@ func TestCrossChannelModelMappingWebsocketSelectionWithAndWithoutCache(t *testin
 			assert.Equal(t, "target-only-secret", common.GetContextKeyString(c, constant.ContextKeyChannelKey))
 			assert.Equal(t, "qwen3.8-27b", common.GetContextKeyString(c, constant.ContextKeyModelMappingTarget))
 			assert.Equal(t, "deepseek-v4-flash", common.GetContextKeyString(c, constant.ContextKeyOriginalModel))
+		})
+	}
+}
+
+func TestCrossChannelModelMappingStrictSessionBinding(t *testing.T) {
+	for _, cached := range []bool{false, true} {
+		t.Run(map[bool]string{false: "数据库选择", true: "缓存选择"}[cached], func(t *testing.T) {
+			f := setupCrossChannelModelMapping(t)
+			common.MemoryCacheEnabled = cached
+			if cached {
+				model.InitChannelCache()
+			}
+			affinity := operation_setting.GetChannelAffinitySetting()
+			previous := *affinity
+			t.Cleanup(func() { *affinity = previous })
+			snapshot, err := model.BuildRequestPolicy(map[string]string{
+				"channel_affinity_setting.enabled":           "true",
+				"channel_affinity_setting.switch_on_success": "true",
+				"channel_affinity_setting.rules":             `[{"name":"mapping-session","model_regex":[".*"],"key_sources":[{"type":"request_header","key":"X-Session"}],"session_mode":"strict"}]`,
+			})
+			require.NoError(t, err)
+			*affinity = snapshot.Affinity
+
+			newContext := func() *gin.Context {
+				c, _ := gin.CreateTestContext(httptest.NewRecorder())
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+				c.Request.Header.Set("X-Session", t.Name())
+				c.Set("id", 901)
+				common.SetContextKey(c, constant.ContextKeyUsingGroup, "default")
+				return c
+			}
+			first := newContext()
+			retry := &service.RetryParam{Ctx: first, TokenGroup: "default", ModelName: "deepseek-v4-flash", RequestPath: first.Request.URL.Path}
+			channel, _, selectErr := service.SelectChannelForRequest(first, "deepseek-v4-flash", retry)
+			require.Nil(t, selectErr)
+			require.Equal(t, f.target.Id, channel.Id)
+			first.Set("channel_id", f.target.Id)
+			service.RecordChannelAffinity(first, f.target.Id)
+			t.Cleanup(func() { service.ClearCurrentChannelAffinityCache(first) })
+			bound, found := service.GetPreferredChannelByAffinity(first, "deepseek-v4-flash", "default")
+			require.True(t, found)
+			assert.Equal(t, f.parent.Id, bound)
+
+			second := newContext()
+			retry.Ctx = second
+			channel, _, selectErr = service.SelectChannelForRequest(second, "deepseek-v4-flash", retry)
+			require.Nil(t, selectErr)
+			assert.Equal(t, f.target.Id, channel.Id)
+			assert.Equal(t, "qwen3.8-27b", common.GetContextKeyString(second, constant.ContextKeyModelMappingTarget))
 		})
 	}
 }

@@ -725,10 +725,8 @@ func AppendChannelAffinityAdminInfo(c *gin.Context, other *model.LogOther) {
 }
 
 func RecordChannelAffinity(c *gin.Context, channelID int) {
-	if sourceID := common.GetContextKeyInt(c, constant.ContextKeyModelMappingSourceChannel); sourceID > 0 {
-		channelID = sourceID
-	}
-	if channelID <= 0 {
+	sourceID := common.GetContextKeyInt(c, constant.ContextKeyModelMappingSourceChannel)
+	if channelID <= 0 && sourceID <= 0 {
 		return
 	}
 	setting := operation_setting.GetChannelAffinitySetting()
@@ -742,6 +740,10 @@ func RecordChannelAffinity(c *gin.Context, channelID int) {
 		if successChannelID := c.GetInt("channel_id"); successChannelID > 0 {
 			channelID = successChannelID
 		}
+	}
+	// 跨渠道映射的会话绑定需要保留请求模型所属的来源渠道。
+	if sourceID > 0 {
+		channelID = sourceID
 	}
 	cacheKey, ttlSeconds, ok := getChannelAffinityContext(c)
 	if !ok {
