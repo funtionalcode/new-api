@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,7 +17,56 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
+
+// 上游返回的内部令牌计数不能作为 Responses 输入回传；保留其余会话元数据。
+func sanitizeResponsesInput(input []byte) ([]byte, bool, error) {
+	items := gjson.ParseBytes(input)
+	if !items.IsArray() {
+		return input, false, nil
+	}
+	var output bytes.Buffer
+	var last int
+	var changed bool
+	var editErr error
+	items.ForEach(func(_, item gjson.Result) bool {
+		if !item.Get("internal_chat_message_metadata_passthrough.content_token_count").Exists() {
+			return true
+		}
+		var cleaned []byte
+		cleaned, editErr = sjson.DeleteBytes([]byte(item.Raw), "internal_chat_message_metadata_passthrough.content_token_count")
+		if editErr != nil {
+			return false
+		}
+		output.Write(input[last:item.Index])
+		output.Write(cleaned)
+		last = item.Index + len(item.Raw)
+		changed = true
+		return true
+	})
+	if editErr != nil {
+		return nil, false, editErr
+	}
+	if changed {
+		output.Write(input[last:])
+		return output.Bytes(), true, nil
+	}
+	return input, false, nil
+}
+
+func sanitizeResponsesPayload(payload []byte) ([]byte, error) {
+	input := gjson.GetBytes(payload, "input")
+	if !input.IsArray() {
+		return payload, nil
+	}
+	cleaned, changed, err := sanitizeResponsesInput([]byte(input.Raw))
+	if err != nil || !changed {
+		return payload, err
+	}
+	return sjson.SetRawBytes(payload, "input", cleaned)
+}
 
 // PrepareResponsesRequest applies the same model, conversion and channel rules
 // for HTTP and WebSocket requests. The caller closes closer after the attempt;
@@ -55,6 +105,25 @@ func PrepareResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, req *d
 		if err != nil {
 			return nil, nil, nil, types.NewError(err, types.ErrorCodeReadRequestBodyFailed, types.ErrOptionWithSkipRetry())
 		}
+		_, needsSanitize, err := sanitizeResponsesInput(req.Input)
+		if err != nil {
+			return nil, nil, nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+		}
+		if needsSanitize {
+			payload, err := storage.Bytes()
+			if err != nil {
+				return nil, nil, nil, types.NewError(err, types.ErrorCodeReadRequestBodyFailed, types.ErrOptionWithSkipRetry())
+			}
+			payload, err = sanitizeResponsesPayload(payload)
+			if err != nil {
+				return nil, nil, nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+			}
+			body, closer, err := relaycommon.NewOutboundJSONBody(payload)
+			if err != nil {
+				return nil, nil, nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+			}
+			return adaptor, body, closer, nil
+		}
 		body := common.NewReplayableBodyReader(storage)
 		return adaptor, body, io.NopCloser(body), nil
 	}
@@ -82,6 +151,12 @@ func PrepareResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, req *d
 	jsonData, err = relaycommon.ApplyAdaptiveReasoning(jsonData, info)
 	if err != nil {
 		return nil, nil, nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+	}
+	if _, ok := responsesRequestFromConverted(convertedRequest); ok {
+		jsonData, err = sanitizeResponsesPayload(jsonData)
+		if err != nil {
+			return nil, nil, nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+		}
 	}
 
 	logger.LogDebug(c, "requestBody: %s", jsonData)

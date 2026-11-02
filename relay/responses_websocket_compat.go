@@ -367,6 +367,10 @@ func normalizeResponsesWebsocketUpstreamPayload(c *gin.Context, adaptor channel.
 			return nil, false, newAPIErrorFromParamOverride(err)
 		}
 	}
+	jsonData, err = sanitizeResponsesPayload(jsonData)
+	if err != nil {
+		return nil, false, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+	}
 
 	logger.LogDebug(c, "responses websocket requestBody: %s", jsonData)
 	return jsonData, false, nil

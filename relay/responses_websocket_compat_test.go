@@ -1,6 +1,8 @@
 package relay
 
 import (
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -19,6 +21,77 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+func TestResponsesInputRejectsReplayedInternalTokenCounts(t *testing.T) {
+	const input = `[{"type":"message","role":"user","content":"hello","internal_chat_message_metadata_passthrough":{"turn_id":"turn-1","content_token_count":42}},{"type":"function_call_output","call_id":"call-1","output":"{\"content_token_count\":99}","internal_chat_message_metadata_passthrough":{"content_token_count":0,"other":"kept"}},{"type":"message","role":"user","content":"keep","content_token_count":7}]`
+	const expectedInput = `[{"type":"message","role":"user","content":"hello","internal_chat_message_metadata_passthrough":{"turn_id":"turn-1"}},{"type":"function_call_output","call_id":"call-1","output":"{\"content_token_count\":99}","internal_chat_message_metadata_passthrough":{"other":"kept"}},{"type":"message","role":"user","content":"keep","content_token_count":7}]`
+	payload := `{"model":"gpt-test","input":` + input + `,"extra_client_field":"preserved-in-passthrough"}`
+
+	for _, passthrough := range []bool{false, true} {
+		for _, compact := range []bool{false, true} {
+			t.Run(fmt.Sprintf("http/passthrough=%t/compact=%t", passthrough, compact), func(t *testing.T) {
+				c, _ := gin.CreateTestContext(httptest.NewRecorder())
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(payload))
+				c.Request.Header.Set("Content-Type", "application/json")
+				t.Cleanup(func() { appcommon.CleanupBodyStorage(c) })
+				appcommon.SetContextKey(c, appconstant.ContextKeyOriginalModel, "gpt-test")
+				appcommon.SetContextKey(c, appconstant.ContextKeyChannelType, appconstant.ChannelTypeOpenAI)
+				appcommon.SetContextKey(c, appconstant.ContextKeyChannelSetting, dto.ChannelSettings{PassThroughBodyEnabled: passthrough})
+				request := &dto.OpenAIResponsesRequest{}
+				require.NoError(t, appcommon.Unmarshal([]byte(payload), request))
+				info := relaycommon.GenRelayInfoResponses(c, request)
+				if compact {
+					info.RelayMode = relayconstant.RelayModeResponsesCompact
+				}
+				_, body, closer, apiErr := PrepareResponsesRequest(c, info, request)
+				require.Nil(t, apiErr)
+				defer closer.Close()
+				out, err := io.ReadAll(body)
+				require.NoError(t, err)
+				assert.JSONEq(t, expectedInput, gjson.GetBytes(out, "input").Raw)
+				assert.JSONEq(t, input, string(request.Input), "不得修改调用方请求")
+				if passthrough {
+					assert.Equal(t, "preserved-in-passthrough", gjson.GetBytes(out, "extra_client_field").String())
+				}
+			})
+		}
+		t.Run(fmt.Sprintf("websocket-create/passthrough=%t", passthrough), func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(payload))
+			c.Request.Header.Set("Content-Type", "application/json")
+			t.Cleanup(func() { appcommon.CleanupBodyStorage(c) })
+			appcommon.SetContextKey(c, appconstant.ContextKeyOriginalModel, "gpt-test")
+			appcommon.SetContextKey(c, appconstant.ContextKeyChannelType, appconstant.ChannelTypeOpenAI)
+			appcommon.SetContextKey(c, appconstant.ContextKeyChannelSetting, dto.ChannelSettings{PassThroughBodyEnabled: passthrough})
+			request := &dto.OpenAIResponsesRequest{}
+			require.NoError(t, appcommon.Unmarshal([]byte(payload), request))
+			info := relaycommon.GenRelayInfoResponses(c, request)
+			out, apiErr := buildResponsesWSCreatePayload(c, info, *request, nil, "")
+			require.Nil(t, apiErr)
+			assert.Equal(t, "response.create", gjson.GetBytes(out, "type").String())
+			assert.JSONEq(t, expectedInput, gjson.GetBytes(out, "input").Raw)
+		})
+	}
+	t.Run("websocket", func(t *testing.T) {
+		frame := []byte(`{"type":"response.create","model":"gpt-test","input":` + input + `}`)
+		request := &dto.OpenAIResponsesRequest{}
+		require.NoError(t, appcommon.Unmarshal(frame, request))
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		info := &relaycommon.RelayInfo{IsStream: true, IsWebsocket: true, RelayMode: relayconstant.RelayModeResponses, RelayFormat: types.RelayFormatOpenAIResponses, ChannelMeta: &relaycommon.ChannelMeta{ApiType: appconstant.APITypeOpenAI, ChannelType: appconstant.ChannelTypeOpenAI, UpstreamModelName: "gpt-test"}}
+		adaptor := GetAdaptor(info.ApiType)
+		adaptor.Init(info)
+		out, fallback, apiErr := normalizeResponsesWebsocketUpstreamPayload(c, adaptor, info, frame, request)
+		require.Nil(t, apiErr)
+		assert.False(t, fallback)
+		assert.JSONEq(t, expectedInput, gjson.GetBytes(out, "input").Raw)
+	})
+	for _, value := range []string{`"hello"`, `[]`, `[{"internal_chat_message_metadata_passthrough":{"turn_id":"t"}}]`} {
+		out, changed, err := sanitizeResponsesInput([]byte(value))
+		require.NoError(t, err)
+		assert.False(t, changed)
+		assert.Equal(t, value, string(out))
+	}
+}
 
 func newResponsesWebsocketPair(t *testing.T) (*websocket.Conn, *websocket.Conn) {
 	t.Helper()
