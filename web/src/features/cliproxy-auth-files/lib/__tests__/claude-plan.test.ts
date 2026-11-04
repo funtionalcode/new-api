@@ -74,6 +74,15 @@ describe('Claude plan labels', () => {
     )
   })
 
+  test('shows Codex Pro Max as Pro 50x', () => {
+    for (const value of ['promax', 'pro-max', 'PRO_MAX']) {
+      const config = getCliproxyPlanLabelConfig('codex', value)
+
+      assert.equal(config?.label, 'Pro')
+      assert.equal(config?.multiplier, '50x')
+    }
+  })
+
   test('recognizes canonical Claude plan values without a filename prefix', () => {
     for (const lastPlanType of [
       'claude_pro',

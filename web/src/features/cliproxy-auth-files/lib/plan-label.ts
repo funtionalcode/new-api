@@ -100,6 +100,14 @@ export function getCliproxyPlanLabelConfig(
   }
 
   if (type === 'codex') {
+    if (key === 'promax') {
+      return {
+        label: 'Pro',
+        multiplier: '50x',
+        className:
+          'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-950/35 dark:text-amber-200',
+      }
+    }
     if (key === 'pro' || key === 'pro20x') {
       return {
         label: 'Pro',
