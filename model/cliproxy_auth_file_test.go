@@ -43,6 +43,7 @@ func TestGetCliproxyAuthFileBindingsSortsByPlanRank(t *testing.T) {
 		{UserId: 1, Username: "u", AuthIndex: "plus", AuthName: "plus.json", LastPlanType: "plus", Enabled: true},
 		{UserId: 1, Username: "u", AuthIndex: "prolite", AuthName: "prolite.json", LastPlanType: "prolite", Enabled: true},
 		{UserId: 1, Username: "u", AuthIndex: "pro", AuthName: "pro.json", LastPlanType: "pro", Enabled: true},
+		{UserId: 1, Username: "u", AuthIndex: "promax", AuthName: "promax.json", LastPlanType: "promax", Enabled: true},
 		{UserId: 1, Username: "u", AuthIndex: "claude-max", AuthName: "claude-max.json", LastPlanType: "plan_max", Enabled: true},
 		{UserId: 1, Username: "u", AuthIndex: "claude-max-20x", AuthName: "claude-max-20x.json", LastPlanType: "claude_max_20x", Enabled: true},
 		{UserId: 1, Username: "u", AuthIndex: "claude-max-5x", AuthName: "claude-max-5x.json", LastPlanType: "claude_max_5x", Enabled: true},
@@ -57,7 +58,7 @@ func TestGetCliproxyAuthFileBindingsSortsByPlanRank(t *testing.T) {
 
 	bindings, total, err := GetCliproxyAuthFileBindings(CliproxyAuthFileBindingQuery{}, 0, 20)
 	require.NoError(t, err)
-	require.Equal(t, int64(12), total)
+	require.Equal(t, int64(13), total)
 
 	names := make([]string, 0, len(bindings))
 	for _, binding := range bindings {
@@ -65,6 +66,7 @@ func TestGetCliproxyAuthFileBindingsSortsByPlanRank(t *testing.T) {
 	}
 
 	require.Equal(t, []string{
+		"promax.json",
 		"claude-max-20x.json",
 		"claude-max.json",
 		"pro.json",
