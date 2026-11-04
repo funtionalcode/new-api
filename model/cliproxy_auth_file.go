@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type CliproxyAuthFileBinding struct {
@@ -190,7 +191,7 @@ func GetCliproxyAuthFileBindings(query CliproxyAuthFileBindingQuery, startIdx in
 	if err := dbQuery.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	err := dbQuery.Order(cliproxyAuthFileBindingOrderClause()).Limit(num).Offset(startIdx).Find(&bindings).Error
+	err := dbQuery.Clauses(clause.OrderBy{Expression: cliproxyAuthFileBindingOrderClause()}).Limit(num).Offset(startIdx).Find(&bindings).Error
 	if err != nil {
 		return nil, 0, err
 	}
@@ -231,8 +232,31 @@ func enrichCliproxyAuthFileBindingRemarks(bindings []*CliproxyAuthFileBinding) e
 	return nil
 }
 
-func cliproxyAuthFileBindingOrderClause() string {
-	return "CASE lower(replace(replace(replace(last_plan_type, '-', ''), '_', ''), ' ', '')) WHEN 'promax' THEN -1 WHEN 'pro' THEN 0 WHEN 'pro20x' THEN 0 WHEN 'planmax' THEN 0 WHEN 'claudemax' THEN 0 WHEN 'claudemax20x' THEN 0 WHEN 'defaultclaudemax20x' THEN 0 WHEN 'prolite' THEN 1 WHEN 'pro5x' THEN 1 WHEN 'claudemax5x' THEN 1 WHEN 'defaultclaudemax5x' THEN 1 WHEN 'team' THEN 2 WHEN 'planteam' THEN 2 WHEN 'claudeteam' THEN 2 WHEN 'claudeenterprise' THEN 2 WHEN 'plus' THEN 3 WHEN 'planpro' THEN 3 WHEN 'claudepro' THEN 3 WHEN 'free' THEN 4 WHEN 'planfree' THEN 4 WHEN 'claudefree' THEN 4 WHEN '' THEN 6 ELSE 5 END ASC, lower(last_plan_type) ASC, id DESC"
+func cliproxyAuthFileBindingOrderClause() clause.Expr {
+	var args []any
+	filePrefix := func(prefix string) string {
+		var matches []string
+		for _, column := range []string{"auth_file", "auth_name"} {
+			name := "lower(replace(replace(trim(coalesce(" + column + ", '')), '_', '-'), ?, '/'))"
+			args = append(args, `\`, `\`, `\`, `\`)
+			matches = append(matches, fmt.Sprintf("((%s LIKE '%s-%%' AND %s NOT LIKE '%s-%%/%%') OR (%s LIKE '%%/%s-%%' AND %s NOT LIKE '%%/%s-%%/%%'))", name, prefix, name, prefix, name, prefix, name, prefix))
+		}
+		return "(" + strings.Join(matches, " OR ") + ")"
+	}
+
+	provider := "lower(replace(replace(replace(coalesce(provider, ''), '-', ''), '_', ''), ' ', ''))"
+	plan := "lower(replace(replace(replace(coalesce(last_plan_type, ''), '-', ''), '_', ''), ' ', ''))"
+	// 先按界面展示的类型分组，再在每组内按套餐排序；排序必须发生在分页之前。
+	typeOrder := fmt.Sprintf(`CASE
+		WHEN %[1]s = 'codex' THEN 0 WHEN %[1]s = 'claude' THEN 1
+		WHEN %[1]s = 'antigravity' THEN 2 WHEN %[1]s = 'meta' THEN 3 WHEN %[1]s = 'xai' THEN 4
+		WHEN %[2]s THEN 3
+		WHEN %[3]s = 'antigravity' OR %[4]s THEN 2
+		WHEN %[3]s IN ('xai', 'xaifree', 'supergroklite', 'supergrok', 'supergrokplus', 'supergrokheavy', 'xpremium+', 'xpremiumplus', 'subscriptiontiersupergroklite', 'subscriptiontiersupergrok', 'subscriptiontiersupergrokplus', 'subscriptiontiersupergrokheavy') OR %[5]s THEN 4
+		WHEN %[3]s IN ('claude', 'planmax', 'claudemax', 'claudemax5x', 'claudemax20x', 'defaultclaudemax5x', 'defaultclaudemax20x', 'planpro', 'claudepro', 'planteam', 'claudeteam', 'planfree', 'claudefree', 'claudeenterprise') OR %[6]s THEN 1
+		ELSE 0 END`, provider, filePrefix("meta"), plan, filePrefix("antigravity"), filePrefix("xai"), filePrefix("claude"))
+	planOrder := "CASE " + plan + " WHEN 'promax' THEN -1 WHEN 'pro' THEN 0 WHEN 'pro20x' THEN 0 WHEN 'planmax' THEN 0 WHEN 'claudemax' THEN 0 WHEN 'claudemax20x' THEN 0 WHEN 'defaultclaudemax20x' THEN 0 WHEN 'prolite' THEN 1 WHEN 'pro5x' THEN 1 WHEN 'claudemax5x' THEN 1 WHEN 'defaultclaudemax5x' THEN 1 WHEN 'team' THEN 2 WHEN 'planteam' THEN 2 WHEN 'claudeteam' THEN 2 WHEN 'claudeenterprise' THEN 2 WHEN 'plus' THEN 3 WHEN 'planpro' THEN 3 WHEN 'claudepro' THEN 3 WHEN 'free' THEN 4 WHEN 'planfree' THEN 4 WHEN 'claudefree' THEN 4 WHEN '' THEN 6 ELSE 5 END"
+	return clause.Expr{SQL: typeOrder + " ASC, " + planOrder + " ASC, lower(last_plan_type) ASC, id DESC", Vars: args}
 }
 
 func firstNonEmpty(values ...string) string {

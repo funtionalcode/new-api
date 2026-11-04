@@ -27,7 +27,7 @@ func (legacyCliproxyAuthFileBinding) TableName() string {
 	return "cliproxy_auth_file_bindings"
 }
 
-func TestGetCliproxyAuthFileBindingsSortsByPlanRank(t *testing.T) {
+func TestGetCliproxyAuthFileBindingsSortsByProviderAndPlan(t *testing.T) {
 	originalDB := DB
 	t.Cleanup(func() {
 		DB = originalDB
@@ -52,34 +52,34 @@ func TestGetCliproxyAuthFileBindingsSortsByPlanRank(t *testing.T) {
 		{UserId: 1, Username: "u", AuthIndex: "team", AuthName: "team.json", LastPlanType: "team", Enabled: true},
 		{UserId: 1, Username: "u", AuthIndex: "unknown", AuthName: "unknown.json", LastPlanType: "enterprise", Enabled: true},
 		{UserId: 1, Username: "u", AuthIndex: "empty", AuthName: "empty.json", Enabled: true},
+		{UserId: 1, Username: "u", AuthIndex: "explicit-codex", AuthName: "claude-override.json", Provider: "codex", LastPlanType: "pro", Enabled: true},
+		{UserId: 1, Username: "u", AuthIndex: "ag", AuthFile: `C:\credentials\antigravity-account.json`, LastPlanType: "pro", Enabled: true},
+		{UserId: 1, Username: "u", AuthIndex: "meta", AuthName: "/credentials/meta_account.json", Enabled: true},
+		{UserId: 1, Username: "u", AuthIndex: "xai", LastPlanType: "supergrok", Enabled: true},
 	} {
 		require.NoError(t, db.Create(binding).Error)
 	}
 
 	bindings, total, err := GetCliproxyAuthFileBindings(CliproxyAuthFileBindingQuery{}, 0, 20)
 	require.NoError(t, err)
-	require.Equal(t, int64(13), total)
+	require.Equal(t, int64(17), total)
 
-	names := make([]string, 0, len(bindings))
+	indexes := make([]string, 0, len(bindings))
 	for _, binding := range bindings {
-		names = append(names, binding.AuthName)
+		indexes = append(indexes, binding.AuthIndex)
 	}
 
 	require.Equal(t, []string{
-		"promax.json",
-		"claude-max-20x.json",
-		"claude-max.json",
-		"pro.json",
-		"claude-max-5x.json",
-		"prolite.json",
-		"team.json",
-		"claude-pro.json",
-		"claude-pro-legacy.json",
-		"plus.json",
-		"free.json",
-		"unknown.json",
-		"empty.json",
-	}, names)
+		"promax", "explicit-codex", "pro", "prolite", "team", "plus", "free", "unknown", "empty",
+		"claude-max-20x", "claude-max", "claude-max-5x", "claude-pro", "claude-pro-legacy",
+		"ag", "meta", "xai",
+	}, indexes)
+
+	page, pageTotal, err := GetCliproxyAuthFileBindings(CliproxyAuthFileBindingQuery{}, 8, 4)
+	require.NoError(t, err)
+	require.Equal(t, total, pageTotal)
+	require.Len(t, page, 4)
+	require.Equal(t, []string{"empty", "claude-max-20x", "claude-max", "claude-max-5x"}, []string{page[0].AuthIndex, page[1].AuthIndex, page[2].AuthIndex, page[3].AuthIndex})
 }
 
 func TestGetCliproxyAuthFileBindingsIncludesUserRemark(t *testing.T) {
