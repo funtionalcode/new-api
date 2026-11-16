@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useQuery } from '@tanstack/react-query'
+import { skipToken, useQuery } from '@tanstack/react-query'
 import { Pencil } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -33,6 +33,8 @@ import {
   sideDrawerSwitchItemClassName,
 } from '@/components/drawer-layout'
 import { MultiSelect } from '@/components/multi-select'
+import { PasswordInput } from '@/components/password-input'
+import { PasswordStrength } from '@/components/password-strength'
 import { PermissionMatrix } from '@/components/permission-matrix'
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
@@ -149,13 +151,10 @@ export function UsersMutateDrawer({
   const modelLimitsEnabled = form.watch('model_limits_enabled')
   const { data: targetModelsData, isFetching: isLoadingTargetModels } =
     useQuery({
-      queryKey: [
-        'managed-user-models',
-        currentRow?.id,
-        selectedGroupForModels,
-      ],
-      queryFn: () =>
-        getUserModelsForUser(currentRow!.id, selectedGroupForModels),
+      queryKey: ['managed-user-models', currentRow?.id, selectedGroupForModels],
+      queryFn: currentRow
+        ? () => getUserModelsForUser(currentRow.id, selectedGroupForModels)
+        : skipToken,
       enabled: open && isUpdate && !!currentRow?.id,
       staleTime: 0,
     })
@@ -456,10 +455,17 @@ export function UsersMutateDrawer({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>{t('Password')}</FormLabel>
-                      <FormControl>
-                        <Input
+                      <FormControl
+                        describedBy={
+                          !isUpdate || field.value
+                            ? 'user-password-strength'
+                            : undefined
+                        }
+                      >
+                        <PasswordInput
                           {...field}
-                          type='password'
+                          value={field.value ?? ''}
+                          autoComplete='new-password'
                           placeholder={
                             isUpdate
                               ? t('Leave empty to keep unchanged')
@@ -467,6 +473,11 @@ export function UsersMutateDrawer({
                           }
                         />
                       </FormControl>
+                      <PasswordStrength
+                        id='user-password-strength'
+                        value={field.value ?? ''}
+                        quietWhenEmpty={isUpdate}
+                      />
                       <FormMessage />
                     </FormItem>
                   )}

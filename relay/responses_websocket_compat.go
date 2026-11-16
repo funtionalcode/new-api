@@ -18,7 +18,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/tokenkit"
 
 	"github.com/gin-gonic/gin"
@@ -500,13 +499,6 @@ func responsesRequestFromConverted(converted any) (dto.OpenAIResponsesRequest, b
 
 func preConsumeResponsesWebsocketTurn(c *gin.Context, info *relaycommon.RelayInfo, request *dto.OpenAIResponsesRequest) *types.NewAPIError {
 	meta := request.GetTokenCountMeta()
-	if setting.ShouldCheckPromptSensitive() && meta != nil {
-		contains, words := service.CheckSensitiveText(meta.CombineText)
-		if contains {
-			logger.LogWarn(c, fmt.Sprintf("user sensitive words detected: %s", strings.Join(words, ", ")))
-			return types.NewError(errors.New("sensitive words detected"), types.ErrorCodeSensitiveWordsDetected, types.ErrOptionWithSkipRetry())
-		}
-	}
 
 	tokens, err := service.EstimateRequestToken(c, meta, info)
 	if err != nil {

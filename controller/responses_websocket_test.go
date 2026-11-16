@@ -918,12 +918,17 @@ func assertResponsesWSAccounting(t *testing.T, fixture *responsesWSBillingTest, 
 		assert.Equal(t, quota, logs[index].Quota)
 		charged += quota
 	}
-	require.NoError(t, model.DB.First(fixture.token, fixture.token.Id).Error)
-	require.NoError(t, model.DB.First(fixture.user, fixture.user.Id).Error)
-	assert.Equal(t, 3000-charged, fixture.token.RemainQuota)
-	assert.Equal(t, charged, fixture.token.UsedQuota)
-	assert.Equal(t, 100000-charged, fixture.user.Quota)
-	assert.Equal(t, charged, fixture.user.UsedQuota)
+	// 退款异步写回，关闭连接后仍需等待令牌和用户账本完成结算。
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		if !assert.NoError(collect, model.DB.First(fixture.token, fixture.token.Id).Error) ||
+			!assert.NoError(collect, model.DB.First(fixture.user, fixture.user.Id).Error) {
+			return
+		}
+		assert.Equal(collect, 3000-charged, fixture.token.RemainQuota)
+		assert.Equal(collect, charged, fixture.token.UsedQuota)
+		assert.Equal(collect, 100000-charged, fixture.user.Quota)
+		assert.Equal(collect, charged, fixture.user.UsedQuota)
+	}, 3*time.Second, 10*time.Millisecond)
 }
 
 func TestResponsesWebSocketReusesConnectionAndSettlesEachRequest(t *testing.T) {

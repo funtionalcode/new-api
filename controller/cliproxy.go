@@ -63,6 +63,7 @@ type cliproxyUsageRefreshBody struct {
 	Quota                    int
 	PlanType                 string
 	AntigravityQuota         string
+	CodexCredits             string
 	FiveHourPercent          int
 	FiveHourResetAt          int64
 	WeeklyPercent            int
@@ -352,6 +353,7 @@ func RefreshCliproxyAuthFileBindingUsage(c *gin.Context) {
 		LastUsageQuota:            usage.Quota,
 		LastPlanType:              usage.PlanType,
 		LastAntigravityQuota:      usage.AntigravityQuota,
+		LastCodexCredits:          usage.CodexCredits,
 		LastFiveHourPercent:       usage.FiveHourPercent,
 		LastFiveHourResetAt:       usage.FiveHourResetAt,
 		LastWeeklyPercent:         usage.WeeklyPercent,
@@ -651,7 +653,8 @@ func extractCliproxyUsage(result *service.CliproxyAPICallResponse) (cliproxyUsag
 	}
 	fiveHourWindow, weeklyWindow := resolveCliproxyUsageWindows(body)
 	claudeFiveHourWindow, claudeWeeklyWindow, claudeFableWindow := resolveCliproxyClaudeUsageWindows(body)
-	if len(fiveHourWindow) == 0 && len(weeklyWindow) == 0 && len(claudeFiveHourWindow) == 0 && len(claudeWeeklyWindow) == 0 && len(claudeFableWindow) == 0 && stringFromMap(body, "plan_type") == "" {
+	credits := mapFromMap(body, "credits")
+	if len(fiveHourWindow) == 0 && len(weeklyWindow) == 0 && len(claudeFiveHourWindow) == 0 && len(claudeWeeklyWindow) == 0 && len(claudeFableWindow) == 0 && len(credits) == 0 && stringFromMap(body, "plan_type") == "" {
 		return cliproxyUsageRefreshBody{}, fmt.Errorf("刷新结果格式无效")
 	}
 	if len(claudeFiveHourWindow) > 0 || len(claudeWeeklyWindow) > 0 || len(claudeFableWindow) > 0 {
@@ -668,10 +671,19 @@ func extractCliproxyUsage(result *service.CliproxyAPICallResponse) (cliproxyUsag
 		}, nil
 	}
 	codexFiveHourWindow, codexWeeklyWindow := resolveCliproxyCodexUsageWindows(body)
+	var codexCredits string
+	if len(credits) > 0 {
+		encoded, err := common.Marshal(credits)
+		if err != nil {
+			return cliproxyUsageRefreshBody{}, fmt.Errorf("序列化 Codex 积分失败: %w", err)
+		}
+		codexCredits = string(encoded)
+	}
 	return cliproxyUsageRefreshBody{
 		UsedTokens:           intFromMap(body, "used_tokens"),
 		Quota:                intFromMap(body, "quota"),
 		PlanType:             stringFromMap(body, "plan_type"),
+		CodexCredits:         codexCredits,
 		FiveHourPercent:      percentFromWindow(fiveHourWindow),
 		FiveHourResetAt:      resetAtFromWindow(fiveHourWindow),
 		WeeklyPercent:        percentFromWindow(weeklyWindow),

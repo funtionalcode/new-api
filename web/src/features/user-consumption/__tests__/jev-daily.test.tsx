@@ -35,6 +35,8 @@ import {
 } from '../lib/jev-daily'
 import type { JevDailyUsageRow } from '../types'
 
+type JevDailyParams = Parameters<typeof getJevDailyUsage>[0]
+
 // jsdom 不提供 Canvas；只替换第三方绘制边界，保留页面、筛选和请求逻辑。
 vi.mock('@visactor/react-vchart', () => ({ VChart: () => null }))
 
@@ -125,7 +127,7 @@ beforeEach(() => {
   vi.spyOn(api, 'get').mockImplementation(async (_url, config) => ({
     data: {
       success: true,
-      data: { ...config?.params, log_count: 6, rows },
+      data: { ...(config?.params as JevDailyParams), log_count: 6, rows },
     },
   }))
 })
@@ -209,10 +211,15 @@ it('默认对比最近两个完整自然日，关闭后仅展示单日报表', a
   expect(screen.getAllByRole('table')).toHaveLength(6)
   const starts = vi
     .mocked(api.get)
-    .mock.calls.map(([, config]) => config?.params?.start_timestamp)
+    .mock.calls.map(
+      ([, config]) =>
+        (config?.params as JevDailyParams | undefined)?.start_timestamp
+    )
   expect(new Set(starts).size).toBe(2)
   const today = getJevDayRange(new Date()).start_timestamp
-  expect(starts.every((start) => start < today)).toBe(true)
+  expect(
+    starts.every((start) => typeof start === 'number' && start < today)
+  ).toBe(true)
   await userEvent.click(
     screen.getByRole('switch', { name: 'Compare another day' })
   )
@@ -230,12 +237,13 @@ it('两日报表经过同一模型筛选后，页面差值随之更新而不是�
     data: {
       success: true,
       data: {
-        ...config?.params,
+        ...(config?.params as JevDailyParams),
         log_count: 2,
         rows: rows.slice(0, 2).map((row) => ({
           ...row,
           completion_tokens:
-            config?.params?.start_timestamp === analysisStart
+            (config?.params as JevDailyParams | undefined)?.start_timestamp ===
+            analysisStart
               ? row.completion_tokens / 2
               : row.completion_tokens,
         })),
@@ -313,7 +321,10 @@ it('API 业务失败展示可重试错误，不把失败当作零消耗', async 
   expect(await screen.findByText('daily limit exceeded')).toBeInTheDocument()
   expect(screen.queryByRole('table')).not.toBeInTheDocument()
   vi.mocked(api.get).mockImplementation(async (_url, config) => ({
-    data: { success: true, data: { ...config?.params, log_count: 6, rows } },
+    data: {
+      success: true,
+      data: { ...(config?.params as JevDailyParams), log_count: 6, rows },
+    },
   }))
   await userEvent.click(screen.getByRole('button', { name: 'Retry' }))
   expect((await screen.findAllByText('a.json')).length).toBeGreaterThan(0)
@@ -324,7 +335,7 @@ it('空日报表仍明确展示零值且不生成无穷平均数', async () => {
     data: {
       success: true,
       data: {
-        ...config?.params,
+        ...(config?.params as JevDailyParams),
         log_count: 0,
         rows: [],
       },

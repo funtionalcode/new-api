@@ -29,6 +29,7 @@ type CliproxyAuthFileBinding struct {
 	LastPlanType                 string `json:"last_plan_type" gorm:"size:64;default:''"`
 	LastAntigravityQuota         string `json:"last_antigravity_quota" gorm:"type:text"`
 	LastMetaQuota                string `json:"last_meta_quota" gorm:"type:text"`
+	LastCodexCredits             string `json:"last_codex_credits" gorm:"type:text"`
 	LastFiveHourPercent          int    `json:"last_five_hour_percent" gorm:"default:0"`
 	LastFiveHourResetAt          int64  `json:"last_five_hour_reset_at" gorm:"bigint;default:0"`
 	LastWeeklyPercent            int    `json:"last_weekly_percent" gorm:"default:0"`
@@ -79,6 +80,7 @@ type CliproxyUsageRefreshUpdate struct {
 	LastPlanType                 string
 	LastAntigravityQuota         string
 	LastMetaQuota                string
+	LastCodexCredits             string
 	LastFiveHourPercent          int
 	LastFiveHourResetAt          int64
 	LastWeeklyPercent            int
@@ -307,6 +309,7 @@ func UpdateCliproxyAuthFileBinding(id int, update CliproxyAuthFileBindingUpdate)
 		LastPlanType:                 firstNonEmpty(update.LastPlanType, binding.LastPlanType),
 		LastAntigravityQuota:         binding.LastAntigravityQuota,
 		LastMetaQuota:                binding.LastMetaQuota,
+		LastCodexCredits:             binding.LastCodexCredits,
 		LastFiveHourPercent:          binding.LastFiveHourPercent,
 		LastFiveHourResetAt:          binding.LastFiveHourResetAt,
 		LastWeeklyPercent:            binding.LastWeeklyPercent,
@@ -347,6 +350,7 @@ func UpdateCliproxyAuthFileBindingUsage(id int, update CliproxyUsageRefreshUpdat
 		update.LastPlanType = binding.LastPlanType
 		update.LastAntigravityQuota = binding.LastAntigravityQuota
 		update.LastMetaQuota = binding.LastMetaQuota
+		update.LastCodexCredits = binding.LastCodexCredits
 		update.LastFiveHourPercent = binding.LastFiveHourPercent
 		update.LastFiveHourResetAt = binding.LastFiveHourResetAt
 		update.LastWeeklyPercent = binding.LastWeeklyPercent
@@ -389,6 +393,7 @@ func UpdateCliproxyAuthFileBindingUsage(id int, update CliproxyUsageRefreshUpdat
 		LastPlanType:                 update.LastPlanType,
 		LastAntigravityQuota:         update.LastAntigravityQuota,
 		LastMetaQuota:                update.LastMetaQuota,
+		LastCodexCredits:             update.LastCodexCredits,
 		LastFiveHourPercent:          update.LastFiveHourPercent,
 		LastFiveHourResetAt:          update.LastFiveHourResetAt,
 		LastWeeklyPercent:            update.LastWeeklyPercent,

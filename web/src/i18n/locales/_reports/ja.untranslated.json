@@ -159,7 +159,6 @@
   "Starting...": "Starting...",
   "Sync failed": "Sync failed",
   "Sync now": "Sync now",
-  "Synced": "Synced",
   "Synced {{inserted}} new reset(s)": "Synced {{inserted}} new reset(s)",
   "Task detail": "Task detail",
   "This will enqueue a host-side PostgreSQL and ClickHouse backup. The host agent claims and runs it within about one minute.": "This will enqueue a host-side PostgreSQL and ClickHouse backup. The host agent claims and runs it within about one minute.",

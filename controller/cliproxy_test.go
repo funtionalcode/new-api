@@ -197,6 +197,11 @@ func TestExtractCliproxyUsageSupportsCodexWhamPayload(t *testing.T) {
 	result := &service.CliproxyAPICallResponse{
 		Body: map[string]any{
 			"plan_type": "pro",
+			"credits": map[string]any{
+				"has_credits": true,
+				"unlimited":   false,
+				"balance":     "59897.56999999999",
+			},
 			"rate_limit": map[string]any{
 				"primary_window": map[string]any{
 					"used_percent":         float64(41),
@@ -236,6 +241,92 @@ func TestExtractCliproxyUsageSupportsCodexWhamPayload(t *testing.T) {
 	require.Equal(t, int64(1787663429), usage.CodexFiveHourResetAt)
 	require.Equal(t, 12, usage.CodexWeeklyPercent)
 	require.Equal(t, int64(1788164344), usage.CodexWeeklyResetAt)
+	assert.JSONEq(t, `{"has_credits":true,"unlimited":false,"balance":"59897.56999999999"}`, usage.CodexCredits)
+}
+
+func TestRefreshCliproxyCodexCreditsPersistsSnapshotsAndClearsOmittedCredits(t *testing.T) {
+	originalDB := model.DB
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&model.CliproxyAuthFileBinding{}))
+	model.DB = db
+	t.Cleanup(func() {
+		model.DB = originalDB
+		sqlDB, err := db.DB()
+		require.NoError(t, err)
+		require.NoError(t, sqlDB.Close())
+	})
+	require.NoError(t, db.Create(&model.CliproxyAuthFileBinding{
+		Id: 1, UserId: 1, Username: "root", AuthIndex: "codex-auth", Provider: "codex", Enabled: true,
+	}).Error)
+
+	upstreamBody := `{"status_code":200,"body":{"credits":{"has_credits":true,"unlimited":false,"balance":"59897.56999999999"}}}`
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		assert.Equal(t, "/v0/management/api-call", request.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(upstreamBody))
+		assert.NoError(t, err)
+	}))
+	t.Cleanup(upstream.Close)
+	common.OptionMapRWMutex.Lock()
+	originalOptions := common.OptionMap
+	common.OptionMap = map[string]string{"CliproxyAPIBaseURL": upstream.URL, "CliproxyAPIPassword": "test-only"}
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap = originalOptions
+		common.OptionMapRWMutex.Unlock()
+	})
+	router := gin.New()
+	router.POST("/bindings/:id/refresh-usage", func(c *gin.Context) {
+		c.Set("id", 1)
+		c.Set("role", common.RoleAdminUser)
+		RefreshCliproxyAuthFileBindingUsage(c)
+	})
+	previousCredits := ""
+	for _, tc := range []struct {
+		name, body, credits string
+		wantError           bool
+	}{
+		{name: "仅含积分的响应保留原始小数", body: upstreamBody, credits: `{"has_credits":true,"unlimited":false,"balance":"59897.56999999999"}`},
+		{name: "刷新失败保留最后成功积分", body: `{"status_code":403,"body":{}}`, wantError: true},
+		{name: "零积分覆盖旧余额", body: `{"status_code":200,"body":{"credits":{"has_credits":false,"unlimited":false,"balance":0}}}`, credits: `{"has_credits":false,"unlimited":false,"balance":0}`},
+		{name: "无限积分不要求数值余额", body: `{"status_code":200,"body":{"credits":{"has_credits":true,"unlimited":true,"balance":null}}}`, credits: `{"has_credits":true,"unlimited":true,"balance":null}`},
+		{name: "成功响应缺少积分时清除旧快照", body: `{"status_code":200,"body":{"rate_limit":{"primary_window":{"used_percent":10,"limit_window_seconds":18000}}}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			upstreamBody = tc.body
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/bindings/1/refresh-usage", nil))
+			assert.Equal(t, http.StatusOK, response.Code)
+			var body struct {
+				Success bool                          `json:"success"`
+				Data    model.CliproxyAuthFileBinding `json:"data"`
+			}
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &body))
+			require.True(t, body.Success)
+			stored, err := model.GetCliproxyAuthFileBindingById(1)
+			require.NoError(t, err)
+			if tc.wantError {
+				assert.NotEmpty(t, stored.LastError)
+				assert.JSONEq(t, previousCredits, stored.LastCodexCredits)
+			} else {
+				assert.Empty(t, stored.LastError)
+				if tc.credits == "" {
+					assert.Empty(t, stored.LastCodexCredits)
+				} else {
+					assert.JSONEq(t, tc.credits, stored.LastCodexCredits)
+				}
+				previousCredits = tc.credits
+			}
+			assert.Equal(t, stored.LastCodexCredits, body.Data.LastCodexCredits)
+			updated, err := model.UpdateCliproxyAuthFileBinding(1, model.CliproxyAuthFileBindingUpdate{
+				UserId: 1, Username: "root", AuthIndex: "codex-auth", Provider: "codex", Note: "更新备注", Enabled: true,
+			})
+			require.NoError(t, err)
+			assert.Equal(t, stored.LastCodexCredits, updated.LastCodexCredits)
+		})
+	}
 }
 
 func TestBuildCliproxyUsageRefreshRequestUsesClaudeOAuthUsage(t *testing.T) {

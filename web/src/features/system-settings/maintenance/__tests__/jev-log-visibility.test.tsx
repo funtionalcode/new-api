@@ -20,6 +20,7 @@ function Fixture(props: { showJevLogs?: boolean }) {
             'general_setting.show_jev_logs': props.showJevLogs,
             'log_setting.user_export_enabled': false,
             'log_setting.max_range_days': 30,
+            'system_task_setting.retention_days': 30,
           }}
         />
       </SettingsPageProvider>

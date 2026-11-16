@@ -142,7 +142,7 @@ beforeEach(() => {
       data: {
         success: true,
         data:
-          config?.params?.group === 'vip'
+          (config?.params as { group?: string } | undefined)?.group === 'vip'
             ? ['vip-model']
             : [
                 'model-a',

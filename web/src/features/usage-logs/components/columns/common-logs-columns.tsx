@@ -74,6 +74,7 @@ import {
 import type { LogOtherData } from '../../types'
 import { DetailsDialog } from '../dialogs/details-dialog'
 import { LogCostDisplay } from '../log-cost-display'
+import { RequestPluginLogMarker } from '../request-plugin-record'
 import { TimingMetricsCell, StreamTpsCell } from '../timing-metrics-cell'
 import { UsageLogModelCell } from '../usage-log-model-cell'
 import { UsageLogTokens } from '../usage-log-tokens'
@@ -727,7 +728,16 @@ export function useCommonLogsColumns(
           const log = row.original
           if (!isDisplayableLogType(log.type)) return null
 
-          return <UsageLogModelCell log={log} />
+          const requestPlugins = parseLogOther(log.other)?.request_plugins
+
+          return (
+            <div className='flex w-fit flex-col gap-0.5'>
+              <UsageLogModelCell log={log} />
+              {requestPlugins?.length ? (
+                <RequestPluginLogMarker items={requestPlugins} />
+              ) : null}
+            </div>
+          )
         },
         meta: { mobileTitle: true },
       },

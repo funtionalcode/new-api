@@ -26,7 +26,7 @@ import {
   Search,
   Trash2,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -102,6 +102,7 @@ import {
   updateCliproxyAuthFileBinding,
 } from './api'
 import { AntigravityUsageCell } from './components/antigravity-usage-cell'
+import { CodexCreditsDetails } from './components/codex-credits-details'
 import { MetaUsageCell } from './components/meta-usage-cell'
 import { UsageLimitBar } from './components/usage-limit-bar'
 import {
@@ -311,6 +312,7 @@ export function BindingUsageCell({
   }
 }) {
   const { t } = useTranslation()
+  const usageTooltipId = useId()
   const type = getCliproxyAuthFileType(binding)
   if (type === 'antigravity') return <AntigravityUsageCell binding={binding} />
   if (type === 'meta') return <MetaUsageCell binding={binding} />
@@ -440,7 +442,14 @@ export function BindingUsageCell({
     <TooltipProvider delay={150}>
       <Tooltip>
         <TooltipTrigger
-          render={<div className='max-w-[460px] cursor-help space-y-2' />}
+          render={
+            <div
+              aria-label={t('Usage')}
+              aria-describedby={usageTooltipId}
+              tabIndex={0}
+              className='max-w-[460px] cursor-help space-y-2'
+            />
+          }
         >
           <div className='grid gap-2 sm:grid-cols-2'>
             {summary.primaryWindows.map((window) => (
@@ -465,6 +474,8 @@ export function BindingUsageCell({
           ) : null}
         </TooltipTrigger>
         <TooltipContent
+          id={usageTooltipId}
+          role='tooltip'
           side='top'
           align='start'
           className='max-w-[min(34rem,calc(100vw-2rem))] p-3 whitespace-normal'
@@ -487,6 +498,9 @@ export function BindingUsageCell({
                 </span>
               </div>
             ))}
+            {type === 'codex' ? (
+              <CodexCreditsDetails credits={binding.last_codex_credits} />
+            ) : null}
             {binding.last_error ? (
               <div className='border-background/15 border-t pt-2'>
                 <div className='text-background/80 break-words whitespace-pre-wrap'>

@@ -61,38 +61,40 @@ afterEach(() => {
 })
 
 it('shows full-history run counts separately for successes and failures while keeping active tasks individual', async () => {
-  const get = vi.spyOn(api, 'get').mockImplementation(async (_url, config) => ({
-    data: {
-      success: true,
-      data:
-        config?.params?.scope === 'active'
-          ? [
-              {
-                ...task,
-                task_id: 'active',
-                status: 'running',
-                locked_by: 'active-runner',
-              },
-            ]
-          : [
-              { ...task, run_count: 42 },
-              {
-                ...task,
-                task_id: 'failed-group',
-                status: 'failed',
-                run_count: 3,
-                error: 'Model update failed',
-              },
-              {
-                ...task,
-                task_id: 'single-group',
-                type: 'channel_test',
-                run_count: 1,
-              },
-            ],
-      total: 3,
-    },
-  }))
+  const get = vi
+    .spyOn(api, 'get')
+    .mockImplementation(async (_url, config?: ApiRequestConfig) => ({
+      data: {
+        success: true,
+        data:
+          config?.params?.scope === 'active'
+            ? [
+                {
+                  ...task,
+                  task_id: 'active',
+                  status: 'running',
+                  locked_by: 'active-runner',
+                },
+              ]
+            : [
+                { ...task, run_count: 42 },
+                {
+                  ...task,
+                  task_id: 'failed-group',
+                  status: 'failed',
+                  run_count: 3,
+                  error: 'Model update failed',
+                },
+                {
+                  ...task,
+                  task_id: 'single-group',
+                  type: 'channel_test',
+                  run_count: 1,
+                },
+              ],
+        total: 3,
+      },
+    }))
   const client = renderPanel()
   expect(await screen.findByText('x42')).toBeVisible()
   expect(screen.getByText('x3')).toBeVisible()
@@ -113,32 +115,34 @@ it('shows full-history run counts separately for successes and failures while ke
 })
 
 it('opens a group with the keyboard, pages through individual runs and preserves their details', async () => {
-  const get = vi.spyOn(api, 'get').mockImplementation(async (_url, config) => {
-    const params = config?.params
-    if (params?.scope === 'active') {
-      return { data: { success: true, data: [], total: 0 } }
-    }
-    if (params?.grouped) {
-      return {
-        data: { success: true, data: [{ ...task, run_count: 21 }], total: 1 },
+  const get = vi
+    .spyOn(api, 'get')
+    .mockImplementation(async (_url, config?: ApiRequestConfig) => {
+      const params = config?.params
+      if (params?.scope === 'active') {
+        return { data: { success: true, data: [], total: 0 } }
       }
-    }
-    const older = !!params?.offset
-    return {
-      data: {
-        success: true,
-        data: [
-          {
-            ...task,
-            task_id: older ? 'older-run' : 'latest-run',
-            locked_by: older ? 'older-runner' : 'latest-runner',
-            result: { message: older ? 'Older result' : 'Latest result' },
-          },
-        ],
-        total: 21,
-      },
-    }
-  })
+      if (params?.grouped) {
+        return {
+          data: { success: true, data: [{ ...task, run_count: 21 }], total: 1 },
+        }
+      }
+      const older = !!params?.offset
+      return {
+        data: {
+          success: true,
+          data: [
+            {
+              ...task,
+              task_id: older ? 'older-run' : 'latest-run',
+              locked_by: older ? 'older-runner' : 'latest-runner',
+              result: { message: older ? 'Older result' : 'Latest result' },
+            },
+          ],
+          total: 21,
+        },
+      }
+    })
   const client = renderPanel()
   const count = await screen.findByRole('button', { name: 'View 21 task runs' })
   count.focus()
@@ -184,18 +188,22 @@ it('opens a group with the keyboard, pages through individual runs and preserves
 
 it('shows a group query error and allows retry without losing the summary', async () => {
   let failed = true
-  vi.spyOn(api, 'get').mockImplementation(async (_url, config) => {
-    if (config?.params?.scope === 'active') {
+  vi.spyOn(api, 'get').mockImplementation(
+    async (_url, config?: ApiRequestConfig) => {
+      if (config?.params?.scope === 'active') {
+        return { data: { success: true, data: [], total: 0 } }
+      }
+      if (config?.params?.grouped) {
+        return {
+          data: { success: true, data: [{ ...task, run_count: 2 }], total: 1 },
+        }
+      }
+      if (failed) {
+        return { data: { success: false, message: 'Runs unavailable' } }
+      }
       return { data: { success: true, data: [], total: 0 } }
     }
-    if (config?.params?.grouped) {
-      return {
-        data: { success: true, data: [{ ...task, run_count: 2 }], total: 1 },
-      }
-    }
-    if (failed) return { data: { success: false, message: 'Runs unavailable' } }
-    return { data: { success: true, data: [], total: 0 } }
-  })
+  )
   const client = renderPanel()
   await userEvent.click(
     await screen.findByRole('button', { name: 'View 2 task runs' })
