@@ -951,7 +951,7 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 func (s *responsesWSSession) lockChannel(c *gin.Context, channel *appmodel.Channel, modelName, group string) {
 	s.lockedModel, s.lockedChannelID, s.lockedGroup = modelName, channel.Id, group
 	s.lockedKey, s.lockedKeyIndex = common.GetContextKeyString(c, appconstant.ContextKeyChannelKey), common.GetContextKeyInt(c, appconstant.ContextKeyChannelMultiKeyIndex)
-	s.lockedRoute, _ = channel.GetOtherSettings().AdvancedCustom.MatchPathForModel(c.Request.URL.Path, modelName)
+	s.lockedRoute, _ = connectionOtherSettings(c, channel).AdvancedCustom.MatchPathForModel(c.Request.URL.Path, modelName)
 	s.lockedContext = make(map[appconstant.ContextKey]any)
 	for _, key := range []appconstant.ContextKey{
 		appconstant.ContextKeyChannelId, appconstant.ContextKeyChannelName, appconstant.ContextKeyChannelType,

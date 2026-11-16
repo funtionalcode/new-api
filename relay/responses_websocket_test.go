@@ -16,6 +16,7 @@ import (
 	appdto "github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	relaychannel "github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -288,6 +289,44 @@ func TestResponsesWSAzureDialUsesAzureResponsesURLAndAPIKey(t *testing.T) {
 			assert.Empty(t, r.Header.Get("Authorization"))
 		})
 	}
+}
+
+func TestRestoreConnectionContextKeepsPinnedProviderRoute(t *testing.T) {
+	database := setupRelayChannelDB(t)
+	registry := jsplugin.NewRegistry()
+	plugin, err := registry.Register(`export const meta = {apiVersion: 1, key: "ws-pinned-provider", name: "Pinned provider", version: "1.0.0", author: {name: "Test"}, relay: [{incoming_path: "/v1/responses", upstream_path: "/provider/responses"}]};`, jsplugin.Options{})
+	require.NoError(t, err)
+	baseURL := "http://provider.example"
+	channel := &model.Channel{Name: "provider", Key: "sk-test", Status: common.ChannelStatusEnabled, Type: constant.ChannelTypeTaskPlugin, BaseURL: &baseURL}
+	channel.SetSetting(dto.ChannelSettings{ResponsesWebSocketEnabled: true, TaskPluginKey: plugin.Meta.Key})
+	require.NoError(t, database.Create(channel).Error)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	common.SetContextKey(c, constant.ContextKeyProviderPlugin, jsplugin.PinnedPlugin{Generation: registry.Generation(), Plugin: plugin})
+	common.SetContextKey(c, constant.ContextKeyChannelKey, channel.Key)
+	common.SetContextKey(c, constant.ContextKeyChannelBaseUrl, channel.GetBaseURL())
+	common.SetContextKey(c, constant.ContextKeyChannelHeaderOverride, channel.GetHeaderOverride())
+	common.SetContextKey(c, constant.ContextKeyChannelSetting, channel.GetSetting())
+	session := &responsesWSSession{ctx: context.Background()}
+	session.lockChannel(c, channel, "ws-model", "default")
+	t.Cleanup(session.unregister)
+
+	for range 2 {
+		next, _ := gin.CreateTestContext(httptest.NewRecorder())
+		next.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+		service.GetChannelConstraints(next).AddPin(appdto.ChannelPin{ChannelId: channel.Id, Source: appdto.PinSourceToken, Rank: appdto.PinRankToken, RetryMode: appdto.PinRetrySingleAttempt})
+		require.Nil(t, session.restoreConnectionContext(next, "ws-model"), "后续请求应复用已固定的插件路由")
+		other, ok := common.GetContextKey(next, constant.ContextKeyChannelOtherSetting)
+		require.True(t, ok)
+		route, matched := other.(dto.ChannelOtherSettings).AdvancedCustom.MatchPathForModel("/v1/responses", "ws-model")
+		require.True(t, matched)
+		assert.Equal(t, "/provider/responses", route.UpstreamPath)
+	}
+	channel.SetSetting(dto.ChannelSettings{TaskPluginKey: plugin.Meta.Key})
+	require.NoError(t, database.Model(channel).Update("setting", channel.Setting).Error)
+	apiErr := session.restoreConnectionContext(c, "ws-model")
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusForbidden, apiErr.StatusCode)
 }
 
 func TestRestoreConnectionContextRejectsChangedAdvancedCustomRoute(t *testing.T) {
