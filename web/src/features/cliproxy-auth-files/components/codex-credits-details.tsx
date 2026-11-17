@@ -40,7 +40,6 @@ export function CodexCreditsDetails(props: {
   }
 
   let balance: number | null = null
-  let exactBalance = ''
   if (
     typeof credits.balance === 'number' ||
     typeof credits.balance === 'string'
@@ -49,7 +48,6 @@ export function CodexCreditsDetails(props: {
     const value = Number(raw)
     if (raw !== '' && Number.isFinite(value) && value >= 0) {
       balance = value
-      exactBalance = raw
     }
   }
   const hasCredits = credits.has_credits
@@ -81,14 +79,6 @@ export function CodexCreditsDetails(props: {
       <dl className='grid grid-cols-[minmax(8rem,1fr)_auto] gap-x-4 gap-y-1'>
         <dt>{t('Credits balance')}</dt>
         <dd className='text-right font-mono font-semibold'>{balanceLabel}</dd>
-        {!unlimited && balance !== null && !Number.isInteger(balance) ? (
-          <>
-            <dt className='text-background/70'>{t('Exact balance')}</dt>
-            <dd className='max-w-64 text-right font-mono break-all'>
-              {exactBalance}
-            </dd>
-          </>
-        ) : null}
         <dt>{t('Status')}</dt>
         <dd className='text-right'>{statusLabel}</dd>
       </dl>

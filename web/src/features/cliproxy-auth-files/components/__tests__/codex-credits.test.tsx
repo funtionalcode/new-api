@@ -76,7 +76,7 @@ const labels = {
   quota: 'Quota',
 }
 
-test('悬浮用量显示 Codex 积分、精确余额及刷新错误', async () => {
+test('悬浮用量显示取整的 Codex 积分及刷新错误，不展示精确余额', async () => {
   const user = userEvent.setup()
   render(
     <BindingUsageCell
@@ -91,7 +91,10 @@ test('悬浮用量显示 Codex 积分、精确余额及刷新错误', async () =
     within(tooltip).getByRole('region', { name: 'Codex credits' })
   ).toBeVisible()
   expect(within(tooltip).getByText('59,897')).toBeVisible()
-  expect(within(tooltip).getByText('59897.56999999999')).toBeVisible()
+  expect(within(tooltip).queryByText('Exact balance')).not.toBeInTheDocument()
+  expect(
+    within(tooltip).queryByText('59897.56999999999')
+  ).not.toBeInTheDocument()
   expect(within(tooltip).getByText('Usage refresh failed')).toBeVisible()
 })
 
@@ -128,6 +131,7 @@ test.each([
   const region = screen.getByRole('region', { name: 'Codex credits' })
   expect(within(region).getByText(balance)).toBeInTheDocument()
   expect(within(region).getByText(status)).toBeInTheDocument()
+  expect(within(region).queryByText('Exact balance')).not.toBeInTheDocument()
 })
 
 test.each(['', '{}', 'null', '[]', 'invalid JSON', '{"balance":"NaN"}'])(
@@ -147,7 +151,7 @@ test.each([
   ['ja', '59,897'],
   ['vi', '59.897'],
   ['invalid_locale', new Intl.NumberFormat(undefined).format(59897)],
-])('积分按界面语言 %s 分组且保留原始小数', async (language, balance) => {
+])('积分按界面语言 %s 分组且不展示原始小数', async (language, balance) => {
   const i18n = createInstance()
   await i18n.use(initReactI18next).init({
     lng: language,
@@ -162,7 +166,7 @@ test.each([
   expect(
     screen.getByText(balance, { normalizer: (text) => text })
   ).toBeInTheDocument()
-  expect(screen.getByText('59897.56999999999')).toBeInTheDocument()
+  expect(screen.queryByText('59897.56999999999')).not.toBeInTheDocument()
 })
 
 test('切换界面语言立即更新积分数字格式', async () => {
